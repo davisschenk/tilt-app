@@ -16,6 +16,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { useCreateBrew } from "@/hooks/use-brews";
 import { useHydrometers } from "@/hooks/use-hydrometers";
+import ColorDot from "@/components/ui/color-dot";
 import * as toast from "@/lib/toast";
 
 export default function BrewNew() {
@@ -115,7 +116,10 @@ export default function BrewNew() {
                 <SelectContent>
                   {hydrometers?.map((h) => (
                     <SelectItem key={h.id} value={h.id}>
-                      {h.color}{h.name ? ` — ${h.name}` : ""}
+                      <span className="flex items-center gap-2">
+                        <ColorDot color={h.color} />
+                        {h.name || h.color}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
