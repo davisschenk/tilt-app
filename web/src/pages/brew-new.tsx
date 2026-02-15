@@ -31,6 +31,14 @@ export default function BrewNew() {
   const [notes, setNotes] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  function handleHydrometerChange(id: string) {
+    setHydrometerId(id);
+    const selected = hydrometers?.find((h) => h.id === id);
+    if (selected?.latestReading && !og) {
+      setOg(selected.latestReading.gravity.toFixed(3));
+    }
+  }
+
   function validate(): boolean {
     const errs: Record<string, string> = {};
     if (!name.trim()) errs.name = "Name is required";
@@ -100,7 +108,7 @@ export default function BrewNew() {
 
             <div className="space-y-2">
               <Label htmlFor="hydrometer">Hydrometer *</Label>
-              <Select value={hydrometerId} onValueChange={setHydrometerId}>
+              <Select value={hydrometerId} onValueChange={handleHydrometerChange}>
                 <SelectTrigger id="hydrometer">
                   <SelectValue placeholder="Select a hydrometer" />
                 </SelectTrigger>
