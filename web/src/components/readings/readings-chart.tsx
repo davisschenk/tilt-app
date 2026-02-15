@@ -86,6 +86,8 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
                 dataKey="time"
                 tick={{ fontSize: 11 }}
                 stroke="var(--muted-foreground)"
+                interval="preserveStartEnd"
+                minTickGap={60}
               />
               <YAxis
                 yAxisId="gravity"

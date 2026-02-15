@@ -79,6 +79,8 @@ export default function RecentReadingsChart() {
                 dataKey="time"
                 tick={{ fontSize: 12 }}
                 stroke="var(--muted-foreground)"
+                interval="preserveStartEnd"
+                minTickGap={60}
               />
               <YAxis
                 domain={["auto", "auto"]}
