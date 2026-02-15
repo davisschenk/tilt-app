@@ -1,11 +1,16 @@
 import { useParams } from "react-router-dom";
+import Breadcrumbs from "@/components/layout/breadcrumbs";
+import PageHeader from "@/components/layout/page-header";
 
 export default function BrewDetail() {
   const { id } = useParams<{ id: string }>();
   return (
     <div>
-      <h1 className="text-2xl font-bold">Brew Detail</h1>
-      <p className="text-muted-foreground">Brew ID: {id}</p>
+      <Breadcrumbs />
+      <PageHeader
+        title="Brew Detail"
+        description={`Brew ID: ${id}`}
+      />
     </div>
   );
 }
