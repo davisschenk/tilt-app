@@ -221,6 +221,36 @@ pub struct HydrometerResponse {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadingResponse {
+    pub id: Uuid,
+    pub brew_id: Option<Uuid>,
+    pub hydrometer_id: Uuid,
+    pub color: TiltColor,
+    pub temperature_f: f64,
+    pub gravity: f64,
+    pub rssi: Option<i16>,
+    pub recorded_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadingsQuery {
+    pub brew_id: Option<Uuid>,
+    pub hydrometer_id: Option<Uuid>,
+    pub since: Option<DateTime<Utc>>,
+    pub until: Option<DateTime<Utc>>,
+    pub limit: Option<u64>,
+}
+
+impl ReadingsQuery {
+    pub fn limit_or_default(&self) -> u64 {
+        self.limit.unwrap_or(1000)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -492,5 +522,72 @@ mod tests {
         let deserialized: HydrometerResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.color, TiltColor::Green);
         assert_eq!(deserialized.name.unwrap(), "Fermenter 1");
+    }
+
+    #[test]
+    fn reading_response_serde_round_trip() {
+        let now = Utc::now();
+        let resp = ReadingResponse {
+            id: Uuid::new_v4(),
+            brew_id: Some(Uuid::new_v4()),
+            hydrometer_id: Uuid::new_v4(),
+            color: TiltColor::Orange,
+            temperature_f: 68.0,
+            gravity: 1.050,
+            rssi: Some(-59),
+            recorded_at: now,
+            created_at: now,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"brewId\""));
+        assert!(json.contains("\"hydrometerId\""));
+        assert!(json.contains("\"temperatureF\""));
+        assert!(json.contains("\"recordedAt\""));
+        let deserialized: ReadingResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.color, TiltColor::Orange);
+        assert!((deserialized.gravity - 1.050).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn reading_response_optional_fields() {
+        let now = Utc::now();
+        let resp = ReadingResponse {
+            id: Uuid::new_v4(),
+            brew_id: None,
+            hydrometer_id: Uuid::new_v4(),
+            color: TiltColor::Black,
+            temperature_f: 72.0,
+            gravity: 1.030,
+            rssi: None,
+            recorded_at: now,
+            created_at: now,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let deserialized: ReadingResponse = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.brew_id.is_none());
+        assert!(deserialized.rssi.is_none());
+    }
+
+    #[test]
+    fn readings_query_all_fields_optional() {
+        let query: ReadingsQuery = serde_json::from_str("{}").unwrap();
+        assert!(query.brew_id.is_none());
+        assert!(query.hydrometer_id.is_none());
+        assert!(query.since.is_none());
+        assert!(query.until.is_none());
+        assert!(query.limit.is_none());
+    }
+
+    #[test]
+    fn readings_query_limit_default_1000() {
+        let query: ReadingsQuery = serde_json::from_str("{}").unwrap();
+        assert_eq!(query.limit_or_default(), 1000);
+    }
+
+    #[test]
+    fn readings_query_limit_custom() {
+        let json = r#"{"limit":50}"#;
+        let query: ReadingsQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.limit_or_default(), 50);
     }
 }
