@@ -17,23 +17,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useBrews } from "@/hooks/use-brews";
+import ColorDot from "@/components/ui/color-dot";
 import type { BrewResponse, BrewStatus } from "@/types";
 
 const STATUS_BADGE: Record<string, { variant: "default" | "secondary" | "outline"; label: string }> = {
   Active: { variant: "default", label: "Active" },
   Completed: { variant: "secondary", label: "Completed" },
   Archived: { variant: "outline", label: "Archived" },
-};
-
-const COLOR_MAP: Record<string, string> = {
-  Red: "#E03131",
-  Green: "#2F9E44",
-  Black: "#495057",
-  Purple: "#7048E8",
-  Orange: "#E8590C",
-  Blue: "#1971C2",
-  Yellow: "#F08C00",
-  Pink: "#D6336C",
 };
 
 export default function BrewList() {
@@ -107,12 +97,7 @@ export default function BrewList() {
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       <div className="flex items-center gap-2">
-                        {color && (
-                          <span
-                            className="inline-block h-3 w-3 rounded-full"
-                            style={{ backgroundColor: COLOR_MAP[color] ?? "#868E96" }}
-                          />
-                        )}
+                        {color && <ColorDot color={color} />}
                         <span>{color ?? "—"}</span>
                       </div>
                     </TableCell>

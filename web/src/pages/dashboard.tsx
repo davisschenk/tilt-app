@@ -12,6 +12,7 @@ import { useHydrometers } from "@/hooks/use-hydrometers";
 import { useReadings } from "@/hooks/use-readings";
 import type { BrewResponse } from "@/types";
 import RecentReadingsChart from "@/components/dashboard/recent-readings-chart";
+import ColorDot from "@/components/ui/color-dot";
 
 const REFRESH_INTERVAL = 30_000;
 
@@ -146,22 +147,7 @@ export default function Dashboard() {
                   className="flex items-center justify-between rounded-md border p-3 hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    {color && (
-                      <span
-                        className="inline-block h-3 w-3 rounded-full"
-                        style={{
-                          backgroundColor:
-                            color === "Red" ? "#E03131" :
-                            color === "Green" ? "#2F9E44" :
-                            color === "Black" ? "#495057" :
-                            color === "Purple" ? "#7048E8" :
-                            color === "Orange" ? "#E8590C" :
-                            color === "Blue" ? "#1971C2" :
-                            color === "Yellow" ? "#F08C00" :
-                            color === "Pink" ? "#D6336C" : "#868E96",
-                        }}
-                      />
-                    )}
+                    {color && <ColorDot color={color} />}
                     <span className="font-medium">{brew.name}</span>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
