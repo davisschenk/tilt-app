@@ -1,22 +1,21 @@
 use sea_orm::*;
 use uuid::Uuid;
 
+use crate::models::entities::hydrometers::Entity as Hydrometer;
 use crate::models::entities::readings::{self, ActiveModel, Column, Entity as Reading};
 use shared::{ReadingResponse, ReadingsQuery, TiltColor, TiltReading};
 
-impl From<readings::Model> for ReadingResponse {
-    fn from(model: readings::Model) -> Self {
-        Self {
-            id: model.id,
-            brew_id: model.brew_id,
-            hydrometer_id: model.hydrometer_id,
-            color: TiltColor::Red, // Will be resolved via join or lookup
-            temperature_f: model.temperature_f,
-            gravity: model.gravity,
-            rssi: model.rssi,
-            recorded_at: model.recorded_at.into(),
-            created_at: model.created_at.into(),
-        }
+fn model_to_response(model: readings::Model, color: TiltColor) -> ReadingResponse {
+    ReadingResponse {
+        id: model.id,
+        brew_id: model.brew_id,
+        hydrometer_id: model.hydrometer_id,
+        color,
+        temperature_f: model.temperature_f,
+        gravity: model.gravity,
+        rssi: model.rssi,
+        recorded_at: model.recorded_at.into(),
+        created_at: model.created_at.into(),
     }
 }
 
@@ -77,5 +76,22 @@ pub async fn find_filtered(
         .all(db)
         .await?;
 
-    Ok(models.into_iter().map(ReadingResponse::from).collect())
+    // Build a hydrometer_id -> TiltColor lookup
+    let hydro_ids: Vec<Uuid> = models.iter().map(|m| m.hydrometer_id).collect::<std::collections::HashSet<_>>().into_iter().collect();
+    let hydrometers = Hydrometer::find()
+        .filter(crate::models::entities::hydrometers::Column::Id.is_in(hydro_ids))
+        .all(db)
+        .await?;
+    let color_map: std::collections::HashMap<Uuid, TiltColor> = hydrometers
+        .into_iter()
+        .map(|h| (h.id, TiltColor::parse(&h.color).unwrap_or(TiltColor::Red)))
+        .collect();
+
+    Ok(models
+        .into_iter()
+        .map(|m| {
+            let color = color_map.get(&m.hydrometer_id).copied().unwrap_or(TiltColor::Red);
+            model_to_response(m, color)
+        })
+        .collect())
 }
