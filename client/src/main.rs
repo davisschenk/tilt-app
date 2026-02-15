@@ -1,3 +1,4 @@
+mod buffer;
 mod scanner;
 mod uploader;
 
