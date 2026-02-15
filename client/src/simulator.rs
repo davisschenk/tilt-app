@@ -1,7 +1,6 @@
 use std::time::Instant;
 
 use chrono::Utc;
-use rand::Rng;
 use rand::RngExt;
 use shared::{TiltColor, TiltReading};
 
