@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -12,12 +12,14 @@ import { useHydrometers } from "@/hooks/use-hydrometers";
 import { useBrews } from "@/hooks/use-brews";
 import { TILT_COLOR_MAP } from "@/lib/tilt-colors";
 import RegisterHydrometerDialog from "@/components/hydrometer/register-hydrometer-dialog";
+import EditHydrometerDialog from "@/components/hydrometer/edit-hydrometer-dialog";
 import type { HydrometerResponse } from "@/types";
 
 export default function HydrometerList() {
   const { data: hydrometers, isLoading } = useHydrometers();
   const { data: activeBrews } = useBrews("Active");
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<HydrometerResponse | null>(null);
 
   function getActiveBrew(hydrometerId: string) {
     return activeBrews?.find((b) => b.hydrometerId === hydrometerId);
@@ -90,6 +92,13 @@ export default function HydrometerList() {
                       </Link>
                     </div>
                   )}
+
+                  <div className="flex gap-2 pt-2">
+                    <Button variant="outline" size="sm" onClick={() => setEditTarget(h)}>
+                      <Pencil className="mr-1 h-3 w-3" />
+                      Edit
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             );
@@ -105,6 +114,13 @@ export default function HydrometerList() {
         </div>
       )}
       <RegisterHydrometerDialog open={registerOpen} onOpenChange={setRegisterOpen} />
+      {editTarget && (
+        <EditHydrometerDialog
+          hydrometer={editTarget}
+          open={!!editTarget}
+          onOpenChange={(open) => { if (!open) setEditTarget(null); }}
+        />
+      )}
     </div>
   );
 }
