@@ -14,6 +14,7 @@ import EditBrewDialog from "@/components/brew/edit-brew-dialog";
 import DeleteBrewDialog from "@/components/brew/delete-brew-dialog";
 import ReadingsChart from "@/components/readings/readings-chart";
 import ReadingsTable from "@/components/readings/readings-table";
+import FermentationStats from "@/components/readings/fermentation-stats";
 import * as toast from "@/lib/toast";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
@@ -184,6 +185,7 @@ export default function BrewDetail() {
 
       <div>
         <h2 className="text-lg font-semibold mb-4">Readings</h2>
+        <FermentationStats brewId={brew.id} og={brew.og} />
         <ReadingsChart brewId={brew.id} />
         <ReadingsTable brewId={brew.id} />
       </div>
