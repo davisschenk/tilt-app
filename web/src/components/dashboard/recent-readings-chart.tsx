@@ -78,15 +78,16 @@ export default function RecentReadingsChart() {
               <XAxis
                 dataKey="time"
                 tick={{ fontSize: 12 }}
-                stroke="hsl(var(--muted-foreground))"
+                stroke="var(--muted-foreground)"
               />
               <YAxis
                 domain={["auto", "auto"]}
                 tick={{ fontSize: 12 }}
-                stroke="hsl(var(--muted-foreground))"
+                stroke="var(--muted-foreground)"
                 tickFormatter={(v: number) => v.toFixed(3)}
               />
               <Tooltip
+                contentStyle={{ backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
                 formatter={(value: unknown) => [
                   typeof value === "number" ? value.toFixed(3) : String(value),
                   "SG",

@@ -85,7 +85,7 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
               <XAxis
                 dataKey="time"
                 tick={{ fontSize: 11 }}
-                stroke="hsl(var(--muted-foreground))"
+                stroke="var(--muted-foreground)"
               />
               <YAxis
                 yAxisId="gravity"
@@ -105,6 +105,7 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
                 tickFormatter={(v: number) => `${v.toFixed(1)}°F`}
               />
               <Tooltip
+                contentStyle={{ backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
                 formatter={(value: unknown, name?: string) => {
                   const v = typeof value === "number" ? value : 0;
                   if (name === "gravity") return [v.toFixed(3), "Gravity (SG)"];
