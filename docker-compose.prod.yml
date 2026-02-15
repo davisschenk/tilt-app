@@ -1,0 +1,51 @@
+networks:
+  cloudflare:
+    external: true
+  tilt-internal:
+
+volumes:
+  pgdata:
+
+services:
+  db:
+    image: postgres:16-alpine
+    labels:
+      komodo.stack: tilt
+      komodo.service: tilt-db
+    environment:
+      POSTGRES_DB: tilt
+      POSTGRES_USER: tilt
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tilt -d tilt"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tilt-internal
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    labels:
+      komodo.stack: tilt
+      komodo.service: tilt-server
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://tilt:${DB_PASSWORD}@db:5432/tilt
+      ROCKET_PORT: "8000"
+      ROCKET_ADDRESS: "0.0.0.0"
+      ROCKET_SECRET_KEY: ${ROCKET_SECRET_KEY}
+      RUST_LOG: ${RUST_LOG:-info}
+    networks:
+      - tilt-internal
+      - cloudflare
+    restart: unless-stopped
