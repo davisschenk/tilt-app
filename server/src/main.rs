@@ -3,7 +3,7 @@ mod routes;
 mod services;
 
 use rocket::serde::json::Json;
-use rocket::{catchers, catch, get, routes, Build, Rocket};
+use rocket::{Build, Rocket, catch, catchers, get, routes};
 use sea_orm::{Database, DatabaseConnection};
 
 #[get("/health")]
@@ -27,8 +27,7 @@ fn internal_error() -> Json<serde_json::Value> {
 }
 
 async fn setup_db() -> DatabaseConnection {
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     Database::connect(&database_url)
         .await
         .expect("Failed to connect to database")
@@ -63,5 +62,8 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes::hydrometers::routes())
         .mount("/api/v1", routes::brews::routes())
         .mount("/api/v1", routes::readings::routes())
-        .register("/", catchers![not_found, unprocessable_entity, internal_error])
+        .register(
+            "/",
+            catchers![not_found, unprocessable_entity, internal_error],
+        )
 }

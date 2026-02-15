@@ -22,21 +22,9 @@ impl MigrationTrait for Migration {
                             .extra("DEFAULT gen_random_uuid()"),
                     )
                     .col(ColumnDef::new(Readings::BrewId).uuid().null())
-                    .col(
-                        ColumnDef::new(Readings::HydrometerId)
-                            .uuid()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Readings::TemperatureF)
-                            .double()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Readings::Gravity)
-                            .double()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Readings::HydrometerId).uuid().not_null())
+                    .col(ColumnDef::new(Readings::TemperatureF).double().not_null())
+                    .col(ColumnDef::new(Readings::Gravity).double().not_null())
                     .col(ColumnDef::new(Readings::Rssi).small_integer().null())
                     .col(
                         ColumnDef::new(Readings::RecordedAt)

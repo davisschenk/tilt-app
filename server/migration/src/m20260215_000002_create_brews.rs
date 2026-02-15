@@ -43,11 +43,7 @@ impl MigrationTrait for Migration {
                             .null(),
                     )
                     .col(ColumnDef::new(Brews::Notes).text().null())
-                    .col(
-                        ColumnDef::new(Brews::HydrometerId)
-                            .uuid()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Brews::HydrometerId).uuid().not_null())
                     .col(
                         ColumnDef::new(Brews::CreatedAt)
                             .timestamp_with_time_zone()

@@ -1,6 +1,6 @@
 use rocket::http::Status;
 use rocket::serde::json::Json;
-use rocket::{get, post, routes, Route, State};
+use rocket::{Route, State, get, post, routes};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -15,10 +15,7 @@ async fn create_batch(
 ) -> Result<(Status, Json<serde_json::Value>), Status> {
     let readings: Vec<TiltReading> = batch.into_inner().0;
     if readings.is_empty() {
-        return Ok((
-            Status::Created,
-            Json(serde_json::json!({ "count": 0 })),
-        ));
+        return Ok((Status::Created, Json(serde_json::json!({ "count": 0 }))));
     }
 
     let mut total_count: u64 = 0;
@@ -37,22 +34,17 @@ async fn create_batch(
             Err(_) => return Err(Status::InternalServerError),
         };
 
-        let active_brew =
-            brew_service::find_active_for_hydrometer(db.inner(), hydrometer.id).await;
+        let active_brew = brew_service::find_active_for_hydrometer(db.inner(), hydrometer.id).await;
         let brew_id = match active_brew {
             Ok(Some(b)) => Some(b.id),
             Ok(None) => None,
             Err(_) => None,
         };
 
-        let count = reading_service::batch_create(
-            db.inner(),
-            batch_readings,
-            hydrometer.id,
-            brew_id,
-        )
-        .await
-        .map_err(|_| Status::InternalServerError)?;
+        let count =
+            reading_service::batch_create(db.inner(), batch_readings, hydrometer.id, brew_id)
+                .await
+                .map_err(|_| Status::InternalServerError)?;
 
         total_count += count;
     }

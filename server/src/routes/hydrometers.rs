@@ -1,6 +1,6 @@
 use rocket::http::Status;
 use rocket::serde::json::Json;
-use rocket::{delete, get, post, put, routes, Route, State};
+use rocket::{Route, State, delete, get, post, put, routes};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -17,7 +17,10 @@ async fn list(db: &State<DatabaseConnection>) -> Result<Json<Vec<HydrometerRespo
 }
 
 #[get("/hydrometers/<id>")]
-async fn get_by_id(db: &State<DatabaseConnection>, id: &str) -> Result<Json<HydrometerResponse>, Status> {
+async fn get_by_id(
+    db: &State<DatabaseConnection>,
+    id: &str,
+) -> Result<Json<HydrometerResponse>, Status> {
     let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
     match hydrometer_service::find_by_id(db.inner(), id).await {
         Ok(Some(h)) => Ok(Json(h)),

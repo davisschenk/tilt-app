@@ -1,6 +1,6 @@
 use rocket::http::Status;
 use rocket::serde::json::Json;
-use rocket::{delete, get, post, put, routes, Route, State};
+use rocket::{Route, State, delete, get, post, put, routes};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 

@@ -8,8 +8,7 @@ impl From<hydrometers::Model> for HydrometerResponse {
     fn from(model: hydrometers::Model) -> Self {
         Self {
             id: model.id,
-            color: shared::TiltColor::from_str(&model.color)
-                .unwrap_or(shared::TiltColor::Red),
+            color: shared::TiltColor::parse(&model.color).unwrap_or(shared::TiltColor::Red),
             name: model.name,
             temp_offset_f: model.temp_offset_f,
             gravity_offset: model.gravity_offset,

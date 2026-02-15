@@ -68,11 +68,7 @@ impl Backoff {
 
 impl Default for Backoff {
     fn default() -> Self {
-        Self::new(
-            Duration::from_secs(1),
-            Duration::from_secs(60),
-            2,
-        )
+        Self::new(Duration::from_secs(1), Duration::from_secs(60), 2)
     }
 }
 
@@ -107,11 +103,7 @@ mod tests {
     #[test]
     fn buffer_drops_oldest_when_full() {
         let mut buf = ReadingBuffer::new(3);
-        buf.push_batch(&[
-            make_reading(1.0),
-            make_reading(2.0),
-            make_reading(3.0),
-        ]);
+        buf.push_batch(&[make_reading(1.0), make_reading(2.0), make_reading(3.0)]);
         assert_eq!(buf.len(), 3);
 
         buf.push_batch(&[make_reading(4.0), make_reading(5.0)]);
@@ -125,11 +117,7 @@ mod tests {
 
     #[test]
     fn backoff_doubles_delay() {
-        let mut bo = Backoff::new(
-            Duration::from_secs(1),
-            Duration::from_secs(60),
-            2,
-        );
+        let mut bo = Backoff::new(Duration::from_secs(1), Duration::from_secs(60), 2);
         assert_eq!(bo.next_delay(), Duration::from_secs(1));
         assert_eq!(bo.next_delay(), Duration::from_secs(2));
         assert_eq!(bo.next_delay(), Duration::from_secs(4));
@@ -138,11 +126,7 @@ mod tests {
 
     #[test]
     fn backoff_caps_at_max() {
-        let mut bo = Backoff::new(
-            Duration::from_secs(16),
-            Duration::from_secs(60),
-            2,
-        );
+        let mut bo = Backoff::new(Duration::from_secs(16), Duration::from_secs(60), 2);
         assert_eq!(bo.next_delay(), Duration::from_secs(16));
         assert_eq!(bo.next_delay(), Duration::from_secs(32));
         assert_eq!(bo.next_delay(), Duration::from_secs(60));
@@ -151,11 +135,7 @@ mod tests {
 
     #[test]
     fn backoff_resets_to_initial() {
-        let mut bo = Backoff::new(
-            Duration::from_secs(1),
-            Duration::from_secs(60),
-            2,
-        );
+        let mut bo = Backoff::new(Duration::from_secs(1), Duration::from_secs(60), 2);
         bo.next_delay();
         bo.next_delay();
         bo.next_delay();

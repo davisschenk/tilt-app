@@ -43,18 +43,12 @@ pub async fn find_all(
     Ok(models.into_iter().map(BrewResponse::from).collect())
 }
 
-pub async fn find_by_id(
-    db: &DatabaseConnection,
-    id: Uuid,
-) -> Result<Option<BrewResponse>, DbErr> {
+pub async fn find_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<BrewResponse>, DbErr> {
     let model = Brew::find_by_id(id).one(db).await?;
     Ok(model.map(BrewResponse::from))
 }
 
-pub async fn create(
-    db: &DatabaseConnection,
-    input: CreateBrew,
-) -> Result<BrewResponse, DbErr> {
+pub async fn create(db: &DatabaseConnection, input: CreateBrew) -> Result<BrewResponse, DbErr> {
     let now = chrono::Utc::now();
     let model = ActiveModel {
         id: Set(Uuid::new_v4()),
