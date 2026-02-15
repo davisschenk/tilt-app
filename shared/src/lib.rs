@@ -150,6 +150,51 @@ pub enum BrewStatus {
     Archived,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateBrew {
+    pub name: String,
+    pub hydrometer_id: Uuid,
+    pub style: Option<String>,
+    pub og: Option<f64>,
+    pub target_fg: Option<f64>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateBrew {
+    pub name: Option<String>,
+    pub style: Option<String>,
+    pub og: Option<f64>,
+    pub fg: Option<f64>,
+    pub target_fg: Option<f64>,
+    pub abv: Option<f64>,
+    pub status: Option<BrewStatus>,
+    pub notes: Option<String>,
+    pub end_date: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrewResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub style: Option<String>,
+    pub og: Option<f64>,
+    pub fg: Option<f64>,
+    pub target_fg: Option<f64>,
+    pub abv: Option<f64>,
+    pub status: BrewStatus,
+    pub start_date: Option<DateTime<Utc>>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub notes: Option<String>,
+    pub hydrometer_id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub latest_reading: Option<TiltReading>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,5 +325,90 @@ mod tests {
         let deserialized: CreateReadingsBatch = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.len(), 1);
         assert_eq!(deserialized.readings()[0].color, TiltColor::Yellow);
+    }
+
+    #[test]
+    fn brew_status_serialize_json() {
+        assert_eq!(serde_json::to_string(&BrewStatus::Active).unwrap(), "\"Active\"");
+        assert_eq!(serde_json::to_string(&BrewStatus::Completed).unwrap(), "\"Completed\"");
+        assert_eq!(serde_json::to_string(&BrewStatus::Archived).unwrap(), "\"Archived\"");
+    }
+
+    #[test]
+    fn brew_status_deserialize_json() {
+        let status: BrewStatus = serde_json::from_str("\"Active\"").unwrap();
+        assert_eq!(status, BrewStatus::Active);
+    }
+
+    #[test]
+    fn create_brew_required_and_optional_fields() {
+        let json = r#"{"name":"IPA","hydrometerId":"a495bb10-c5b1-4b44-b512-1370f02d74de"}"#;
+        let brew: CreateBrew = serde_json::from_str(json).unwrap();
+        assert_eq!(brew.name, "IPA");
+        assert!(brew.style.is_none());
+        assert!(brew.og.is_none());
+        assert!(brew.target_fg.is_none());
+        assert!(brew.notes.is_none());
+    }
+
+    #[test]
+    fn create_brew_with_all_fields() {
+        let id = Uuid::new_v4();
+        let brew = CreateBrew {
+            name: "Stout".to_string(),
+            hydrometer_id: id,
+            style: Some("Imperial Stout".to_string()),
+            og: Some(1.090),
+            target_fg: Some(1.020),
+            notes: Some("Dark and rich".to_string()),
+        };
+        let json = serde_json::to_string(&brew).unwrap();
+        assert!(json.contains("\"hydrometerId\""));
+        assert!(json.contains("\"targetFg\""));
+        let deserialized: CreateBrew = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "Stout");
+    }
+
+    #[test]
+    fn update_brew_all_fields_optional() {
+        let json = "{}";
+        let update: UpdateBrew = serde_json::from_str(json).unwrap();
+        assert!(update.name.is_none());
+        assert!(update.style.is_none());
+        assert!(update.og.is_none());
+        assert!(update.fg.is_none());
+        assert!(update.target_fg.is_none());
+        assert!(update.abv.is_none());
+        assert!(update.status.is_none());
+        assert!(update.notes.is_none());
+        assert!(update.end_date.is_none());
+    }
+
+    #[test]
+    fn brew_response_serde_round_trip() {
+        let now = Utc::now();
+        let resp = BrewResponse {
+            id: Uuid::new_v4(),
+            name: "Pale Ale".to_string(),
+            style: Some("APA".to_string()),
+            og: Some(1.055),
+            fg: None,
+            target_fg: Some(1.012),
+            abv: None,
+            status: BrewStatus::Active,
+            start_date: Some(now),
+            end_date: None,
+            notes: None,
+            hydrometer_id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            latest_reading: None,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"latestReading\""));
+        assert!(json.contains("\"createdAt\""));
+        let deserialized: BrewResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "Pale Ale");
+        assert_eq!(deserialized.status, BrewStatus::Active);
     }
 }
