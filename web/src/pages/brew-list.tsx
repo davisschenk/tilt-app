@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useBrews } from "@/hooks/use-brews";
+import { useHydrometers } from "@/hooks/use-hydrometers";
 import ColorDot from "@/components/ui/color-dot";
 import type { BrewResponse, BrewStatus } from "@/types";
 
@@ -29,6 +30,7 @@ const STATUS_BADGE: Record<string, { variant: "default" | "secondary" | "outline
 export default function BrewList() {
   const [statusFilter, setStatusFilter] = useState<BrewStatus | undefined>(undefined);
   const { data: brews, isLoading } = useBrews(statusFilter);
+  const { data: hydrometers } = useHydrometers();
   const navigate = useNavigate();
 
   return (
@@ -84,7 +86,8 @@ export default function BrewList() {
             <TableBody>
               {brews.map((brew: BrewResponse) => {
                 const badge = STATUS_BADGE[brew.status] ?? STATUS_BADGE.Active;
-                const color = brew.latestReading?.color;
+                const hydro = hydrometers?.find((h) => h.id === brew.hydrometerId);
+                const color = hydro?.color ?? brew.latestReading?.color;
                 return (
                   <TableRow
                     key={brew.id}
