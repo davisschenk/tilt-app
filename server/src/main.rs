@@ -3,12 +3,17 @@ mod routes;
 mod services;
 
 use rocket::serde::json::Json;
-use rocket::{Build, Rocket, catch, catchers, get, routes};
+use rocket::{Build, Rocket, catch, catchers, get, options, routes};
 use sea_orm::{Database, DatabaseConnection};
 
 #[get("/health")]
 fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
+}
+
+#[options("/<_path..>")]
+fn preflight(_path: std::path::PathBuf) -> rocket::http::Status {
+    rocket::http::Status::NoContent
 }
 
 #[catch(404)]
@@ -74,6 +79,7 @@ async fn rocket() -> Rocket<Build> {
         .manage(db)
         .attach(cors)
         .mount("/api/v1", routes![health])
+        .mount("/", routes![preflight])
         .mount("/api/v1", routes::hydrometers::routes())
         .mount("/api/v1", routes::brews::routes())
         .mount("/api/v1", routes::readings::routes())
