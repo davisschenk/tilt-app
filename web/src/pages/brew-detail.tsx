@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useBrew, useUpdateBrew } from "@/hooks/use-brews";
 import EditBrewDialog from "@/components/brew/edit-brew-dialog";
 import DeleteBrewDialog from "@/components/brew/delete-brew-dialog";
+import ReadingsChart from "@/components/readings/readings-chart";
 import * as toast from "@/lib/toast";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
@@ -182,9 +183,7 @@ export default function BrewDetail() {
 
       <div>
         <h2 className="text-lg font-semibold mb-4">Readings</h2>
-        <p className="text-muted-foreground">
-          Readings chart and table will appear here.
-        </p>
+        <ReadingsChart brewId={brew.id} />
       </div>
     </div>
   );
