@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { useCreateBrew } from "@/hooks/use-brews";
+import { useCreateBrew, useBrews } from "@/hooks/use-brews";
 import { useHydrometers } from "@/hooks/use-hydrometers";
 import ColorDot from "@/components/ui/color-dot";
 import * as toast from "@/lib/toast";
@@ -22,7 +22,10 @@ import * as toast from "@/lib/toast";
 export default function BrewNew() {
   const navigate = useNavigate();
   const { data: hydrometers } = useHydrometers();
+  const { data: activeBrews } = useBrews("Active");
   const createBrew = useCreateBrew();
+
+  const usedHydrometerIds = new Set(activeBrews?.map((b) => b.hydrometerId) ?? []);
 
   const [name, setName] = useState("");
   const [style, setStyle] = useState("");
@@ -114,14 +117,18 @@ export default function BrewNew() {
                   <SelectValue placeholder="Select a hydrometer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {hydrometers?.map((h) => (
-                    <SelectItem key={h.id} value={h.id}>
-                      <span className="flex items-center gap-2">
-                        <ColorDot color={h.color} />
-                        {h.name || h.color}
-                      </span>
-                    </SelectItem>
-                  ))}
+                  {hydrometers?.map((h) => {
+                    const inUse = usedHydrometerIds.has(h.id);
+                    return (
+                      <SelectItem key={h.id} value={h.id} disabled={inUse}>
+                        <span className="flex items-center gap-2">
+                          <ColorDot color={h.color} />
+                          {h.name || h.color}
+                          {inUse && <span className="text-xs text-muted-foreground">(in use)</span>}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               {errors.hydrometerId && (
