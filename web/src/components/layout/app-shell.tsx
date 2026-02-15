@@ -11,6 +11,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Toaster } from "@/components/ui/sonner";
+import ThemeToggle from "@/components/theme-toggle";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -56,8 +57,9 @@ export default function AppShell() {
         <nav className="flex-1 space-y-1 p-2">
           <NavLinks />
         </nav>
-        <div className="border-t p-4 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between border-t p-4 text-xs text-muted-foreground">
           v0.1.0
+          <ThemeToggle />
         </div>
       </aside>
 
@@ -79,7 +81,8 @@ export default function AppShell() {
               </nav>
             </SheetContent>
           </Sheet>
-          <h1 className="text-lg font-semibold">Tilt Dashboard</h1>
+          <h1 className="flex-1 text-lg font-semibold">Tilt Dashboard</h1>
+          <ThemeToggle />
         </header>
 
         <main className="flex-1 overflow-y-auto p-6">
