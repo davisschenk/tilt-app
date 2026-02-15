@@ -1,287 +1,130 @@
 # Tilt Hydrometer Platform
 
-A full-stack Rust application for monitoring fermentation via [Tilt Wireless Hydrometers](https://tilthydrometer.com/). Two components: a **server** (Rocket + SeaORM + PostgreSQL) that stores and serves hydrometer data and brew sessions, and a **client** binary that runs on a Raspberry Pi Zero W, scans for Tilt BLE advertisements, and uploads readings to the server.
+A full-stack application for monitoring fermentation with [Tilt Wireless Hydrometers](https://tilthydrometer.com/). Track gravity, temperature, and brew sessions in real time from a modern web dashboard.
 
----
+## Features
 
-## Architecture Overview
+- **Real-time fermentation monitoring** — Gravity and temperature readings from Tilt hydrometers displayed on live charts
+- **Brew session management** — Create, track, and archive brew sessions with OG/FG, style, and markdown notes
+- **Multi-hydrometer support** — Monitor up to 8 Tilt colors simultaneously with per-color charts
+- **Dark/light theme** — System-aware theme with manual toggle
+- **Single binary deployment** — Server, API, and web frontend all served from one Rocket binary
+- **Docker ready** — Multi-stage Dockerfile with Cloudflare tunnel support for homelab hosting
 
-```
-┌─────────────────────┐        HTTP/JSON         ┌──────────────────────────┐
-│   Raspberry Pi Zero │  ──────────────────────►  │     Rocket API Server    │
-│                     │   POST /api/v1/readings   │                          │
-│  ┌───────────────┐  │                           │  ┌────────────────────┐  │
-│  │ BLE Scanner   │  │                           │  │  SeaORM + Postgres │  │
-│  │ (btleplug)    │  │                           │  └────────────────────┘  │
-│  └───────────────┘  │                           │                          │
-│  client binary      │                           │  server binary           │
-└─────────────────────┘                           └──────────────────────────┘
-         ▲
-         │ BLE iBeacon
-    ┌────┴────┐
-    │  Tilt   │  (floating in fermenter)
-    │Hydrometer│
-    └─────────┘
-```
-
-### Crate Layout (Cargo Workspace)
-
-| Crate    | Purpose |
-|----------|---------|
-| `shared` | Domain types, DTOs, enums — single source of truth for both server and client |
-| `server` | Rocket web API, SeaORM entities/migrations, services, validation guards |
-| `client` | BLE scanner, Tilt iBeacon parser, HTTP uploader, CLI interface |
-
----
-
-## Tilt BLE Protocol
-
-Tilt hydrometers broadcast as **Apple iBeacon** BLE advertisements. Each color has a fixed 128-bit UUID that differs only in byte 5:
-
-| Color  | UUID                                     |
-|--------|------------------------------------------|
-| Red    | `A495BB10-C5B1-4B44-B512-1370F02D74DE`  |
-| Green  | `A495BB20-C5B1-4B44-B512-1370F02D74DE`  |
-| Black  | `A495BB30-C5B1-4B44-B512-1370F02D74DE`  |
-| Purple | `A495BB40-C5B1-4B44-B512-1370F02D74DE`  |
-| Orange | `A495BB50-C5B1-4B44-B512-1370F02D74DE`  |
-| Blue   | `A495BB60-C5B1-4B44-B512-1370F02D74DE`  |
-| Yellow | `A495BB70-C5B1-4B44-B512-1370F02D74DE`  |
-| Pink   | `A495BB80-C5B1-4B44-B512-1370F02D74DE`  |
-
-**Data encoding:**
-- **Major** (u16, big-endian) = temperature in °F
-- **Minor** (u16, big-endian) = specific gravity × 1000 (divide by 1000.0 for SG)
-- **TX Power** (i8) = transmit power in dBm
-- **RSSI** (i8) = received signal strength
-
-Reference: [kvurd.com/blog/tilt-hydrometer-ibeacon-data-format](https://kvurd.com/blog/tilt-hydrometer-ibeacon-data-format/)
-
----
-
-## Server (`server/`)
-
-### Tech Stack
-- **Rocket v0.5** (async, features: `json`, `secrets`)
-- **SeaORM** (async ORM with `sea-orm-migration` for versioned schema migrations)
-- **PostgreSQL 16**
-- **rocket_cors** for CORS fairing
-- **serde / serde_json**, **chrono** (with `serde`), **uuid** (v4 + serde)
-- **dotenvy** for `.env` loading
-- **tracing + tracing-subscriber** for structured logging
-
-### Database Schema
-
-**hydrometers**
-| Column              | Type         | Notes                          |
-|---------------------|--------------|--------------------------------|
-| id                  | UUID (PK)    | v4, generated                  |
-| color               | Enum         | TiltColor                      |
-| name                | VARCHAR      | Optional user-friendly alias   |
-| temp_offset_f       | FLOAT8       | Calibration offset, default 0  |
-| gravity_offset      | FLOAT8       | Calibration offset, default 0  |
-| created_at          | TIMESTAMPTZ  | Auto-set                       |
-
-**brews**
-| Column              | Type         | Notes                          |
-|---------------------|--------------|--------------------------------|
-| id                  | UUID (PK)    | v4, generated                  |
-| name                | VARCHAR      | Required                       |
-| style               | VARCHAR      | Optional (e.g., "IPA")         |
-| og                  | FLOAT8       | Original gravity               |
-| fg                  | FLOAT8       | Final gravity (measured)       |
-| target_fg           | FLOAT8       | Target final gravity           |
-| abv                 | FLOAT8       | Computed or manual             |
-| status              | Enum         | Active / Completed / Archived  |
-| start_date          | TIMESTAMPTZ  | When brew started              |
-| end_date            | TIMESTAMPTZ  | Nullable, when completed       |
-| notes               | TEXT         | Free-form                      |
-| hydrometer_id       | UUID (FK)    | References hydrometers.id      |
-| created_at          | TIMESTAMPTZ  | Auto-set                       |
-| updated_at          | TIMESTAMPTZ  | Auto-updated                   |
-
-**readings**
-| Column              | Type         | Notes                          |
-|---------------------|--------------|--------------------------------|
-| id                  | UUID (PK)    | v4, generated                  |
-| brew_id             | UUID (FK)    | Nullable, references brews.id  |
-| hydrometer_id       | UUID (FK)    | References hydrometers.id      |
-| temperature_f       | FLOAT8       | From iBeacon major field       |
-| gravity             | FLOAT8       | From iBeacon minor / 1000.0    |
-| rssi                | SMALLINT     | Nullable, signal strength      |
-| recorded_at         | TIMESTAMPTZ  | When the reading was taken      |
-| created_at          | TIMESTAMPTZ  | When the server stored it      |
-
-### API Endpoints (mounted at `/api/v1/`)
-
-**Hydrometers**
-- `GET    /hydrometers`           — List all registered hydrometers
-- `POST   /hydrometers`           — Register a new hydrometer
-- `GET    /hydrometers/<id>`      — Get hydrometer details
-- `PUT    /hydrometers/<id>`      — Update name / calibration offsets
-- `DELETE /hydrometers/<id>`      — Remove hydrometer
-
-**Brews**
-- `GET    /brews`                 — List brews (filterable by status)
-- `POST   /brews`                 — Create a new brew session
-- `GET    /brews/<id>`            — Get brew details with summary stats
-- `PUT    /brews/<id>`            — Update brew metadata / status
-- `DELETE /brews/<id>`            — Archive or delete a brew
-
-**Readings**
-- `POST   /readings`              — Submit one or more readings (batch)
-- `GET    /readings?brew_id=&hydrometer_id=&since=&until=&limit=` — Query readings with filters
-
-### Key Design Patterns
-
-1. **Validation in guards, not routes.** All POST/PUT payloads use custom `FromForm` / `Json<T>` with `#[derive(Deserialize, Validate)]` structs. Route handlers receive already-validated data. Invalid input yields 422 automatically via Rocket catchers.
-
-2. **Thin service layer.** `routes/` → `services/` → SeaORM entities. Routes handle HTTP concerns; services handle business logic and DB access.
-
-3. **Typed JSON errors.** A custom Rocket responder wraps all errors as `{ "error": "..." }` with the correct HTTP status code. Catchers for 404, 422, 500 return the same shape.
-
-4. **CORS via fairing.** `rocket_cors` configured globally, not per-route.
-
-5. **No `.unwrap()` in production.** Use `?` propagation, `anyhow::Result`, or explicit error mapping.
-
----
-
-## Client (`client/`)
-
-### Tech Stack
-- **btleplug** — pure Rust async BLE scanning
-- **reqwest** (features: `json`, `rustls-tls`) — HTTP client
-- **tokio** — async runtime
-- **clap** (derive) — CLI argument parsing
-- **tracing + tracing-subscriber** — structured logging
-- **serde / serde_json**, **chrono**
-
-### Behavior
-
-1. **Scan** — Continuously listens for BLE advertisements using `btleplug`
-2. **Filter** — Matches manufacturer-specific data against the 8 known Tilt UUIDs
-3. **Parse** — Extracts temperature (major), gravity (minor), RSSI from iBeacon payload
-4. **Batch** — Collects readings over a configurable interval (default 15 seconds)
-5. **Upload** — POSTs batch to `{server_url}/api/v1/readings`
-6. **Retry** — Exponential backoff on HTTP failure; in-memory bounded `VecDeque` buffer when server is unreachable
-7. **Repeat**
-
-### CLI Interface
+## How It Works
 
 ```
-tilt-client --server-url http://server:8000 --scan-interval 15 --log-level info
+  Tilt Hydrometer          Raspberry Pi             Server + Web UI
+  (in fermenter)           (BLE scanner)            (your network)
+ ┌──────────────┐        ┌──────────────┐        ┌──────────────────┐
+ │  BLE iBeacon │───────►│    Client    │──HTTP──►│  Rocket API      │
+ │  broadcast   │  BLE   │    binary    │  JSON   │  PostgreSQL      │
+ └──────────────┘        └──────────────┘        │  React Dashboard │
+                                                  └──────────────────┘
 ```
 
-### Deployment
+The **client** runs on a Raspberry Pi, scans for Tilt BLE advertisements, and uploads readings to the **server**. The server stores data in PostgreSQL and serves both the REST API and the React web dashboard.
 
-Runs as a **systemd service** on the Raspberry Pi Zero W. Cross-compiled from the dev machine targeting `arm-unknown-linux-gnueabihf`.
+## Tech Stack
 
----
+| Component    | Technology                                           |
+|--------------|------------------------------------------------------|
+| **Server**   | Rust, Rocket v0.5, SeaORM, PostgreSQL 16             |
+| **Client**   | Rust, btleplug (BLE), reqwest, clap                  |
+| **Frontend** | React 19, TypeScript, TailwindCSS v4, shadcn/ui      |
+| **Charts**   | Recharts                                             |
+| **Infra**    | Docker, cargo-chef, Cloudflare Tunnel                |
 
-## Shared Crate (`shared/`)
+## Quick Start
 
-Houses all types that cross the client ↔ server boundary:
+### Prerequisites
 
-- **`TiltColor`** — Enum with 8 variants, each carrying its iBeacon UUID constant. Serializes to/from camelCase strings.
-- **`TiltReading`** — DTO: `color`, `temperature_f`, `gravity`, `rssi`, `recorded_at`
-- **`CreateReadingsBatch`** — Vec of readings for the batch POST endpoint
-- **`Brew`** / **`CreateBrew`** / **`UpdateBrew`** — API DTOs
-- **`Hydrometer`** / **`CreateHydrometer`** / **`UpdateHydrometer`** — API DTOs
-- **`BrewStatus`** — Enum: Active, Completed, Archived
+- [Rust](https://rustup.rs/) (stable)
+- [Node.js](https://nodejs.org/) 22+
+- [Docker](https://docs.docker.com/get-docker/) (for PostgreSQL)
+- [just](https://github.com/casey/just) (command runner)
+- [sea-orm-cli](https://www.sea-ql.org/SeaORM/) (`cargo install sea-orm-cli`)
 
-All types derive `Serialize, Deserialize` and use `#[serde(rename_all = "camelCase")]`.
+### Development
 
----
+```bash
+# Clone and enter the project
+git clone https://github.com/davisschenk/tilt-hydrometer-web.git
+cd tilt-hydrometer-web
 
-## Infrastructure
+# Copy and configure environment
+cp .env.example .env
+
+# Start database and run migrations
+just db-up
+just db-migrate
+
+# Start the server (builds web frontend + serves everything)
+just serve
+```
+
+Visit **http://localhost:8000** to see the dashboard.
+
+To simulate Tilt readings without hardware (in a separate terminal):
+
+```bash
+just client-sim
+```
+
+### Available Commands
+
+| Command           | Description                                          |
+|-------------------|------------------------------------------------------|
+| `just serve`      | Build web + server, then run everything               |
+| `just server`     | Run just the Rocket server                           |
+| `just web`        | Run the Vite dev server (hot reload)                 |
+| `just client-sim` | Simulate Tilt readings (Red + Blue)                  |
+| `just db-up`      | Start PostgreSQL via Docker                          |
+| `just db-migrate` | Run database migrations                              |
+| `just db-reset`   | Reset database (down, up, migrate)                   |
+| `just test`       | Run all Rust + web tests                             |
+| `just build`      | Build everything for production                      |
+
+## Production Deployment
 
 ### Docker Compose
 
-```yaml
-services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: tilt
-      POSTGRES_USER: tilt
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-
-  server:
-    build: .
-    depends_on:
-      - db
-    environment:
-      DATABASE_URL: postgres://tilt:${DB_PASSWORD}@db:5432/tilt
-      ROCKET_PORT: 8000
-      ROCKET_SECRET_KEY: ${ROCKET_SECRET_KEY}
-      RUST_LOG: info
-    ports:
-      - "8000:8000"
-
-volumes:
-  pgdata:
+```bash
+cp .env.example .env
+# Edit .env: set DB_PASSWORD and ROCKET_SECRET_KEY
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-### Dockerfile (multi-stage with cargo-chef)
+The production compose file (`docker-compose.prod.yml`) includes:
+- PostgreSQL on an internal network
+- The server exposed on the `cloudflare` external network for tunnel access
 
-```dockerfile
-FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
-WORKDIR /app
+### Client on Raspberry Pi
 
-FROM chef AS planner
-COPY . .
-RUN cargo chef prepare --recipe-path recipe.json
-
-FROM chef AS builder
-COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
-COPY . .
-RUN cargo build --release --bin server
-
-FROM debian:bookworm-slim AS runtime
-RUN apt-get update && apt-get install -y libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/server /usr/local/bin/server
-ENTRYPOINT ["server"]
-```
-
-### Environment Variables (`.env`)
-
-```
-DATABASE_URL=postgres://tilt:password@localhost:5432/tilt
-ROCKET_SECRET_KEY=<generate with `openssl rand -base64 32`>
-ROCKET_PORT=8000
-RUST_LOG=info
-```
-
----
-
-## Development Workflow
+Cross-compile the client for the Pi:
 
 ```bash
-# Start Postgres
-docker compose up -d db
-
-# Run migrations
-cd server && sea-orm-cli migrate up
-
-# Generate entities after migration changes
-sea-orm-cli generate entity -o src/models/entities
-
-# Run the server
-cargo run --bin server
-
-# Run tests
-cargo test --workspace
-
-# Cross-compile client for Pi
 cross build --release --target arm-unknown-linux-gnueabihf -p client
 ```
 
----
+Copy the binary to the Pi and run it as a systemd service:
+
+```bash
+tilt-client --server-url http://your-server:8000 --scan-interval 15
+```
+
+## Project Structure
+
+```
+tilt-hydrometer-web/
+├── client/          # BLE scanner + uploader (Raspberry Pi)
+├── server/          # Rocket API server + migrations
+├── shared/          # Common types and DTOs
+├── web/             # React frontend (Vite + TypeScript)
+├── docker-compose.yml       # Development
+├── docker-compose.prod.yml  # Production (Cloudflare)
+└── justfile                 # Command runner recipes
+```
 
 ## License
 
