@@ -105,7 +105,7 @@ export default function Dashboard() {
           title="Latest Reading"
           value={
             latestReading
-              ? `${latestReading.gravity.toFixed(3)} SG / ${latestReading.temperatureF}°F`
+              ? `${latestReading.gravity.toFixed(3)} SG / ${latestReading.temperatureF.toFixed(1)}°F`
               : "—"
           }
           description={latestReading ? `${latestReading.color} hydrometer` : "No readings yet"}
