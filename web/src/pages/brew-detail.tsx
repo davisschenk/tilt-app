@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBrew, useUpdateBrew } from "@/hooks/use-brews";
+import { useHydrometer } from "@/hooks/use-hydrometers";
 import EditBrewDialog from "@/components/brew/edit-brew-dialog";
 import DeleteBrewDialog from "@/components/brew/delete-brew-dialog";
 import ReadingsChart from "@/components/readings/readings-chart";
@@ -37,6 +38,7 @@ export default function BrewDetail() {
   const navigate = useNavigate();
   const { data: brew, isLoading } = useBrew(id!);
   const updateBrew = useUpdateBrew(id!);
+  const { data: hydrometer } = useHydrometer(brew?.hydrometerId ?? "");
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -144,7 +146,7 @@ export default function BrewDetail() {
             <div>
               <p className="text-sm text-muted-foreground">Hydrometer</p>
               <p className="font-medium">
-                {brew.latestReading?.color ?? "Unknown"}
+                {hydrometer?.color ?? brew.latestReading?.color ?? "Unknown"}
               </p>
             </div>
             <div>
