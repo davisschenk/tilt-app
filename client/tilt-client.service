@@ -1,0 +1,32 @@
+# Tilt Hydrometer BLE Client - systemd service unit
+#
+# Installation:
+#   1. Cross-compile the client binary for ARM:
+#      cargo build --release --target arm-unknown-linux-gnueabihf -p client
+#   2. Copy binary to the Raspberry Pi:
+#      scp target/arm-unknown-linux-gnueabihf/release/client pi@<PI_IP>:/usr/local/bin/tilt-client
+#   3. Copy this service file:
+#      scp client/tilt-client.service pi@<PI_IP>:/etc/systemd/system/tilt-client.service
+#   4. Edit the service file on the Pi to set --server-url to your server address
+#   5. Enable and start:
+#      sudo systemctl daemon-reload
+#      sudo systemctl enable tilt-client
+#      sudo systemctl start tilt-client
+#   6. Check status:
+#      sudo systemctl status tilt-client
+#      journalctl -u tilt-client -f
+
+[Unit]
+Description=Tilt Hydrometer BLE Scanner and Uploader
+After=network-online.target bluetooth.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tilt-client --server-url http://YOUR_SERVER:8000
+Restart=always
+RestartSec=10
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target
