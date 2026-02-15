@@ -47,7 +47,7 @@ fn setup_cors() -> rocket_cors::Cors {
         .map(From::from)
         .collect(),
         allowed_headers: rocket_cors::AllowedHeaders::all(),
-        allow_credentials: true,
+        allow_credentials: false,
         ..Default::default()
     }
     .to_cors()
