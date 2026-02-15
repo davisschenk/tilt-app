@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { useBrews } from "@/hooks/use-brews";
 import { TILT_COLOR_MAP } from "@/lib/tilt-colors";
 import RegisterHydrometerDialog from "@/components/hydrometer/register-hydrometer-dialog";
 import EditHydrometerDialog from "@/components/hydrometer/edit-hydrometer-dialog";
+import DeleteHydrometerDialog from "@/components/hydrometer/delete-hydrometer-dialog";
 import type { HydrometerResponse } from "@/types";
 
 export default function HydrometerList() {
@@ -20,6 +21,7 @@ export default function HydrometerList() {
   const { data: activeBrews } = useBrews("Active");
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<HydrometerResponse | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<HydrometerResponse | null>(null);
 
   function getActiveBrew(hydrometerId: string) {
     return activeBrews?.find((b) => b.hydrometerId === hydrometerId);
@@ -98,6 +100,10 @@ export default function HydrometerList() {
                       <Pencil className="mr-1 h-3 w-3" />
                       Edit
                     </Button>
+                    <Button variant="outline" size="sm" onClick={() => setDeleteTarget(h)}>
+                      <Trash2 className="mr-1 h-3 w-3" />
+                      Delete
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -119,6 +125,16 @@ export default function HydrometerList() {
           hydrometer={editTarget}
           open={!!editTarget}
           onOpenChange={(open) => { if (!open) setEditTarget(null); }}
+        />
+      )}
+      {deleteTarget && (
+        <DeleteHydrometerDialog
+          hydrometerId={deleteTarget.id}
+          hydrometerColor={deleteTarget.color}
+          hydrometerName={deleteTarget.name}
+          hasActiveBrew={!!getActiveBrew(deleteTarget.id)}
+          open={!!deleteTarget}
+          onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
         />
       )}
     </div>
