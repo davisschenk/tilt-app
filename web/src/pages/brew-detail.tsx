@@ -1,16 +1,183 @@
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
+import { format } from "date-fns";
+import { Pencil, CheckCircle, Archive, Trash2 } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useBrew, useUpdateBrew } from "@/hooks/use-brews";
+import * as toast from "@/lib/toast";
+
+const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
+  Active: "default",
+  Completed: "secondary",
+  Archived: "outline",
+};
+
+function StatItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="text-lg font-semibold">{value}</p>
+    </div>
+  );
+}
 
 export default function BrewDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { data: brew, isLoading } = useBrew(id!);
+  const updateBrew = useUpdateBrew(id!);
+
+  function handleStatusChange(status: "Completed" | "Archived") {
+    updateBrew.mutate(
+      { status },
+      {
+        onSuccess: () => toast.success(`Brew marked as ${status}`),
+        onError: () => toast.error(`Failed to update brew status`),
+      },
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div>
+        <Breadcrumbs />
+        <Skeleton className="h-10 w-64 mb-4" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    );
+  }
+
+  if (!brew) {
+    return (
+      <div>
+        <Breadcrumbs />
+        <PageHeader title="Brew Not Found" />
+        <p className="text-muted-foreground">This brew does not exist.</p>
+        <Button variant="outline" className="mt-4" onClick={() => navigate("/brews")}>
+          Back to Brews
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div>
       <Breadcrumbs />
       <PageHeader
-        title="Brew Detail"
-        description={`Brew ID: ${id}`}
+        title={brew.name}
+        description={brew.style ?? undefined}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm">
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit
+            </Button>
+            {brew.status === "Active" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleStatusChange("Completed")}
+                disabled={updateBrew.isPending}
+              >
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Complete
+              </Button>
+            )}
+            {brew.status !== "Archived" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleStatusChange("Archived")}
+                disabled={updateBrew.isPending}
+              >
+                <Archive className="mr-2 h-4 w-4" />
+                Archive
+              </Button>
+            )}
+            <Button variant="destructive" size="sm">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </Button>
+          </div>
+        }
       />
+
+      <div className="flex items-center gap-2 mb-6">
+        <Badge variant={STATUS_VARIANT[brew.status] ?? "default"}>
+          {brew.status}
+        </Badge>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Brew Stats</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <StatItem label="OG" value={brew.og?.toFixed(3) ?? "—"} />
+              <StatItem label="FG" value={brew.fg?.toFixed(3) ?? "—"} />
+              <StatItem label="Target FG" value={brew.targetFg?.toFixed(3) ?? "—"} />
+              <StatItem label="ABV" value={brew.abv != null ? `${brew.abv.toFixed(1)}%` : "—"} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <p className="text-sm text-muted-foreground">Hydrometer</p>
+              <p className="font-medium">
+                {brew.latestReading?.color ?? "Unknown"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Start Date</p>
+              <p className="font-medium">
+                {brew.startDate
+                  ? format(new Date(brew.startDate), "MMM d, yyyy")
+                  : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">End Date</p>
+              <p className="font-medium">
+                {brew.endDate
+                  ? format(new Date(brew.endDate), "MMM d, yyyy")
+                  : "—"}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {brew.notes && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="whitespace-pre-wrap">{brew.notes}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      <Separator className="my-8" />
+
+      <div>
+        <h2 className="text-lg font-semibold mb-4">Readings</h2>
+        <p className="text-muted-foreground">
+          Readings chart and table will appear here.
+        </p>
+      </div>
     </div>
   );
 }
