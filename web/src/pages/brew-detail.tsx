@@ -16,6 +16,7 @@ import DeleteBrewDialog from "@/components/brew/delete-brew-dialog";
 import ReadingsChart from "@/components/readings/readings-chart";
 import ReadingsTable from "@/components/readings/readings-table";
 import FermentationStats from "@/components/readings/fermentation-stats";
+import BrewNotes from "@/components/brew/brew-notes";
 import * as toast from "@/lib/toast";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
@@ -187,16 +188,7 @@ export default function BrewDetail() {
         </Card>
       </div>
 
-      {brew.notes && (
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="text-base">Notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="whitespace-pre-wrap">{brew.notes}</p>
-          </CardContent>
-        </Card>
-      )}
+      <BrewNotes brewId={brew.id} notes={brew.notes ?? null} />
 
       <EditBrewDialog brew={brew} open={editOpen} onOpenChange={setEditOpen} />
       <DeleteBrewDialog brewId={brew.id} brewName={brew.name} open={deleteOpen} onOpenChange={setDeleteOpen} />

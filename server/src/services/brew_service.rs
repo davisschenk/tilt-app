@@ -135,7 +135,7 @@ pub async fn update(
         active.status = Set(format!("{:?}", status));
     }
     if let Some(notes) = input.notes {
-        active.notes = Set(Some(notes));
+        active.notes = Set(if notes.is_empty() { None } else { Some(notes) });
     }
     if let Some(end_date) = input.end_date {
         active.end_date = Set(Some(end_date.into()));
