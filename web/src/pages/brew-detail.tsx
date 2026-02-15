@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Pencil, CheckCircle, Archive, Trash2 } from "lucide-react";
@@ -9,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBrew, useUpdateBrew } from "@/hooks/use-brews";
+import EditBrewDialog from "@/components/brew/edit-brew-dialog";
 import * as toast from "@/lib/toast";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
@@ -31,6 +33,7 @@ export default function BrewDetail() {
   const navigate = useNavigate();
   const { data: brew, isLoading } = useBrew(id!);
   const updateBrew = useUpdateBrew(id!);
+  const [editOpen, setEditOpen] = useState(false);
 
   function handleStatusChange(status: "Completed" | "Archived") {
     updateBrew.mutate(
@@ -73,7 +76,7 @@ export default function BrewDetail() {
         description={brew.style ?? undefined}
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
               <Pencil className="mr-2 h-4 w-4" />
               Edit
             </Button>
@@ -169,6 +172,8 @@ export default function BrewDetail() {
           </CardContent>
         </Card>
       )}
+
+      <EditBrewDialog brew={brew} open={editOpen} onOpenChange={setEditOpen} />
 
       <Separator className="my-8" />
 
