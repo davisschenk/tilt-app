@@ -1,5 +1,6 @@
 mod models;
 mod routes;
+mod services;
 
 use rocket::serde::json::Json;
 use rocket::{catchers, catch, get, routes, Build, Rocket};

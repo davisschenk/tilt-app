@@ -79,6 +79,20 @@ impl TiltColor {
             .map(|(_, color)| *color)
     }
 
+    pub fn from_str(s: &str) -> Option<TiltColor> {
+        match s {
+            "Red" => Some(TiltColor::Red),
+            "Green" => Some(TiltColor::Green),
+            "Black" => Some(TiltColor::Black),
+            "Purple" => Some(TiltColor::Purple),
+            "Orange" => Some(TiltColor::Orange),
+            "Blue" => Some(TiltColor::Blue),
+            "Yellow" => Some(TiltColor::Yellow),
+            "Pink" => Some(TiltColor::Pink),
+            _ => None,
+        }
+    }
+
     pub fn all() -> &'static [TiltColor] {
         &[
             TiltColor::Red,
