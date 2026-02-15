@@ -54,3 +54,33 @@ build:
 clean:
     cargo clean
     rm -rf web/dist
+
+# Run all Rust tests
+test-rust:
+    cargo test --workspace
+
+# Type-check the web frontend (build)
+test-web:
+    cd web && npm run build
+
+# Run all tests (Rust + web)
+test: test-rust test-web
+
+# Format all Rust code
+fmt:
+    cargo fmt --all
+
+# Check Rust formatting (CI-friendly, no changes)
+fmt-check:
+    cargo fmt --all -- --check
+
+# Run clippy lints on the Rust workspace
+lint:
+    cargo clippy --workspace -- -D warnings
+
+# Type-check the Rust workspace
+check:
+    cargo check --workspace
+
+# Full CI pipeline: format check, lint, and test
+ci: fmt-check lint test

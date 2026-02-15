@@ -17,12 +17,7 @@ pub struct TiltSimulator {
 }
 
 impl TiltSimulator {
-    pub fn new(
-        colors: Vec<TiltColor>,
-        og: f64,
-        target_fg: f64,
-        base_temp: f64,
-    ) -> Self {
+    pub fn new(colors: Vec<TiltColor>, og: f64, target_fg: f64, base_temp: f64) -> Self {
         Self {
             colors,
             og,
@@ -138,11 +133,7 @@ mod tests {
             let readings = sim.generate_readings();
             for r in &readings {
                 let rssi = r.rssi.expect("RSSI should be Some");
-                assert!(
-                    rssi >= -80 && rssi <= -60,
-                    "RSSI {} out of range",
-                    rssi,
-                );
+                assert!(rssi >= -80 && rssi <= -60, "RSSI {} out of range", rssi,);
             }
         }
     }

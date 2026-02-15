@@ -38,7 +38,11 @@ struct Args {
     )]
     buffer_size: usize,
 
-    #[arg(long, default_value_t = false, help = "Run in simulate mode (no BLE hardware required)")]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Run in simulate mode (no BLE hardware required)"
+    )]
     simulate: bool,
 
     #[arg(
@@ -48,13 +52,21 @@ struct Args {
     )]
     sim_colors: String,
 
-    #[arg(long, default_value_t = 1.055, help = "Simulated starting Original Gravity")]
+    #[arg(
+        long,
+        default_value_t = 1.055,
+        help = "Simulated starting Original Gravity"
+    )]
     sim_og: f64,
 
     #[arg(long, default_value_t = 1.012, help = "Simulated target Final Gravity")]
     sim_target_fg: f64,
 
-    #[arg(long, default_value_t = 68.0, help = "Simulated base temperature in °F")]
+    #[arg(
+        long,
+        default_value_t = 68.0,
+        help = "Simulated base temperature in °F"
+    )]
     sim_temp: f64,
 }
 
