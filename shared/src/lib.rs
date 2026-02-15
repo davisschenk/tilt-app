@@ -254,7 +254,7 @@ pub struct ReadingsQuery {
 
 impl ReadingsQuery {
     pub fn limit_or_default(&self) -> u64 {
-        self.limit.unwrap_or(1000)
+        self.limit.unwrap_or(10_000)
     }
 }
 
@@ -600,9 +600,9 @@ mod tests {
     }
 
     #[test]
-    fn readings_query_limit_default_1000() {
+    fn readings_query_limit_default_10000() {
         let query: ReadingsQuery = serde_json::from_str("{}").unwrap();
-        assert_eq!(query.limit_or_default(), 1000);
+        assert_eq!(query.limit_or_default(), 10_000);
     }
 
     #[test]
