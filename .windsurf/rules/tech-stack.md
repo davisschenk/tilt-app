@@ -43,6 +43,18 @@ trigger: always_on
 - **brews** — id (UUID PK), name, style, og, fg, target_fg, abv, status (enum: Active/Completed/Archived), start_date, end_date, notes, hydrometer_id (FK), created_at, updated_at
 - **readings** — id (UUID PK), brew_id (FK, nullable), hydrometer_id (FK), temperature_f (f64), gravity (f64), rssi (i8, nullable), recorded_at (timestamptz), created_at
 
+## Web Frontend (`web/`)
+- **React 19** via **Vite** — fast dev server and build tool
+- **TypeScript** — strict mode enabled
+- **TailwindCSS v4** — utility-first styling
+- **shadcn/ui** — accessible component primitives (built on Radix UI)
+- **Lucide React** — icon library
+- **React Router v7** — client-side routing
+- **TanStack Query (React Query) v5** — server state management, caching, refetching
+- **Recharts** — composable charting library for readings graphs
+- **date-fns** — lightweight date formatting/manipulation
+- API base URL configured via `VITE_API_URL` env var (defaults to `http://localhost:8000/api/v1`)
+
 ## Infrastructure
 - **Docker Compose** — Postgres + server container
 - **Dockerfile** — multi-stage build (cargo-chef for caching)
@@ -108,4 +120,15 @@ trigger: always_on
 - **Rollback:** `sea-orm-cli migrate down` — rolls back the last applied migration.
 - **Generate entities from DB:** `sea-orm-cli generate entity -o server/src/models/entities --with-serde both` — regenerates Rust entity files from the live database schema. Always use `--with-serde both` to include Serialize + Deserialize derives.
 - Never hand-write SeaORM entity files; always generate them from the database and then adjust relations or derives as needed.
+
+## Web Frontend Conventions
+- **Component structure:** `web/src/components/` for reusable UI, `web/src/pages/` for route pages, `web/src/hooks/` for custom hooks, `web/src/lib/` for utilities/API client
+- **API client:** centralized in `web/src/lib/api.ts` using `fetch` or a thin wrapper; all endpoints return typed responses
+- **TanStack Query:** one custom hook per API resource (e.g., `useBrews()`, `useHydrometers()`, `useReadings()`); queries in `web/src/hooks/`
+- **shadcn/ui:** install components via `npx shadcn@latest add <component>`; never copy-paste component source manually
+- **File naming:** kebab-case for files (`brew-detail.tsx`), PascalCase for components (`BrewDetail`)
+- **Styling:** Tailwind utility classes only; no custom CSS files unless absolutely necessary
+- **TypeScript:** strict mode, no `any` types; mirror shared crate DTOs as TS interfaces in `web/src/types/`
+- **Package management:** use `npm` for all dependency operations
+- **Dev server:** `npm run dev` from `web/` directory; proxies API requests or uses `VITE_API_URL`
 </coding_conventions>

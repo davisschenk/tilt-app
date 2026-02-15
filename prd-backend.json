@@ -1,0 +1,402 @@
+{
+  "project_meta": {
+    "name": "tilt-hydrometer-platform",
+    "version": "0.1.0",
+    "ralph_type": "opencode",
+    "opencode_session_id": "ralph-deep-init-2026-02-14"
+  },
+  "backlog": [
+    {
+      "group": "Workspace-Scaffolding",
+      "feature": "Cargo workspace with server, client, and shared crates",
+      "description": "Create the root Cargo.toml workspace manifest referencing three member crates: server, client, and shared. Each crate gets its own Cargo.toml with the correct package name, edition (2021), and an empty src/main.rs (server, client) or src/lib.rs (shared). The workspace must compile with cargo build --workspace.",
+      "acceptance_criteria": [
+        "Root Cargo.toml defines [workspace] with members = ['server', 'client', 'shared'] — verify by reading Cargo.toml",
+        "server/Cargo.toml exists with package name 'server' and edition '2021' — verify with cargo metadata",
+        "client/Cargo.toml exists with package name 'client' and edition '2021' — verify with cargo metadata",
+        "shared/Cargo.toml exists with package name 'shared' and edition '2021' — verify with cargo metadata",
+        "cargo build --workspace succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Workspace-Scaffolding",
+      "feature": "Server crate dependencies",
+      "description": "Add all server dependencies to server/Cargo.toml: rocket (v0.5, features json+secrets), sea-orm (features sqlx-postgres, runtime-tokio-rustls, macros), sea-orm-migration, rocket_cors, serde (derive), serde_json, chrono (serde), uuid (v4+serde), dotenvy, tracing, tracing-subscriber, anyhow. Add shared as a path dependency. Verify cargo check -p server passes.",
+      "acceptance_criteria": [
+        "server/Cargo.toml lists rocket v0.5 with features json, secrets — verify by reading Cargo.toml",
+        "server/Cargo.toml lists sea-orm with sqlx-postgres, runtime-tokio-rustls, macros features — verify by reading Cargo.toml",
+        "server/Cargo.toml lists shared as path dependency '../shared' — verify by reading Cargo.toml",
+        "cargo check -p server succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Workspace-Scaffolding",
+      "feature": "Client crate dependencies",
+      "description": "Add all client dependencies to client/Cargo.toml: btleplug, reqwest (features json+rustls-tls), tokio (full), clap (derive), tracing, tracing-subscriber, serde (derive), serde_json, chrono. Add shared as a path dependency. Verify cargo check -p client passes.",
+      "acceptance_criteria": [
+        "client/Cargo.toml lists btleplug — verify by reading Cargo.toml",
+        "client/Cargo.toml lists reqwest with json, rustls-tls features — verify by reading Cargo.toml",
+        "client/Cargo.toml lists clap with derive feature — verify by reading Cargo.toml",
+        "client/Cargo.toml lists shared as path dependency '../shared' — verify by reading Cargo.toml",
+        "cargo check -p client succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Workspace-Scaffolding",
+      "feature": "Shared crate dependencies and stub types",
+      "description": "Add shared crate dependencies: serde (derive), chrono (serde), uuid (v4+serde). Create src/lib.rs with stub TiltColor enum, placeholder TiltReading struct, and placeholder BrewStatus enum all deriving Serialize/Deserialize. Verify cargo check -p shared passes.",
+      "acceptance_criteria": [
+        "shared/Cargo.toml lists serde with derive, chrono with serde, uuid with v4+serde — verify by reading Cargo.toml",
+        "shared/src/lib.rs defines TiltColor enum with 8 variants — verify by reading source",
+        "shared/src/lib.rs defines TiltReading struct — verify by reading source",
+        "cargo check -p shared succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Workspace-Scaffolding",
+      "feature": "Environment and config files",
+      "description": "Create .env.example with DATABASE_URL, ROCKET_SECRET_KEY, ROCKET_PORT, RUST_LOG placeholders. Create .gitignore covering target/, .env, *.swp, and IDE directories. Ensure cargo build --workspace still succeeds.",
+      "acceptance_criteria": [
+        ".env.example contains DATABASE_URL, ROCKET_SECRET_KEY, ROCKET_PORT, RUST_LOG — verify by reading file",
+        ".gitignore contains target/, .env entries — verify by reading file",
+        "cargo build --workspace succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Database-Schema",
+      "feature": "SeaORM migration crate setup",
+      "description": "Create a migration crate under server/migration/ using sea-orm-migration. Set up the Migrator struct and a lib.rs that registers all migrations in order. Add the migration crate as a dependency of the server crate. Verify the migration crate compiles with cargo check -p migration.",
+      "acceptance_criteria": [
+        "server/migration/Cargo.toml exists with sea-orm-migration dependency — verify by reading Cargo.toml",
+        "server/migration/src/lib.rs defines Migrator struct implementing MigratorTrait — verify by reading source",
+        "cargo check -p migration succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Database-Schema",
+      "feature": "Create hydrometers table migration",
+      "description": "Write a SeaORM migration that creates the hydrometers table with columns: id (UUID PK, default gen_random_uuid()), color (VARCHAR NOT NULL), name (VARCHAR nullable), temp_offset_f (DOUBLE PRECISION NOT NULL DEFAULT 0), gravity_offset (DOUBLE PRECISION NOT NULL DEFAULT 0), created_at (TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()). Add a unique constraint on color.",
+      "acceptance_criteria": [
+        "Migration file exists in server/migration/src/ and is registered in Migrator — verify by reading source",
+        "Table 'hydrometers' is created with all specified columns and types — verify by running migration against test DB and querying information_schema",
+        "Unique constraint exists on color column — verify by attempting duplicate insert",
+        "sea-orm-cli migrate up succeeds with exit code 0 against a running Postgres"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Database-Schema",
+      "feature": "Create brews table migration",
+      "description": "Write a SeaORM migration that creates the brews table with columns: id (UUID PK), name (VARCHAR NOT NULL), style (VARCHAR nullable), og (DOUBLE PRECISION nullable), fg (DOUBLE PRECISION nullable), target_fg (DOUBLE PRECISION nullable), abv (DOUBLE PRECISION nullable), status (VARCHAR NOT NULL DEFAULT 'Active'), start_date (TIMESTAMPTZ nullable), end_date (TIMESTAMPTZ nullable), notes (TEXT nullable), hydrometer_id (UUID NOT NULL FK → hydrometers.id), created_at (TIMESTAMPTZ NOT NULL DEFAULT now()), updated_at (TIMESTAMPTZ NOT NULL DEFAULT now()). Add index on hydrometer_id and status.",
+      "acceptance_criteria": [
+        "Migration file exists and is registered in Migrator — verify by reading source",
+        "Table 'brews' has all specified columns with correct types — verify via information_schema after migrate up",
+        "Foreign key constraint from hydrometer_id to hydrometers.id exists — verify via pg_constraint or by inserting invalid FK",
+        "Indexes on hydrometer_id and status exist — verify via pg_indexes",
+        "sea-orm-cli migrate up succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Database-Schema",
+      "feature": "Create readings table migration",
+      "description": "Write a SeaORM migration that creates the readings table with columns: id (UUID PK), brew_id (UUID nullable FK → brews.id), hydrometer_id (UUID NOT NULL FK → hydrometers.id), temperature_f (DOUBLE PRECISION NOT NULL), gravity (DOUBLE PRECISION NOT NULL), rssi (SMALLINT nullable), recorded_at (TIMESTAMPTZ NOT NULL), created_at (TIMESTAMPTZ NOT NULL DEFAULT now()). Add indexes on brew_id, hydrometer_id, and recorded_at for query performance.",
+      "acceptance_criteria": [
+        "Migration file exists and is registered in Migrator — verify by reading source",
+        "Table 'readings' has all specified columns — verify via information_schema after migrate up",
+        "FK constraints to brews.id (nullable) and hydrometers.id (not null) exist — verify via pg_constraint",
+        "Indexes on brew_id, hydrometer_id, recorded_at exist — verify via pg_indexes",
+        "sea-orm-cli migrate up succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Database-Schema",
+      "feature": "Generate SeaORM entities from schema",
+      "description": "Run sea-orm-cli generate entity to produce Rust entity files for hydrometers, brews, and readings tables. Place them in server/src/models/entities/. Ensure each entity has the correct column types, relations (Hydrometer HasMany Brews, Hydrometer HasMany Readings, Brew HasMany Readings), and derives. Verify cargo check -p server passes with the generated entities.",
+      "acceptance_criteria": [
+        "server/src/models/entities/hydrometers.rs exists with Model struct matching table schema — verify by reading source",
+        "server/src/models/entities/brews.rs exists with Model struct and Relation to hydrometers — verify by reading source",
+        "server/src/models/entities/readings.rs exists with Model struct and Relations to brews and hydrometers — verify by reading source",
+        "server/src/models/entities/mod.rs re-exports all entity modules — verify by reading source",
+        "cargo check -p server succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Server-API",
+      "feature": "Rocket application bootstrap with SeaORM database pool",
+      "description": "Create server/src/main.rs that launches a Rocket v0.5 instance. Configure a SeaORM DatabaseConnection as managed state (connect using DATABASE_URL from environment via dotenvy). Set up tracing-subscriber for structured logging. Register CORS fairing via rocket_cors allowing all origins in dev. Mount a health-check GET /api/v1/health route that returns JSON { \"status\": \"ok\" }. Register JSON catchers for 404, 422, and 500.",
+      "acceptance_criteria": [
+        "Rocket ignites and binds to ROCKET_PORT — verify with cargo run -p server and curl localhost:PORT/api/v1/health returning 200 {\"status\":\"ok\"}",
+        "SeaORM DatabaseConnection is available as managed state — verify by adding a temporary route that calls db.ping()",
+        "CORS fairing is attached — verify by sending OPTIONS request with Origin header and checking Access-Control headers",
+        "JSON catchers return {\"error\":\"...\"} for 404, 422, 500 — verify with curl to unknown route returns JSON 404",
+        "tracing output appears on stdout — verify by observing log lines on startup"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Server-API",
+      "feature": "Hydrometers CRUD routes",
+      "description": "Create server/src/routes/hydrometers.rs with full CRUD: GET /api/v1/hydrometers (list all), POST /api/v1/hydrometers (register new, validated via FromForm/Json guard: color must be valid TiltColor, name optional), GET /api/v1/hydrometers/<id> (by UUID), PUT /api/v1/hydrometers/<id> (update name/offsets, validated), DELETE /api/v1/hydrometers/<id>. All routes use a HydrometerService. Return proper HTTP status codes (200, 201, 404, 422).",
+      "acceptance_criteria": [
+        "GET /hydrometers returns 200 with JSON array — verify with integration test using Rocket local::asynchronous::Client",
+        "POST /hydrometers with valid payload returns 201 with created hydrometer — verify with integration test",
+        "POST /hydrometers with invalid color returns 422 JSON error — verify with integration test",
+        "GET /hydrometers/<id> returns 200 for existing, 404 for missing — verify with integration test",
+        "PUT /hydrometers/<id> updates fields and returns 200 — verify with integration test",
+        "DELETE /hydrometers/<id> removes record and returns 204 — verify with integration test"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Server-API",
+      "feature": "Brews CRUD routes",
+      "description": "Create server/src/routes/brews.rs with: GET /api/v1/brews (list, optional ?status= filter), POST /api/v1/brews (create, validated: name required, hydrometer_id must exist, status defaults to Active), GET /api/v1/brews/<id> (detail with latest reading summary), PUT /api/v1/brews/<id> (update metadata/status), DELETE /api/v1/brews/<id> (archive). All routes use a BrewService.",
+      "acceptance_criteria": [
+        "GET /brews returns 200 with JSON array — verify with integration test",
+        "GET /brews?status=Active filters correctly — verify with integration test inserting Active and Completed brews",
+        "POST /brews with valid payload returns 201 — verify with integration test",
+        "POST /brews with missing name returns 422 — verify with integration test",
+        "POST /brews with non-existent hydrometer_id returns 422 — verify with integration test",
+        "GET /brews/<id> returns brew detail with latest reading data — verify with integration test",
+        "PUT /brews/<id> updates and returns 200 — verify with integration test"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Server-API",
+      "feature": "Readings ingestion and query routes",
+      "description": "Create server/src/routes/readings.rs with: POST /api/v1/readings (batch insert, accepts JSON array of readings each with hydrometer color, temperature_f, gravity, rssi, recorded_at — auto-resolves hydrometer by color, optionally links to active brew), GET /api/v1/readings (query with filters: brew_id, hydrometer_id, since, until, limit with default 1000, ordered by recorded_at DESC). Use a ReadingsService.",
+      "acceptance_criteria": [
+        "POST /readings with valid batch returns 201 with count of inserted readings — verify with integration test",
+        "POST /readings auto-resolves hydrometer by TiltColor — verify by posting with color string and checking hydrometer_id in DB",
+        "POST /readings auto-links to active brew for that hydrometer if one exists — verify with integration test",
+        "GET /readings returns paginated results ordered by recorded_at DESC — verify with integration test",
+        "GET /readings?brew_id=<id> filters by brew — verify with integration test",
+        "GET /readings?since=<ts>&until=<ts> filters by time range — verify with integration test"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Server-API",
+      "feature": "Service layer with SeaORM repository pattern",
+      "description": "Create server/src/services/ with hydrometer_service.rs, brew_service.rs, and reading_service.rs. Each service takes a &DatabaseConnection, performs CRUD via SeaORM ActiveModel operations, and returns Result types. Include From<T> conversions between SeaORM entity Models and shared crate DTOs. Service methods: find_all, find_by_id, create, update, delete for hydrometers/brews; batch_create and find_filtered for readings.",
+      "acceptance_criteria": [
+        "HydrometerService::find_all returns Vec of hydrometer DTOs — verify with unit test using SeaORM MockDatabase",
+        "HydrometerService::create inserts and returns created DTO — verify with unit test using MockDatabase",
+        "BrewService::find_filtered with status filter returns correct subset — verify with unit test",
+        "ReadingService::batch_create inserts multiple readings — verify with unit test",
+        "ReadingService::find_filtered with time range returns correct results — verify with unit test",
+        "All From<Model> for DTO conversions are implemented — verify cargo check -p server passes"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Shared-Types",
+      "feature": "TiltColor enum with iBeacon UUID constants",
+      "description": "Implement TiltColor enum in shared/src/lib.rs with 8 variants: Red, Green, Black, Purple, Orange, Blue, Yellow, Pink. Each variant must have an associated const UUID (uuid::Uuid). Implement TiltColor::from_uuid() to look up color from a UUID, and TiltColor::uuid() to get the UUID for a color. Derive Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash. Use #[serde(rename_all = \"camelCase\")].",
+      "acceptance_criteria": [
+        "TiltColor has exactly 8 variants matching the Tilt product line — verify by reading source",
+        "TiltColor::uuid() returns correct UUID for each color (Red = A495BB10-..., etc.) — verify with unit test for all 8",
+        "TiltColor::from_uuid() round-trips correctly for all 8 colors — verify with unit test",
+        "TiltColor::from_uuid() returns None for unknown UUIDs — verify with unit test",
+        "Serializes to/from camelCase JSON strings — verify with serde_json::to_string unit test",
+        "cargo test -p shared passes with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Shared-Types",
+      "feature": "TiltReading and CreateReadingsBatch DTOs",
+      "description": "Define TiltReading struct: color (TiltColor), temperature_f (f64), gravity (f64), rssi (Option<i16>), recorded_at (chrono::DateTime<Utc>). Define CreateReadingsBatch as a newtype wrapper around Vec<TiltReading>. Both derive Serialize, Deserialize, Debug, Clone and use #[serde(rename_all = \"camelCase\")]. Include a TiltReading::new() constructor.",
+      "acceptance_criteria": [
+        "TiltReading struct has all specified fields with correct types — verify by reading source",
+        "CreateReadingsBatch wraps Vec<TiltReading> — verify by reading source",
+        "TiltReading serializes to camelCase JSON — verify with serde_json round-trip unit test",
+        "TiltReading::new() constructs valid instance — verify with unit test",
+        "cargo test -p shared passes with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Shared-Types",
+      "feature": "BrewStatus enum and Brew DTOs",
+      "description": "Define BrewStatus enum with variants Active, Completed, Archived. Derive Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq. Define API DTOs: CreateBrew (name, style?, hydrometer_id, og?, target_fg?, notes?), UpdateBrew (name?, style?, og?, fg?, target_fg?, abv?, status?, notes?, end_date?), BrewResponse (all fields including id, timestamps, latest_reading?). All use #[serde(rename_all = \"camelCase\")].",
+      "acceptance_criteria": [
+        "BrewStatus has 3 variants and serializes correctly — verify with serde_json unit test",
+        "CreateBrew struct has required 'name' and 'hydrometer_id' fields, rest optional — verify by reading source",
+        "UpdateBrew struct has all fields as Option<T> — verify by reading source",
+        "BrewResponse includes id, all brew fields, and optional latest_reading — verify by reading source",
+        "cargo test -p shared passes with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Shared-Types",
+      "feature": "Hydrometer DTOs",
+      "description": "Define API DTOs: CreateHydrometer (color: TiltColor, name: Option<String>), UpdateHydrometer (name: Option<String>, temp_offset_f: Option<f64>, gravity_offset: Option<f64>), HydrometerResponse (id, color, name, temp_offset_f, gravity_offset, created_at). All derive Serialize, Deserialize, Debug, Clone with #[serde(rename_all = \"camelCase\")].",
+      "acceptance_criteria": [
+        "CreateHydrometer has color (required) and name (optional) — verify by reading source",
+        "UpdateHydrometer has all fields as Option<T> — verify by reading source",
+        "HydrometerResponse includes all hydrometer fields — verify by reading source",
+        "All DTOs serialize/deserialize correctly — verify with serde_json round-trip unit test",
+        "cargo test -p shared passes with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Shared-Types",
+      "feature": "ReadingResponse and query parameter types",
+      "description": "Define ReadingResponse DTO (id, brew_id?, hydrometer_id, color, temperature_f, gravity, rssi?, recorded_at, created_at). Define ReadingsQuery struct for GET /readings filters: brew_id (Option<Uuid>), hydrometer_id (Option<Uuid>), since (Option<DateTime<Utc>>), until (Option<DateTime<Utc>>), limit (Option<u64> default 1000). All with serde camelCase.",
+      "acceptance_criteria": [
+        "ReadingResponse has all specified fields with correct types — verify by reading source",
+        "ReadingsQuery has all filter fields as Option types — verify by reading source",
+        "ReadingsQuery default limit is documented or handled in deserialization — verify by reading source",
+        "All types serialize/deserialize correctly — verify with serde_json unit test",
+        "cargo test -p shared passes with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "BLE-Client",
+      "feature": "CLI argument parsing with clap",
+      "description": "Set up client/src/main.rs with a clap-derived Args struct: --server-url (required, String), --scan-interval (u64 seconds, default 15), --log-level (String, default 'info'), --buffer-size (usize, default 100). Initialize tracing-subscriber with the specified log level. Parse args and print startup banner with config summary via tracing::info!.",
+      "acceptance_criteria": [
+        "Running client --help prints usage with all 4 arguments described — verify by running cargo run -p client -- --help",
+        "--server-url is required; omitting it produces an error — verify by running without it",
+        "--scan-interval defaults to 15 if not provided — verify with unit test or manual run",
+        "--log-level defaults to 'info' — verify with unit test or manual run",
+        "tracing-subscriber is initialized and logs appear on stdout — verify by observing startup log line",
+        "cargo check -p client succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "BLE-Client",
+      "feature": "BLE scanner with btleplug and Tilt UUID filtering",
+      "description": "Create client/src/scanner.rs that uses btleplug to perform BLE scans. Implement a TiltScanner struct that: discovers the Bluetooth adapter, starts a scan, listens for ManufacturerSpecificData matching Apple's company ID (0x004C), parses the iBeacon payload to extract UUID/major/minor/tx_power, filters by the 8 known Tilt UUIDs, and returns parsed TiltReading structs (using shared crate types). Include a scan_once() method that scans for a configurable duration and returns Vec<TiltReading>.",
+      "acceptance_criteria": [
+        "TiltScanner struct exists with new() and scan_once() methods — verify by reading source",
+        "iBeacon parsing correctly extracts UUID, major (temp_f), minor (gravity/1000.0), tx_power from manufacturer data — verify with unit test using known byte sequences",
+        "Only advertisements matching one of 8 Tilt UUIDs are returned — verify with unit test filtering mock data",
+        "Temperature is u16 big-endian from major field — verify with unit test: bytes [0x00, 0x44] → 68°F",
+        "Gravity is u16 big-endian from minor / 1000.0 — verify with unit test: bytes [0x03, 0xF8] → 1.016",
+        "cargo check -p client succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "BLE-Client",
+      "feature": "HTTP uploader with batch POST",
+      "description": "Create client/src/uploader.rs with an Uploader struct that holds a reqwest::Client and the server base URL. Implement upload_batch(readings: &[TiltReading]) that POSTs JSON to {server_url}/api/v1/readings. Return Result with typed errors for network failure, server error (non-2xx), and deserialization issues. Log request/response details via tracing.",
+      "acceptance_criteria": [
+        "Uploader::new(server_url) creates instance with reqwest::Client — verify by reading source",
+        "upload_batch serializes Vec<TiltReading> as JSON POST body — verify by reading source",
+        "Successful upload (2xx) returns Ok with server response — verify with unit test using mockito or wiremock",
+        "Non-2xx response returns typed error — verify with unit test returning 500 from mock server",
+        "Network failure returns typed error — verify with unit test pointing to unreachable host",
+        "cargo check -p client succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "BLE-Client",
+      "feature": "Retry logic with exponential backoff and local buffer",
+      "description": "Create client/src/buffer.rs with a ReadingBuffer struct wrapping a bounded VecDeque<TiltReading> (max size from CLI --buffer-size). Implement push_batch() that appends readings (dropping oldest if at capacity), drain_all() that returns all buffered readings. In the main loop: on upload failure, push readings to buffer and retry with exponential backoff (initial 1s, max 60s, factor 2x). On next successful upload, drain buffer first.",
+      "acceptance_criteria": [
+        "ReadingBuffer::new(capacity) creates bounded buffer — verify with unit test",
+        "push_batch adds readings, drops oldest when full — verify with unit test filling beyond capacity",
+        "drain_all returns all readings and empties buffer — verify with unit test",
+        "Exponential backoff doubles delay on consecutive failures up to max — verify with unit test simulating failures",
+        "Backoff resets to initial on successful upload — verify with unit test",
+        "cargo test -p client passes with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "BLE-Client",
+      "feature": "Main scan-upload loop",
+      "description": "Wire together the main async loop in client/src/main.rs: parse CLI args → init tracing → create TiltScanner, Uploader, ReadingBuffer → loop { scan_once() → if buffer has readings, prepend them → upload_batch() → on success clear backoff, on failure push to buffer and backoff → sleep(scan_interval) }. Handle Ctrl+C gracefully via tokio::signal for clean shutdown with a final log message.",
+      "acceptance_criteria": [
+        "Main loop calls scan_once, attempts upload, handles failure with buffering — verify by reading source control flow",
+        "Ctrl+C triggers graceful shutdown with log message — verify by reading source for tokio::signal::ctrl_c usage",
+        "Buffer is drained on successful upload after previous failures — verify by reading source",
+        "Sleep interval matches --scan-interval CLI arg — verify by reading source",
+        "cargo check -p client succeeds with exit code 0"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Infrastructure",
+      "feature": "Docker Compose with Postgres and server",
+      "description": "Create docker-compose.yml defining two services: 'db' (postgres:16-alpine with POSTGRES_DB=tilt, POSTGRES_USER=tilt, POSTGRES_PASSWORD from env, persistent volume, port 5432) and 'server' (builds from Dockerfile, depends_on db, environment with DATABASE_URL, ROCKET_PORT=8000, ROCKET_SECRET_KEY, RUST_LOG, port 8000). Define a named volume 'pgdata'.",
+      "acceptance_criteria": [
+        "docker-compose.yml is valid YAML with 'db' and 'server' services — verify with docker compose config",
+        "db service uses postgres:16-alpine image — verify by reading docker-compose.yml",
+        "db service has persistent volume mount — verify by reading docker-compose.yml",
+        "server service depends_on db — verify by reading docker-compose.yml",
+        "docker compose up -d db starts Postgres successfully — verify with docker compose ps showing healthy"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Infrastructure",
+      "feature": "Multi-stage Dockerfile with cargo-chef",
+      "description": "Create server/Dockerfile with 4 stages: (1) chef — FROM lukemathwalker/cargo-chef:latest-rust-1, (2) planner — copies source, runs cargo chef prepare, (3) builder — copies recipe, runs cargo chef cook --release, copies source, builds server binary, (4) runtime — FROM debian:bookworm-slim, installs libssl3 + ca-certificates, copies binary, sets ENTRYPOINT. Ensure it builds the entire workspace so shared crate is available.",
+      "acceptance_criteria": [
+        "Dockerfile has 4 named stages (chef, planner, builder, runtime) — verify by reading Dockerfile",
+        "Builder stage copies full workspace for shared crate resolution — verify by reading Dockerfile",
+        "Runtime image is debian:bookworm-slim (minimal) — verify by reading Dockerfile",
+        "docker build -f server/Dockerfile . completes successfully — verify with docker build command",
+        "Resulting image runs and prints Rocket startup log — verify with docker run"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Infrastructure",
+      "feature": "Environment configuration and .env.example",
+      "description": "Create .env.example with all required environment variables documented with comments: DATABASE_URL (postgres connection string), ROCKET_SECRET_KEY (base64, with generation command), ROCKET_PORT (default 8000), RUST_LOG (default info), DB_PASSWORD (used by docker-compose). Ensure dotenvy loads .env in the server binary at startup.",
+      "acceptance_criteria": [
+        ".env.example contains DATABASE_URL, ROCKET_SECRET_KEY, ROCKET_PORT, RUST_LOG, DB_PASSWORD — verify by reading file",
+        "Each variable has a descriptive comment — verify by reading file",
+        "ROCKET_SECRET_KEY line includes generation hint — verify by reading file",
+        "Server binary loads .env via dotenvy at startup — verify by reading server/src/main.rs for dotenvy::dotenv() call"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Infrastructure",
+      "feature": "Client systemd service unit file",
+      "description": "Create client/tilt-client.service systemd unit file for running the client binary on Raspberry Pi. Configure: After=network-online.target bluetooth.target, Wants=network-online.target, ExecStart pointing to /usr/local/bin/tilt-client with default args, Restart=always, RestartSec=10, Environment for RUST_LOG. Include install section for multi-user.target. Add comments with installation instructions.",
+      "acceptance_criteria": [
+        "client/tilt-client.service is a valid systemd unit file — verify by reading file for [Unit], [Service], [Install] sections",
+        "After= includes network-online.target and bluetooth.target — verify by reading file",
+        "Restart=always with RestartSec=10 — verify by reading file",
+        "ExecStart points to binary with --server-url placeholder — verify by reading file",
+        "Installation instructions are in comments at top of file — verify by reading file"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Infrastructure",
+      "feature": "CI-ready test and build verification",
+      "description": "Ensure cargo test --workspace runs and exits 0 (even if only with placeholder tests). Ensure cargo clippy --workspace -- -D warnings passes. Ensure cargo fmt --all -- --check passes. Add a Makefile or justfile with targets: test, check, fmt, clippy, migrate, run-server, run-client for developer convenience.",
+      "acceptance_criteria": [
+        "cargo test --workspace exits 0 — verify by running command",
+        "cargo clippy --workspace -- -D warnings exits 0 — verify by running command",
+        "cargo fmt --all -- --check exits 0 — verify by running command",
+        "Makefile or justfile exists with test, check, fmt, clippy targets — verify by reading file",
+        "make test (or just test) runs cargo test --workspace — verify by reading file"
+      ],
+      "passes": true
+    }
+  ]
+}
