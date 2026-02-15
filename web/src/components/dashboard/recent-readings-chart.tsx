@@ -24,17 +24,6 @@ const BREW_COLORS: Record<string, string> = {
   Pink: "#D6336C",
 };
 
-const FALLBACK_COLORS = [
-  "#E03131",
-  "#1971C2",
-  "#2F9E44",
-  "#7048E8",
-  "#E8590C",
-  "#D6336C",
-  "#F08C00",
-  "#495057",
-];
-
 export default function RecentReadingsChart() {
   const since = useMemo(() => {
     const d = new Date();
@@ -44,18 +33,17 @@ export default function RecentReadingsChart() {
 
   const { data: readings, isLoading } = useReadings({ since });
 
-  const { chartData, brewIds } = useMemo(() => {
-    if (!readings || readings.length === 0) return { chartData: [], brewIds: [] };
+  const { chartData, colors } = useMemo(() => {
+    if (!readings || readings.length === 0) return { chartData: [], colors: [] };
 
     const byTime = new Map<string, Record<string, number>>();
-    const brewIdSet = new Set<string>();
+    const colorSet = new Set<string>();
 
     for (const r of readings) {
-      const key = r.brewId ?? r.hydrometerId;
-      brewIdSet.add(key);
+      colorSet.add(r.color);
       const timeKey = r.recordedAt;
       const existing = byTime.get(timeKey) ?? {};
-      existing[key] = r.gravity;
+      existing[r.color] = r.gravity;
       byTime.set(timeKey, existing);
     }
 
@@ -69,21 +57,7 @@ export default function RecentReadingsChart() {
       ...values,
     }));
 
-    return { chartData: data, brewIds: Array.from(brewIdSet) };
-  }, [readings]);
-
-  const colorForBrew = useMemo(() => {
-    if (!readings) return {};
-    const colorMap: Record<string, string> = {};
-    let fallbackIdx = 0;
-    for (const r of readings) {
-      const key = r.brewId ?? r.hydrometerId;
-      if (!colorMap[key]) {
-        colorMap[key] = BREW_COLORS[r.color] ?? FALLBACK_COLORS[fallbackIdx % FALLBACK_COLORS.length];
-        fallbackIdx++;
-      }
-    }
-    return colorMap;
+    return { chartData: data, colors: Array.from(colorSet) };
   }, [readings]);
 
   return (
@@ -120,15 +94,15 @@ export default function RecentReadingsChart() {
                 labelFormatter={(label) => `Time: ${String(label)}`}
               />
               <Legend />
-              {brewIds.map((id) => (
+              {colors.map((color) => (
                 <Line
-                  key={id}
+                  key={color}
                   type="monotone"
-                  dataKey={id}
-                  stroke={colorForBrew[id] ?? "#868E96"}
+                  dataKey={color}
+                  stroke={BREW_COLORS[color] ?? "#868E96"}
                   dot={false}
                   strokeWidth={2}
-                  name={id.substring(0, 8)}
+                  name={color}
                 />
               ))}
             </LineChart>
