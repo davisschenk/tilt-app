@@ -60,5 +60,6 @@ async fn rocket() -> Rocket<Build> {
         .manage(db)
         .attach(cors)
         .mount("/api/v1", routes![health])
+        .mount("/api/v1", routes::hydrometers::routes())
         .register("/", catchers![not_found, unprocessable_entity, internal_error])
 }
