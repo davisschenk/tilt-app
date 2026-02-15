@@ -195,6 +195,32 @@ pub struct BrewResponse {
     pub latest_reading: Option<TiltReading>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateHydrometer {
+    pub color: TiltColor,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateHydrometer {
+    pub name: Option<String>,
+    pub temp_offset_f: Option<f64>,
+    pub gravity_offset: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HydrometerResponse {
+    pub id: Uuid,
+    pub color: TiltColor,
+    pub name: Option<String>,
+    pub temp_offset_f: f64,
+    pub gravity_offset: f64,
+    pub created_at: DateTime<Utc>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -410,5 +436,61 @@ mod tests {
         let deserialized: BrewResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.name, "Pale Ale");
         assert_eq!(deserialized.status, BrewStatus::Active);
+    }
+
+    #[test]
+    fn create_hydrometer_required_and_optional() {
+        let json = r#"{"color":"Red"}"#;
+        let hydro: CreateHydrometer = serde_json::from_str(json).unwrap();
+        assert_eq!(hydro.color, TiltColor::Red);
+        assert!(hydro.name.is_none());
+    }
+
+    #[test]
+    fn create_hydrometer_with_name() {
+        let hydro = CreateHydrometer {
+            color: TiltColor::Blue,
+            name: Some("My Blue Tilt".to_string()),
+        };
+        let json = serde_json::to_string(&hydro).unwrap();
+        let deserialized: CreateHydrometer = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.color, TiltColor::Blue);
+        assert_eq!(deserialized.name.unwrap(), "My Blue Tilt");
+    }
+
+    #[test]
+    fn update_hydrometer_all_fields_optional() {
+        let update: UpdateHydrometer = serde_json::from_str("{}").unwrap();
+        assert!(update.name.is_none());
+        assert!(update.temp_offset_f.is_none());
+        assert!(update.gravity_offset.is_none());
+    }
+
+    #[test]
+    fn update_hydrometer_camel_case_fields() {
+        let json = r#"{"tempOffsetF":1.5,"gravityOffset":-0.002}"#;
+        let update: UpdateHydrometer = serde_json::from_str(json).unwrap();
+        assert!((update.temp_offset_f.unwrap() - 1.5).abs() < f64::EPSILON);
+        assert!((update.gravity_offset.unwrap() - (-0.002)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn hydrometer_response_serde_round_trip() {
+        let now = Utc::now();
+        let resp = HydrometerResponse {
+            id: Uuid::new_v4(),
+            color: TiltColor::Green,
+            name: Some("Fermenter 1".to_string()),
+            temp_offset_f: 0.0,
+            gravity_offset: 0.0,
+            created_at: now,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"tempOffsetF\""));
+        assert!(json.contains("\"gravityOffset\""));
+        assert!(json.contains("\"createdAt\""));
+        let deserialized: HydrometerResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.color, TiltColor::Green);
+        assert_eq!(deserialized.name.unwrap(), "Fermenter 1");
     }
 }
