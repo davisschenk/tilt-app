@@ -1,5 +1,8 @@
+import { useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Beer, Thermometer, Activity, BarChart3, Plus } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Beer, Thermometer, Activity, BarChart3, Plus, RefreshCw } from "lucide-react";
+import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,6 +12,8 @@ import { useHydrometers } from "@/hooks/use-hydrometers";
 import { useReadings } from "@/hooks/use-readings";
 import type { BrewResponse } from "@/types";
 import RecentReadingsChart from "@/components/dashboard/recent-readings-chart";
+
+const REFRESH_INTERVAL = 30_000;
 
 function StatCard({
   title,
@@ -44,12 +49,22 @@ function StatCard({
 }
 
 export default function Dashboard() {
-  const { data: activeBrews, isLoading: brewsLoading } = useBrews("Active");
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState(() => new Date());
+
+  const { data: activeBrews, isLoading: brewsLoading } = useBrews("Active", {
+    refetchInterval: REFRESH_INTERVAL,
+  });
   const { data: hydrometers, isLoading: hydrometersLoading } = useHydrometers();
   const { data: readings, isLoading: readingsLoading } = useReadings({ limit: 1 });
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await queryClient.invalidateQueries();
+    setLastRefreshed(new Date());
+    setTimeout(() => setRefreshing(false), 600);
+  }, [queryClient]);
 
   const latestReading = readings?.[0];
 
@@ -58,6 +73,19 @@ export default function Dashboard() {
       <PageHeader
         title="Dashboard"
         description="Overview of your brewing activity."
+        actions={
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">
+              Updated {format(lastRefreshed, "HH:mm:ss")}
+            </span>
+            <Button variant="ghost" size="icon" onClick={handleRefresh}>
+              <RefreshCw
+                className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+              />
+              <span className="sr-only">Refresh</span>
+            </Button>
+          </div>
+        }
       />
       <div className="grid gap-4 sm:grid-cols-2">
         <StatCard

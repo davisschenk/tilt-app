@@ -7,11 +7,12 @@ import type {
   UpdateBrew,
 } from "@/types";
 
-export function useBrews(status?: BrewStatus) {
+export function useBrews(status?: BrewStatus, options?: { refetchInterval?: number }) {
   const params = status ? `?status=${status}` : "";
   return useQuery<BrewResponse[]>({
     queryKey: ["brews", status],
     queryFn: () => apiGet<BrewResponse[]>(`/brews${params}`),
+    refetchInterval: options?.refetchInterval,
   });
 }
 
