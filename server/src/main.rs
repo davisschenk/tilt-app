@@ -34,9 +34,24 @@ async fn setup_db() -> DatabaseConnection {
 }
 
 fn setup_cors() -> rocket_cors::Cors {
-    rocket_cors::CorsOptions::default()
-        .to_cors()
-        .expect("CORS configuration failed")
+    rocket_cors::CorsOptions {
+        allowed_origins: rocket_cors::AllowedOrigins::all(),
+        allowed_methods: vec![
+            rocket::http::Method::Get,
+            rocket::http::Method::Post,
+            rocket::http::Method::Put,
+            rocket::http::Method::Delete,
+            rocket::http::Method::Options,
+        ]
+        .into_iter()
+        .map(From::from)
+        .collect(),
+        allowed_headers: rocket_cors::AllowedHeaders::all(),
+        allow_credentials: true,
+        ..Default::default()
+    }
+    .to_cors()
+    .expect("CORS configuration failed")
 }
 
 #[rocket::launch]
