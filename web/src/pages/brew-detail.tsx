@@ -54,14 +54,17 @@ export default function BrewDetail() {
 
   function handleFinishBrew() {
     const fg = brew?.latestReading?.gravity;
+    const og = brew?.og;
+    const abv = og != null && fg != null ? (og - fg) * 131.25 : null;
     updateBrew.mutate(
       {
         status: "Completed" as const,
         fg: fg ?? null,
+        abv: abv != null ? parseFloat(abv.toFixed(1)) : null,
         endDate: new Date().toISOString(),
       },
       {
-        onSuccess: () => toast.success(`Brew finished${fg ? ` with FG ${fg.toFixed(3)}` : ""}`),
+        onSuccess: () => toast.success(`Brew finished${fg ? ` with FG ${fg.toFixed(3)}` : ""}${abv != null ? ` — ${abv.toFixed(1)}% ABV` : ""}`),
         onError: () => toast.error("Failed to finish brew"),
       },
     );
