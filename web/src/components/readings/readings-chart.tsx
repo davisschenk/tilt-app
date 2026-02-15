@@ -6,6 +6,7 @@ import {
   YAxis,
   Tooltip,
   Legend,
+  ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
 import { format } from "date-fns";
@@ -25,9 +26,10 @@ const RANGE_HOURS: Record<TimeRange, number | null> = {
 
 interface ReadingsChartProps {
   brewId: string;
+  targetFg?: number | null;
 }
 
-export default function ReadingsChart({ brewId }: ReadingsChartProps) {
+export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) {
   const [range, setRange] = useState<TimeRange>("7d");
 
   const since = useMemo(() => {
@@ -108,6 +110,16 @@ export default function ReadingsChart({ brewId }: ReadingsChartProps) {
                 }}
                 labelFormatter={(label) => `Time: ${String(label)}`}
               />
+              {targetFg != null && (
+                <ReferenceLine
+                  yAxisId="gravity"
+                  y={targetFg}
+                  stroke="#2F9E44"
+                  strokeDasharray="6 4"
+                  strokeWidth={2}
+                  label={{ value: `Target FG: ${targetFg.toFixed(3)}`, position: "insideTopRight", fontSize: 11, fill: "#2F9E44" }}
+                />
+              )}
               <Legend />
               <Line
                 yAxisId="gravity"

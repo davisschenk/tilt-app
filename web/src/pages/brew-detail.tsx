@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
-import { Pencil, CheckCircle, Archive, Trash2 } from "lucide-react";
+import { Pencil, CheckCircle, Archive, Trash2, PartyPopper } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -186,7 +186,31 @@ export default function BrewDetail() {
       <div>
         <h2 className="text-lg font-semibold mb-4">Readings</h2>
         <FermentationStats brewId={brew.id} og={brew.og} />
-        <ReadingsChart brewId={brew.id} />
+        {brew.status === "Active" &&
+          brew.targetFg != null &&
+          brew.latestReading &&
+          brew.latestReading.gravity <= brew.targetFg && (
+            <div className="flex items-center gap-3 rounded-md border border-green-300 bg-green-50 p-4 mb-6 dark:border-green-800 dark:bg-green-950">
+              <PartyPopper className="h-5 w-5 text-green-600 shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-green-800 dark:text-green-200">
+                  Target gravity reached!
+                </p>
+                <p className="text-sm text-green-700 dark:text-green-300">
+                  Consider completing this brew.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => handleStatusChange("Completed")}
+                disabled={updateBrew.isPending}
+              >
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Complete Brew
+              </Button>
+            </div>
+          )}
+        <ReadingsChart brewId={brew.id} targetFg={brew.targetFg} />
         <ReadingsTable brewId={brew.id} />
       </div>
     </div>
