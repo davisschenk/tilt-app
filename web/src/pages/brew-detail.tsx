@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBrew, useUpdateBrew } from "@/hooks/use-brews";
 import EditBrewDialog from "@/components/brew/edit-brew-dialog";
+import DeleteBrewDialog from "@/components/brew/delete-brew-dialog";
 import * as toast from "@/lib/toast";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
@@ -34,6 +35,7 @@ export default function BrewDetail() {
   const { data: brew, isLoading } = useBrew(id!);
   const updateBrew = useUpdateBrew(id!);
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   function handleStatusChange(status: "Completed" | "Archived") {
     updateBrew.mutate(
@@ -102,7 +104,7 @@ export default function BrewDetail() {
                 Archive
               </Button>
             )}
-            <Button variant="destructive" size="sm">
+            <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
             </Button>
@@ -174,6 +176,7 @@ export default function BrewDetail() {
       )}
 
       <EditBrewDialog brew={brew} open={editOpen} onOpenChange={setEditOpen} />
+      <DeleteBrewDialog brewId={brew.id} brewName={brew.name} open={deleteOpen} onOpenChange={setDeleteOpen} />
 
       <Separator className="my-8" />
 
