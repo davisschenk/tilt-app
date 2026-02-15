@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
@@ -66,16 +66,24 @@ export default function HydrometerList() {
                   </div>
 
                   {h.latestReading && (
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">Gravity</p>
-                        <p className="font-medium">{h.latestReading.gravity.toFixed(3)} SG</p>
+                    <>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Gravity</p>
+                          <p className="font-medium">{h.latestReading.gravity.toFixed(3)} SG</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Temperature</p>
+                          <p className="font-medium">{h.latestReading.temperatureF.toFixed(1)}°F</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-muted-foreground">Temperature</p>
-                        <p className="font-medium">{h.latestReading.temperatureF.toFixed(1)}°F</p>
+                      <div className="text-sm">
+                        <p className="text-muted-foreground">Last Reading</p>
+                        <p className="font-medium">
+                          {formatDistanceToNow(new Date(h.latestReading.recordedAt), { addSuffix: true })}
+                        </p>
                       </div>
-                    </div>
+                    </>
                   )}
 
                   <div className="grid grid-cols-2 gap-2 text-sm">
