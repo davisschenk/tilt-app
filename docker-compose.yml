@@ -15,5 +15,21 @@ services:
       timeout: 5s
       retries: 5
 
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://tilt:${DB_PASSWORD:-password}@db:5432/tilt
+      ROCKET_PORT: "8000"
+      ROCKET_ADDRESS: "0.0.0.0"
+      ROCKET_SECRET_KEY: ${ROCKET_SECRET_KEY:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "8000:8000"
+
 volumes:
   pgdata:
