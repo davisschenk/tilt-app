@@ -99,7 +99,7 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes::hydrometers::routes())
         .mount("/api/v1", routes::brews::routes())
         .mount("/api/v1", routes::readings::routes())
-        .mount("/", FileServer::from(&web_dist))
+        .mount("/", FileServer::from(PathBuf::from(&web_dist)))
         .mount("/", routes![spa_fallback])
         .register(
             "/",
