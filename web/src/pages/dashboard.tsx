@@ -8,6 +8,7 @@ import { useBrews } from "@/hooks/use-brews";
 import { useHydrometers } from "@/hooks/use-hydrometers";
 import { useReadings } from "@/hooks/use-readings";
 import type { BrewResponse } from "@/types";
+import RecentReadingsChart from "@/components/dashboard/recent-readings-chart";
 
 function StatCard({
   title,
@@ -157,6 +158,8 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <RecentReadingsChart />
     </div>
   );
 }
