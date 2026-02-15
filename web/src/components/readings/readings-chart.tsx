@@ -89,7 +89,8 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
               />
               <YAxis
                 yAxisId="gravity"
-                domain={["auto", "auto"]}
+                domain={[(min: number) => Math.floor(min * 1000 - 1) / 1000, (max: number) => Math.ceil(max * 1000 + 1) / 1000]}
+                allowDataOverflow={false}
                 tick={{ fontSize: 11 }}
                 stroke="#1971C2"
                 tickFormatter={(v: number) => v.toFixed(3)}
@@ -97,10 +98,11 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
               <YAxis
                 yAxisId="temp"
                 orientation="right"
-                domain={["auto", "auto"]}
+                domain={[(min: number) => Math.floor(min - 1), (max: number) => Math.ceil(max + 1)]}
+                allowDataOverflow={false}
                 tick={{ fontSize: 11 }}
                 stroke="#E8590C"
-                tickFormatter={(v: number) => `${v}°F`}
+                tickFormatter={(v: number) => `${v.toFixed(1)}°F`}
               />
               <Tooltip
                 formatter={(value: unknown, name?: string) => {
