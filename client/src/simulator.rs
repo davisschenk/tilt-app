@@ -33,10 +33,14 @@ impl TiltSimulator {
     fn generate_readings_at(&self, elapsed_secs: f64) -> Vec<TiltReading> {
         let mut rng = rand::rng();
 
+        let color_count = self.colors.len() as f64;
+
         self.colors
             .iter()
-            .map(|color| {
-                let phase = (elapsed_secs / PERIOD_SECS) * std::f64::consts::TAU;
+            .enumerate()
+            .map(|(i, color)| {
+                let color_offset = (i as f64 / color_count) * std::f64::consts::TAU;
+                let phase = (elapsed_secs / PERIOD_SECS) * std::f64::consts::TAU + color_offset;
                 let mid_gravity = (self.og + self.target_fg) / 2.0;
                 let amplitude = (self.og - self.target_fg) / 2.0;
                 let base_gravity = mid_gravity + amplitude * phase.sin();
