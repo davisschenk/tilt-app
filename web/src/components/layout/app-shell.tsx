@@ -10,6 +10,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Toaster } from "@/components/ui/sonner";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -85,6 +86,7 @@ export default function AppShell() {
           <Outlet />
         </main>
       </div>
+      <Toaster />
     </div>
   );
 }
