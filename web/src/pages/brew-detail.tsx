@@ -52,6 +52,21 @@ export default function BrewDetail() {
     );
   }
 
+  function handleFinishBrew() {
+    const fg = brew?.latestReading?.gravity;
+    updateBrew.mutate(
+      {
+        status: "Completed" as const,
+        fg: fg ?? null,
+        endDate: new Date().toISOString(),
+      },
+      {
+        onSuccess: () => toast.success(`Brew finished${fg ? ` with FG ${fg.toFixed(3)}` : ""}`),
+        onError: () => toast.error("Failed to finish brew"),
+      },
+    );
+  }
+
   if (isLoading) {
     return (
       <div>
@@ -91,11 +106,11 @@ export default function BrewDetail() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handleStatusChange("Completed")}
+                onClick={handleFinishBrew}
                 disabled={updateBrew.isPending}
               >
                 <CheckCircle className="mr-2 h-4 w-4" />
-                Complete
+                Finish Brew
               </Button>
             )}
             {brew.status !== "Archived" && (
@@ -204,11 +219,11 @@ export default function BrewDetail() {
               </div>
               <Button
                 size="sm"
-                onClick={() => handleStatusChange("Completed")}
+                onClick={handleFinishBrew}
                 disabled={updateBrew.isPending}
               >
                 <CheckCircle className="mr-2 h-4 w-4" />
-                Complete Brew
+                Finish Brew
               </Button>
             </div>
           )}
