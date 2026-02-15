@@ -102,6 +102,7 @@ export default function RecentReadingsChart() {
                   stroke={BREW_COLORS[color] ?? "#868E96"}
                   dot={false}
                   strokeWidth={2}
+                  connectNulls
                   name={color}
                 />
               ))}
