@@ -25,3 +25,32 @@ db-entities:
 
 # Reset database: stop, start, and re-run migrations
 db-reset: db-down db-up db-migrate
+
+# Run the Rocket API server
+server:
+    cargo run -p server
+
+# Run the client in simulate mode (no BLE hardware needed)
+client-sim:
+    cargo run -p client -- --simulate --server-url http://localhost:8000 --scan-interval 5 --sim-colors Red,Blue
+
+# Run the Vite dev server for the web frontend
+web:
+    cd web && npm run dev
+
+# Start all dev services (run in separate terminals: just server, just client-sim, just web)
+dev: db-up
+    @echo "Database is up. Now run these in separate terminals:"
+    @echo "  just server"
+    @echo "  just client-sim"
+    @echo "  just web"
+
+# Build the entire project (Rust workspace + web frontend)
+build:
+    cargo build --workspace
+    cd web && npm run build
+
+# Remove all build artifacts
+clean:
+    cargo clean
+    rm -rf web/dist
