@@ -20,7 +20,10 @@ fn preflight(_path: PathBuf) -> rocket::http::Status {
 
 #[get("/<_path..>", rank = 100)]
 async fn spa_fallback(_path: PathBuf) -> Option<NamedFile> {
-    let web_dist = std::env::var("WEB_DIST_DIR").unwrap_or_else(|_| "../web/dist".to_string());
+    let web_dist = std::env::var("WEB_DIST_DIR")
+        .unwrap_or_else(|_| "../web/dist".to_string())
+        .trim()
+        .to_string();
     NamedFile::open(PathBuf::from(&web_dist).join("index.html")).await.ok()
 }
 
@@ -83,7 +86,10 @@ async fn rocket() -> Rocket<Build> {
     let db = setup_db().await;
     let cors = setup_cors();
 
-    let web_dist = std::env::var("WEB_DIST_DIR").unwrap_or_else(|_| "../web/dist".to_string());
+    let web_dist = std::env::var("WEB_DIST_DIR")
+        .unwrap_or_else(|_| "../web/dist".to_string())
+        .trim()
+        .to_string();
 
     rocket::build()
         .manage(db)
