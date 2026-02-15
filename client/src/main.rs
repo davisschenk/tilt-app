@@ -1,4 +1,5 @@
 mod scanner;
+mod uploader;
 
 use clap::Parser;
 
