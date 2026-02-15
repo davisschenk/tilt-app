@@ -1,3 +1,10 @@
+FROM node:22-slim AS web-builder
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ .
+RUN npm run build
+
 FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
 WORKDIR /app
 
@@ -22,4 +29,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/target/release/server /usr/local/bin/server
+COPY --from=web-builder /app/web/dist /app/web/dist
+ENV WEB_DIST_DIR=/app/web/dist
 ENTRYPOINT ["/usr/local/bin/server"]
