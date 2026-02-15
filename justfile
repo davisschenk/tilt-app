@@ -38,6 +38,10 @@ client-sim:
 web:
     cd web && npm run dev
 
+# Build web frontend and serve everything from Rocket (single server)
+serve: build
+    cargo run -p server
+
 # Start all dev services (run in separate terminals: just server, just client-sim, just web)
 dev: db-up
     @echo "Database is up. Now run these in separate terminals:"

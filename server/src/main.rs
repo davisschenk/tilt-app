@@ -2,9 +2,11 @@ mod models;
 mod routes;
 mod services;
 
+use rocket::fs::{FileServer, NamedFile};
 use rocket::serde::json::Json;
 use rocket::{Build, Rocket, catch, catchers, get, options, routes};
 use sea_orm::{Database, DatabaseConnection};
+use std::path::PathBuf;
 
 #[get("/health")]
 fn health() -> Json<serde_json::Value> {
@@ -12,8 +14,14 @@ fn health() -> Json<serde_json::Value> {
 }
 
 #[options("/<_path..>")]
-fn preflight(_path: std::path::PathBuf) -> rocket::http::Status {
+fn preflight(_path: PathBuf) -> rocket::http::Status {
     rocket::http::Status::NoContent
+}
+
+#[get("/<_path..>", rank = 100)]
+async fn spa_fallback(_path: PathBuf) -> Option<NamedFile> {
+    let web_dist = std::env::var("WEB_DIST_DIR").unwrap_or_else(|_| "../web/dist".to_string());
+    NamedFile::open(PathBuf::from(&web_dist).join("index.html")).await.ok()
 }
 
 #[catch(404)]
@@ -75,6 +83,8 @@ async fn rocket() -> Rocket<Build> {
     let db = setup_db().await;
     let cors = setup_cors();
 
+    let web_dist = std::env::var("WEB_DIST_DIR").unwrap_or_else(|_| "../web/dist".to_string());
+
     rocket::build()
         .manage(db)
         .attach(cors)
@@ -83,6 +93,8 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes::hydrometers::routes())
         .mount("/api/v1", routes::brews::routes())
         .mount("/api/v1", routes::readings::routes())
+        .mount("/", FileServer::from(&web_dist))
+        .mount("/", routes![spa_fallback])
         .register(
             "/",
             catchers![not_found, unprocessable_entity, internal_error],
