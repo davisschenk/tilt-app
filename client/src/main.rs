@@ -1,3 +1,5 @@
+mod scanner;
+
 use clap::Parser;
 
 #[derive(Parser, Debug)]

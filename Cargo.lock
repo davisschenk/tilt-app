@@ -663,6 +663,7 @@ checksum = "3a822ea5bc7590f9d40f1ba12c0dc3c2760f3482c6984db1573ad11031420831"
 name = "client"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "btleplug",
  "chrono",
  "clap",
@@ -673,6 +674,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
