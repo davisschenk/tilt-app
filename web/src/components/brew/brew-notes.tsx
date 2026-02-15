@@ -1,10 +1,10 @@
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
+import MDEditor from "@uiw/react-md-editor";
 import { Pencil, Check, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { useUpdateBrew } from "@/hooks/use-brews";
+import { useTheme } from "@/components/theme-provider";
 import * as toast from "@/lib/toast";
 
 interface BrewNotesProps {
@@ -16,6 +16,14 @@ export default function BrewNotes({ brewId, notes }: BrewNotesProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(notes ?? "");
   const updateBrew = useUpdateBrew(brewId);
+  const { theme } = useTheme();
+
+  const colorMode =
+    theme === "system"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      : theme;
 
   function handleSave() {
     updateBrew.mutate(
@@ -56,13 +64,14 @@ export default function BrewNotes({ brewId, notes }: BrewNotesProps) {
       <CardContent>
         {editing ? (
           <div className="space-y-3">
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Write your notes here... Markdown is supported."
-              rows={8}
-              className="font-mono text-sm"
-            />
+            <div data-color-mode={colorMode}>
+              <MDEditor
+                value={draft}
+                onChange={(val) => setDraft(val ?? "")}
+                preview="live"
+                height={300}
+              />
+            </div>
             <div className="flex gap-2">
               <Button size="sm" onClick={handleSave} disabled={updateBrew.isPending}>
                 <Check className="mr-1 h-3 w-3" />
@@ -75,8 +84,8 @@ export default function BrewNotes({ brewId, notes }: BrewNotesProps) {
             </div>
           </div>
         ) : notes ? (
-          <div className="prose prose-sm dark:prose-invert max-w-none">
-            <ReactMarkdown>{notes}</ReactMarkdown>
+          <div data-color-mode={colorMode}>
+            <MDEditor.Markdown source={notes} />
           </div>
         ) : (
           <p
