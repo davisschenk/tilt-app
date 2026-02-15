@@ -56,7 +56,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(DeriveIden)]
-enum Hydrometers {
+pub(crate) enum Hydrometers {
     Table,
     Id,
     Color,
