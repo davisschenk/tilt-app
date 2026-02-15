@@ -77,6 +77,7 @@ export interface HydrometerResponse {
   tempOffsetF: number;
   gravityOffset: number;
   createdAt: string;
+  latestReading: TiltReading | null;
 }
 
 export interface ReadingResponse {

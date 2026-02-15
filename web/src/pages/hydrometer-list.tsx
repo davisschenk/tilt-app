@@ -65,6 +65,19 @@ export default function HydrometerList() {
                     </div>
                   </div>
 
+                  {h.latestReading && (
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Gravity</p>
+                        <p className="font-medium">{h.latestReading.gravity.toFixed(3)} SG</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Temperature</p>
+                        <p className="font-medium">{h.latestReading.temperatureF.toFixed(1)}°F</p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
                       <p className="text-muted-foreground">Temp Offset</p>

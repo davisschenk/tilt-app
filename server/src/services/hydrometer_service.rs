@@ -2,32 +2,62 @@ use sea_orm::*;
 use uuid::Uuid;
 
 use crate::models::entities::hydrometers::{self, ActiveModel, Column, Entity as Hydrometer};
-use shared::{CreateHydrometer, HydrometerResponse, UpdateHydrometer};
+use crate::models::entities::readings::{self, Entity as Reading};
+use shared::{CreateHydrometer, HydrometerResponse, TiltColor, TiltReading, UpdateHydrometer};
 
-impl From<hydrometers::Model> for HydrometerResponse {
-    fn from(model: hydrometers::Model) -> Self {
-        Self {
-            id: model.id,
-            color: shared::TiltColor::parse(&model.color).unwrap_or(shared::TiltColor::Red),
-            name: model.name,
-            temp_offset_f: model.temp_offset_f,
-            gravity_offset: model.gravity_offset,
-            created_at: model.created_at.into(),
-        }
+fn model_to_response(model: hydrometers::Model, latest: Option<TiltReading>) -> HydrometerResponse {
+    HydrometerResponse {
+        id: model.id,
+        color: TiltColor::parse(&model.color).unwrap_or(TiltColor::Red),
+        name: model.name,
+        temp_offset_f: model.temp_offset_f,
+        gravity_offset: model.gravity_offset,
+        created_at: model.created_at.into(),
+        latest_reading: latest,
     }
+}
+
+async fn latest_reading_for(
+    db: &DatabaseConnection,
+    hydrometer_id: Uuid,
+    color: &TiltColor,
+) -> Option<TiltReading> {
+    let reading = Reading::find()
+        .filter(readings::Column::HydrometerId.eq(hydrometer_id))
+        .order_by_desc(readings::Column::RecordedAt)
+        .one(db)
+        .await
+        .ok()??;
+    Some(TiltReading::new(
+        *color,
+        reading.temperature_f,
+        reading.gravity,
+        reading.rssi,
+        reading.recorded_at.into(),
+    ))
 }
 
 pub async fn find_all(db: &DatabaseConnection) -> Result<Vec<HydrometerResponse>, DbErr> {
     let models = Hydrometer::find().all(db).await?;
-    Ok(models.into_iter().map(HydrometerResponse::from).collect())
+    let mut results = Vec::with_capacity(models.len());
+    for model in models {
+        let color = TiltColor::parse(&model.color).unwrap_or(TiltColor::Red);
+        let latest = latest_reading_for(db, model.id, &color).await;
+        results.push(model_to_response(model, latest));
+    }
+    Ok(results)
 }
 
 pub async fn find_by_id(
     db: &DatabaseConnection,
     id: Uuid,
 ) -> Result<Option<HydrometerResponse>, DbErr> {
-    let model = Hydrometer::find_by_id(id).one(db).await?;
-    Ok(model.map(HydrometerResponse::from))
+    let Some(model) = Hydrometer::find_by_id(id).one(db).await? else {
+        return Ok(None);
+    };
+    let color = TiltColor::parse(&model.color).unwrap_or(TiltColor::Red);
+    let latest = latest_reading_for(db, model.id, &color).await;
+    Ok(Some(model_to_response(model, latest)))
 }
 
 pub async fn create(
@@ -43,7 +73,7 @@ pub async fn create(
         created_at: Set(chrono::Utc::now().into()),
     };
     let result = Hydrometer::insert(model).exec_with_returning(db).await?;
-    Ok(HydrometerResponse::from(result))
+    Ok(model_to_response(result, None))
 }
 
 pub async fn update(
@@ -68,7 +98,9 @@ pub async fn update(
     }
 
     let updated = active.update(db).await?;
-    Ok(Some(HydrometerResponse::from(updated)))
+    let color = TiltColor::parse(&updated.color).unwrap_or(TiltColor::Red);
+    let latest = latest_reading_for(db, updated.id, &color).await;
+    Ok(Some(model_to_response(updated, latest)))
 }
 
 pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {

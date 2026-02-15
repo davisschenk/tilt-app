@@ -225,6 +225,7 @@ pub struct HydrometerResponse {
     pub temp_offset_f: f64,
     pub gravity_offset: f64,
     pub created_at: DateTime<Utc>,
+    pub latest_reading: Option<TiltReading>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -533,6 +534,7 @@ mod tests {
             temp_offset_f: 0.0,
             gravity_offset: 0.0,
             created_at: now,
+            latest_reading: None,
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"tempOffsetF\""));
