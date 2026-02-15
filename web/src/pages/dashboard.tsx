@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Beer, Thermometer, Activity, BarChart3, Plus, RefreshCw } from "lucide-react";
@@ -60,6 +60,13 @@ export default function Dashboard() {
   const { data: hydrometers, isLoading: hydrometersLoading } = useHydrometers();
   const { data: readings, isLoading: readingsLoading } = useReadings({ limit: 1 });
 
+  const todayStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }, []);
+  const { data: readingsToday } = useReadings({ since: todayStart });
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await queryClient.invalidateQueries();
@@ -114,7 +121,7 @@ export default function Dashboard() {
         />
         <StatCard
           title="Readings Today"
-          value="—"
+          value={String(readingsToday?.length ?? 0)}
           description="From all hydrometers"
           icon={BarChart3}
           isLoading={readingsLoading}
