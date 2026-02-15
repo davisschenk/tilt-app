@@ -28,7 +28,7 @@ const STATUS_BADGE: Record<string, { variant: "default" | "secondary" | "outline
 };
 
 export default function BrewList() {
-  const [statusFilter, setStatusFilter] = useState<BrewStatus | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<BrewStatus>("Active" as BrewStatus);
   const { data: brews, isLoading } = useBrews(statusFilter);
   const { data: hydrometers } = useHydrometers();
   const navigate = useNavigate();
@@ -50,12 +50,11 @@ export default function BrewList() {
       />
 
       <Tabs
-        value={statusFilter ?? "all"}
-        onValueChange={(v) => setStatusFilter(v === "all" ? undefined : (v as BrewStatus))}
+        value={statusFilter}
+        onValueChange={(v) => setStatusFilter(v as BrewStatus)}
         className="mb-4"
       >
         <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="Active">Active</TabsTrigger>
           <TabsTrigger value="Completed">Completed</TabsTrigger>
           <TabsTrigger value="Archived">Archived</TabsTrigger>
