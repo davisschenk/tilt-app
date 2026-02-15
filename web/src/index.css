@@ -125,3 +125,27 @@
     @apply bg-background text-foreground;
   }
 }
+
+[data-color-mode="dark"] .w-md-editor,
+[data-color-mode="dark"] .wmde-markdown {
+  --color-canvas-default: var(--card) !important;
+  --color-canvas-subtle: var(--muted) !important;
+  --color-border-default: var(--border) !important;
+  --color-border-muted: var(--border) !important;
+  --color-fg-default: var(--foreground) !important;
+  --color-fg-muted: var(--muted-foreground) !important;
+  --color-accent-fg: var(--primary) !important;
+  --color-neutral-muted: var(--muted) !important;
+}
+
+[data-color-mode="light"] .w-md-editor,
+[data-color-mode="light"] .wmde-markdown {
+  --color-canvas-default: var(--card) !important;
+  --color-canvas-subtle: var(--muted) !important;
+  --color-border-default: var(--border) !important;
+  --color-border-muted: var(--border) !important;
+  --color-fg-default: var(--foreground) !important;
+  --color-fg-muted: var(--muted-foreground) !important;
+  --color-accent-fg: var(--primary) !important;
+  --color-neutral-muted: var(--muted) !important;
+}
