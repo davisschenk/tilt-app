@@ -34,6 +34,25 @@ struct Args {
         help = "Maximum number of readings to buffer locally"
     )]
     buffer_size: usize,
+
+    #[arg(long, default_value_t = false, help = "Run in simulate mode (no BLE hardware required)")]
+    simulate: bool,
+
+    #[arg(
+        long,
+        default_value = "Red",
+        help = "Comma-separated Tilt colors to simulate (e.g. 'Red,Blue')"
+    )]
+    sim_colors: String,
+
+    #[arg(long, default_value_t = 1.055, help = "Simulated starting Original Gravity")]
+    sim_og: f64,
+
+    #[arg(long, default_value_t = 1.012, help = "Simulated target Final Gravity")]
+    sim_target_fg: f64,
+
+    #[arg(long, default_value_t = 68.0, help = "Simulated base temperature in °F")]
+    sim_temp: f64,
 }
 
 #[tokio::main]
@@ -47,13 +66,26 @@ async fn main() {
         )
         .init();
 
-    tracing::info!(
-        server_url = %args.server_url,
-        scan_interval = args.scan_interval,
-        buffer_size = args.buffer_size,
-        log_level = %args.log_level,
-        "Starting Tilt Hydrometer BLE client"
-    );
+    if args.simulate {
+        tracing::info!(
+            server_url = %args.server_url,
+            scan_interval = args.scan_interval,
+            buffer_size = args.buffer_size,
+            sim_colors = %args.sim_colors,
+            sim_og = args.sim_og,
+            sim_target_fg = args.sim_target_fg,
+            sim_temp = args.sim_temp,
+            "Starting Tilt client in SIMULATE mode (no BLE hardware required)"
+        );
+    } else {
+        tracing::info!(
+            server_url = %args.server_url,
+            scan_interval = args.scan_interval,
+            buffer_size = args.buffer_size,
+            log_level = %args.log_level,
+            "Starting Tilt Hydrometer BLE client"
+        );
+    }
 
     let scanner = match TiltScanner::new().await {
         Ok(s) => s,
