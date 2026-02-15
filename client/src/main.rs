@@ -131,7 +131,7 @@ async fn main() {
                 _ = tokio::time::sleep(scan_duration) => {
                     let mut readings = simulator.generate_readings();
                     for r in &readings {
-                        tracing::debug!(color = ?r.color, temp = r.temperature_f, gravity = r.gravity, "Simulated reading");
+                        tracing::info!(color = ?r.color, temp = format!("{:.1}", r.temperature_f), gravity = format!("{:.4}", r.gravity), rssi = ?r.rssi, "Simulated reading");
                     }
                     tracing::info!(count = readings.len(), "Simulated scan complete");
 
