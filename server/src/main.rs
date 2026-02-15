@@ -62,5 +62,6 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes![health])
         .mount("/api/v1", routes::hydrometers::routes())
         .mount("/api/v1", routes::brews::routes())
+        .mount("/api/v1", routes::readings::routes())
         .register("/", catchers![not_found, unprocessable_entity, internal_error])
 }
