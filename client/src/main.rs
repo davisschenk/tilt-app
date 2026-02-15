@@ -1,5 +1,6 @@
 mod buffer;
 mod scanner;
+mod simulator;
 mod uploader;
 
 use std::time::Duration;
