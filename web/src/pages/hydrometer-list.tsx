@@ -11,6 +11,7 @@ import ColorDot from "@/components/ui/color-dot";
 import { useHydrometers } from "@/hooks/use-hydrometers";
 import { useBrews } from "@/hooks/use-brews";
 import { TILT_COLOR_MAP } from "@/lib/tilt-colors";
+import RegisterHydrometerDialog from "@/components/hydrometer/register-hydrometer-dialog";
 import type { HydrometerResponse } from "@/types";
 
 export default function HydrometerList() {
@@ -103,6 +104,7 @@ export default function HydrometerList() {
           </Button>
         </div>
       )}
+      <RegisterHydrometerDialog open={registerOpen} onOpenChange={setRegisterOpen} />
     </div>
   );
 }
