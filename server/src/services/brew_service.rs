@@ -2,33 +2,57 @@ use sea_orm::*;
 use uuid::Uuid;
 
 use crate::models::entities::brews::{self, ActiveModel, Column, Entity as Brew};
-use shared::{BrewResponse, BrewStatus, CreateBrew, UpdateBrew};
+use crate::models::entities::hydrometers::Entity as Hydrometer;
+use crate::models::entities::readings::{self, Entity as Reading};
+use shared::{BrewResponse, BrewStatus, CreateBrew, TiltColor, TiltReading, UpdateBrew};
 
-impl From<brews::Model> for BrewResponse {
-    fn from(model: brews::Model) -> Self {
-        let status = match model.status.as_str() {
-            "Completed" => BrewStatus::Completed,
-            "Archived" => BrewStatus::Archived,
-            _ => BrewStatus::Active,
-        };
-        Self {
-            id: model.id,
-            name: model.name,
-            style: model.style,
-            og: model.og,
-            fg: model.fg,
-            target_fg: model.target_fg,
-            abv: model.abv,
-            status,
-            start_date: model.start_date.map(Into::into),
-            end_date: model.end_date.map(Into::into),
-            notes: model.notes,
-            hydrometer_id: model.hydrometer_id,
-            created_at: model.created_at.into(),
-            updated_at: model.updated_at.into(),
-            latest_reading: None,
-        }
+fn model_to_response(model: brews::Model, latest: Option<TiltReading>) -> BrewResponse {
+    let status = match model.status.as_str() {
+        "Completed" => BrewStatus::Completed,
+        "Archived" => BrewStatus::Archived,
+        _ => BrewStatus::Active,
+    };
+    BrewResponse {
+        id: model.id,
+        name: model.name,
+        style: model.style,
+        og: model.og,
+        fg: model.fg,
+        target_fg: model.target_fg,
+        abv: model.abv,
+        status,
+        start_date: model.start_date.map(Into::into),
+        end_date: model.end_date.map(Into::into),
+        notes: model.notes,
+        hydrometer_id: model.hydrometer_id,
+        created_at: model.created_at.into(),
+        updated_at: model.updated_at.into(),
+        latest_reading: latest,
     }
+}
+
+async fn latest_reading_for(
+    db: &DatabaseConnection,
+    brew: &brews::Model,
+) -> Option<TiltReading> {
+    let hydrometer = Hydrometer::find_by_id(brew.hydrometer_id)
+        .one(db)
+        .await
+        .ok()??;
+    let color = TiltColor::parse(&hydrometer.color).unwrap_or(TiltColor::Red);
+    let reading = Reading::find()
+        .filter(readings::Column::BrewId.eq(brew.id))
+        .order_by_desc(readings::Column::RecordedAt)
+        .one(db)
+        .await
+        .ok()??;
+    Some(TiltReading::new(
+        color,
+        reading.temperature_f,
+        reading.gravity,
+        reading.rssi,
+        reading.recorded_at.into(),
+    ))
 }
 
 pub async fn find_all(
@@ -40,12 +64,20 @@ pub async fn find_all(
         query = query.filter(Column::Status.eq(status));
     }
     let models = query.all(db).await?;
-    Ok(models.into_iter().map(BrewResponse::from).collect())
+    let mut results = Vec::with_capacity(models.len());
+    for model in models {
+        let latest = latest_reading_for(db, &model).await;
+        results.push(model_to_response(model, latest));
+    }
+    Ok(results)
 }
 
 pub async fn find_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<BrewResponse>, DbErr> {
-    let model = Brew::find_by_id(id).one(db).await?;
-    Ok(model.map(BrewResponse::from))
+    let Some(model) = Brew::find_by_id(id).one(db).await? else {
+        return Ok(None);
+    };
+    let latest = latest_reading_for(db, &model).await;
+    Ok(Some(model_to_response(model, latest)))
 }
 
 pub async fn create(db: &DatabaseConnection, input: CreateBrew) -> Result<BrewResponse, DbErr> {
@@ -67,7 +99,7 @@ pub async fn create(db: &DatabaseConnection, input: CreateBrew) -> Result<BrewRe
         updated_at: Set(now.into()),
     };
     let result = Brew::insert(model).exec_with_returning(db).await?;
-    Ok(BrewResponse::from(result))
+    Ok(model_to_response(result, None))
 }
 
 pub async fn update(
@@ -111,7 +143,8 @@ pub async fn update(
     active.updated_at = Set(chrono::Utc::now().into());
 
     let updated = active.update(db).await?;
-    Ok(Some(BrewResponse::from(updated)))
+    let latest = latest_reading_for(db, &updated).await;
+    Ok(Some(model_to_response(updated, latest)))
 }
 
 pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
