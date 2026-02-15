@@ -4,9 +4,8 @@ use chrono::Utc;
 use rand::RngExt;
 use shared::{TiltColor, TiltReading};
 
-/// Fermentation decay constant chosen so ~95% attenuation at 14 days.
-/// e^(-k * 14_days_in_secs) ≈ 0.05  →  k ≈ 3.0 / (14 * 86400)
-const DECAY_K: f64 = 3.0 / (14.0 * 86400.0);
+/// Full sine wave period in seconds (3 minutes).
+const PERIOD_SECS: f64 = 180.0;
 
 pub struct TiltSimulator {
     colors: Vec<TiltColor>,
@@ -37,13 +36,15 @@ impl TiltSimulator {
         self.colors
             .iter()
             .map(|color| {
-                let base_gravity =
-                    self.target_fg + (self.og - self.target_fg) * (-DECAY_K * elapsed_secs).exp();
+                let phase = (elapsed_secs / PERIOD_SECS) * std::f64::consts::TAU;
+                let mid_gravity = (self.og + self.target_fg) / 2.0;
+                let amplitude = (self.og - self.target_fg) / 2.0;
+                let base_gravity = mid_gravity + amplitude * phase.sin();
                 let gravity_noise: f64 = rng.random_range(-0.001..=0.001);
                 let gravity = (base_gravity + gravity_noise).clamp(self.target_fg, self.og);
 
                 let temp_jitter: f64 = rng.random_range(-0.5..=0.5);
-                let temperature_f = self.base_temp + temp_jitter;
+                let temperature_f = self.base_temp + 2.0 * phase.cos() + temp_jitter;
 
                 let rssi: i16 = rng.random_range(-80..=-60);
 
@@ -96,7 +97,7 @@ mod tests {
     #[test]
     fn gravity_within_og_to_target_fg_bounds() {
         let sim = default_sim();
-        for elapsed in [0.0, 3600.0, 86400.0, 604800.0, 1_209_600.0] {
+        for elapsed in [0.0, 45.0, 90.0, 135.0, 180.0, 270.0] {
             for _ in 0..20 {
                 let readings = sim.generate_readings_at(elapsed);
                 for r in &readings {
@@ -118,7 +119,7 @@ mod tests {
             let readings = sim.generate_readings();
             for r in &readings {
                 assert!(
-                    r.temperature_f >= 67.0 && r.temperature_f <= 69.0,
+                    r.temperature_f >= 65.0 && r.temperature_f <= 71.0,
                     "temperature {} out of bounds",
                     r.temperature_f,
                 );
@@ -139,33 +140,30 @@ mod tests {
     }
 
     #[test]
-    fn gravity_decreases_over_time() {
+    fn gravity_peaks_at_quarter_period() {
         let sim = default_sim();
-        let early: f64 = (0..50)
-            .map(|_| sim.generate_readings_at(0.0)[0].gravity)
-            .sum::<f64>()
-            / 50.0;
-        let late: f64 = (0..50)
-            .map(|_| sim.generate_readings_at(604800.0)[0].gravity)
+        let quarter = PERIOD_SECS / 4.0; // sin peaks at π/2
+        let avg: f64 = (0..50)
+            .map(|_| sim.generate_readings_at(quarter)[0].gravity)
             .sum::<f64>()
             / 50.0;
         assert!(
-            late < early,
-            "average gravity at 7d ({late}) should be less than at 0s ({early})",
+            (avg - 1.055).abs() < 0.003,
+            "average gravity at quarter period ({avg}) should be near OG 1.055",
         );
     }
 
     #[test]
-    fn gravity_near_target_after_14_days() {
+    fn gravity_troughs_at_three_quarter_period() {
         let sim = default_sim();
-        let fourteen_days = 14.0 * 86400.0;
+        let three_quarter = PERIOD_SECS * 3.0 / 4.0; // sin troughs at 3π/2
         let avg: f64 = (0..50)
-            .map(|_| sim.generate_readings_at(fourteen_days)[0].gravity)
+            .map(|_| sim.generate_readings_at(three_quarter)[0].gravity)
             .sum::<f64>()
             / 50.0;
         assert!(
-            (avg - 1.012).abs() < 0.005,
-            "average gravity after 14d ({avg}) should be near target FG 1.012",
+            (avg - 1.012).abs() < 0.003,
+            "average gravity at 3/4 period ({avg}) should be near target FG 1.012",
         );
     }
 }
