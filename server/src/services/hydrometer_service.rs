@@ -117,3 +117,23 @@ pub async fn find_by_color(
         .one(db)
         .await
 }
+
+pub async fn find_or_create_by_color(
+    db: &DatabaseConnection,
+    color: &shared::TiltColor,
+) -> Result<hydrometers::Model, DbErr> {
+    if let Some(existing) = find_by_color(db, color).await? {
+        return Ok(existing);
+    }
+    let model = ActiveModel {
+        id: Set(Uuid::new_v4()),
+        color: Set(format!("{:?}", color)),
+        name: Set(None),
+        temp_offset_f: Set(0.0),
+        gravity_offset: Set(0.0),
+        created_at: Set(chrono::Utc::now().into()),
+    };
+    let result = Hydrometer::insert(model).exec_with_returning(db).await?;
+    tracing::info!(color = ?color, id = %result.id, "Auto-registered new hydrometer");
+    Ok(result)
+}

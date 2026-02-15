@@ -27,12 +27,9 @@ async fn create_batch(
     }
 
     for (color, batch_readings) in grouped {
-        let hydrometer = hydrometer_service::find_by_color(db.inner(), &color).await;
-        let hydrometer = match hydrometer {
-            Ok(Some(h)) => h,
-            Ok(None) => continue,
-            Err(_) => return Err(Status::InternalServerError),
-        };
+        let hydrometer = hydrometer_service::find_or_create_by_color(db.inner(), &color)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
 
         let active_brew = brew_service::find_active_for_hydrometer(db.inner(), hydrometer.id).await;
         let brew_id = match active_brew {
