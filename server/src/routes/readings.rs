@@ -29,7 +29,10 @@ async fn create_batch(
     for (color, batch_readings) in grouped {
         let hydrometer = hydrometer_service::find_or_create_by_color(db.inner(), &color)
             .await
-            .map_err(|_| Status::InternalServerError)?;
+            .map_err(|e| {
+                tracing::error!(color = ?color, error = %e, "Failed to find/create hydrometer");
+                Status::InternalServerError
+            })?;
 
         let active_brew = brew_service::find_active_for_hydrometer(db.inner(), hydrometer.id).await;
         let brew_id = match active_brew {
@@ -41,7 +44,10 @@ async fn create_batch(
         let count =
             reading_service::batch_create(db.inner(), batch_readings, hydrometer.id, brew_id)
                 .await
-                .map_err(|_| Status::InternalServerError)?;
+                .map_err(|e| {
+                    tracing::error!(hydrometer_id = %hydrometer.id, error = %e, "Failed to batch create readings");
+                    Status::InternalServerError
+                })?;
 
         total_count += count;
     }
@@ -72,7 +78,10 @@ async fn query(
     reading_service::find_filtered(db.inner(), &query)
         .await
         .map(Json)
-        .map_err(|_| Status::InternalServerError)
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to query readings");
+            Status::InternalServerError
+        })
 }
 
 pub fn routes() -> Vec<Route> {

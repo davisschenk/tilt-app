@@ -6,6 +6,7 @@ use rocket::fs::{FileServer, NamedFile};
 use rocket::serde::json::Json;
 use rocket::{Build, Rocket, catch, catchers, get, options, routes};
 use sea_orm::{Database, DatabaseConnection};
+use sea_orm_migration::MigratorTrait;
 use std::path::PathBuf;
 
 #[get("/health")]
@@ -84,6 +85,13 @@ async fn rocket() -> Rocket<Build> {
     tracing::info!("Starting Tilt Hydrometer Platform server");
 
     let db = setup_db().await;
+
+    tracing::info!("Running database migrations");
+    migration::Migrator::up(&db, None)
+        .await
+        .expect("Failed to run database migrations");
+    tracing::info!("Migrations complete");
+
     let cors = setup_cors();
 
     let web_dist = std::env::var("WEB_DIST_DIR")
