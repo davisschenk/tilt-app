@@ -1,0 +1,4 @@
+# Cross-compilation linker for Raspberry Pi Zero W (armv6l, hard-float)
+# Used when building natively (without the `cross` tool)
+[target.arm-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc"

@@ -23,7 +23,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/tilt-client --server-url http://YOUR_SERVER:8000
+ExecStart=/usr/local/bin/tilt-client --server-url https://tilt.schenkenberger.dev
 Restart=always
 RestartSec=10
 Environment=RUST_LOG=info

@@ -86,5 +86,20 @@ lint:
 check:
     cargo check --workspace
 
+# Cross-compile the client for Raspberry Pi Zero W (arm-unknown-linux-gnueabihf)
+cross-client:
+    cross build --release --target arm-unknown-linux-gnueabihf -p client
+
+# Deploy the cross-compiled client binary to a Raspberry Pi via SSH
+# Usage: just deploy-client tilt@192.168.1.100
+deploy-client host:
+    just cross-client
+    scp target/arm-unknown-linux-gnueabihf/release/client {{host}}:/tmp/tilt-client
+    scp client/tilt-client.service {{host}}:/tmp/tilt-client.service
+    ssh {{host}} "sudo mv /tmp/tilt-client /usr/local/bin/tilt-client && sudo chmod +x /usr/local/bin/tilt-client"
+    ssh {{host}} "sudo mv /tmp/tilt-client.service /etc/systemd/system/tilt-client.service"
+    ssh {{host}} "sudo systemctl daemon-reload && sudo systemctl enable tilt-client && sudo systemctl restart tilt-client"
+    @echo "Deployed and started tilt-client on {{host}}"
+
 # Full CI pipeline: format check, lint, and test
 ci: fmt-check lint test
