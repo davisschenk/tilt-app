@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="beer" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="liquid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+  <!-- Beer glass / beaker -->
+  <rect x="6" y="4" width="20" height="24" rx="3" ry="3" fill="url(#beer)" opacity="0.15" stroke="#D97706" stroke-width="1.5"/>
+  <!-- Liquid fill -->
+  <rect x="7.5" y="12" width="17" height="14.5" rx="2" ry="2" fill="url(#liquid)" opacity="0.35"/>
+  <!-- Tilted hydrometer body -->
+  <line x1="10" y1="24" x2="22" y2="8" stroke="#D97706" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Hydrometer bulb -->
+  <circle cx="10" cy="24" r="3" fill="#D97706"/>
+  <circle cx="10" cy="24" r="1.5" fill="#FBBF24"/>
+  <!-- Hydrometer top -->
+  <circle cx="22" cy="8" r="1.5" fill="#D97706"/>
+  <!-- Scale marks on hydrometer -->
+  <line x1="14" y1="19.5" x2="15" y2="18.5" stroke="#FDE68A" stroke-width="1" stroke-linecap="round"/>
+  <line x1="16" y1="17" x2="17" y2="16" stroke="#FDE68A" stroke-width="1" stroke-linecap="round"/>
+  <line x1="18" y1="14.5" x2="19" y2="13.5" stroke="#FDE68A" stroke-width="1" stroke-linecap="round"/>
+</svg>
