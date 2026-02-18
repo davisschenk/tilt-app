@@ -207,7 +207,7 @@ async fn main() {
                             }
                         }
                         Err(e) => {
-                            tracing::warn!("Scan failed: {e}");
+                            tracing::warn!("Scan failed: {e:#}");
                         }
                     }
                 }

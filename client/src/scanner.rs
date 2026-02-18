@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+use std::pin::Pin;
 use std::time::Duration;
 
-use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
+use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager};
+use futures::Stream;
 use shared::{TiltColor, TiltReading};
-use tokio::time::sleep;
 use uuid::Uuid;
 
 const APPLE_COMPANY_ID: u16 = 0x004C;
@@ -12,6 +14,9 @@ const IBEACON_LENGTH: u8 = 0x15;
 
 pub struct TiltScanner {
     adapter: Adapter,
+    /// Event stream kept alive to prevent bluez-async D-Bus cleanup panic.
+    #[allow(dead_code)]
+    events: Pin<Box<dyn Stream<Item = CentralEvent> + Send>>,
 }
 
 impl TiltScanner {
@@ -23,16 +28,26 @@ impl TiltScanner {
             .next()
             .ok_or_else(|| anyhow::anyhow!("No Bluetooth adapter found"))?;
         tracing::info!("Using BLE adapter: {:?}", adapter.adapter_info().await?);
-        Ok(Self { adapter })
+
+        let events = adapter.events().await
+            .map_err(|e| anyhow::anyhow!("failed to get event stream: {e:#}"))?;
+
+        adapter.start_scan(ScanFilter::default()).await
+            .map_err(|e| anyhow::anyhow!("start_scan failed: {e:#}"))?;
+        tracing::info!("BLE scan started (continuous)");
+
+        Ok(Self { adapter, events })
     }
 
     pub async fn scan_once(&self, duration: Duration) -> anyhow::Result<Vec<TiltReading>> {
-        self.adapter.start_scan(ScanFilter::default()).await?;
-        sleep(duration).await;
-        self.adapter.stop_scan().await?;
+        // Wait for the scan window to collect advertisements
+        tokio::time::sleep(duration).await;
 
-        let peripherals = self.adapter.peripherals().await?;
-        let mut readings = Vec::new();
+        // Poll all peripherals BlueZ has discovered and check cached properties
+        let peripherals = self.adapter.peripherals().await
+            .map_err(|e| anyhow::anyhow!("peripherals() failed: {e:#}"))?;
+
+        let mut latest: HashMap<TiltColor, TiltReading> = HashMap::new();
 
         for peripheral in peripherals {
             let Some(properties) = peripheral.properties().await? else {
@@ -44,12 +59,18 @@ impl TiltScanner {
                     continue;
                 }
                 if let Some(reading) = parse_ibeacon_tilt(data) {
-                    readings.push(reading);
+                    tracing::debug!(
+                        color = ?reading.color,
+                        temp = reading.temperature_f,
+                        gravity = reading.gravity,
+                        "Tilt found via peripheral poll"
+                    );
+                    latest.insert(reading.color, reading);
                 }
             }
         }
 
-        Ok(readings)
+        Ok(latest.into_values().collect())
     }
 }
 
