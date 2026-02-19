@@ -7,7 +7,7 @@ use rocket::{
     time::Duration,
 };
 use sea_orm::DatabaseConnection;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -22,12 +22,6 @@ pub struct AuthMeResponse {
     pub user_sub: String,
     pub email: String,
     pub name: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CallbackParams {
-    pub code: String,
-    pub state: String,
 }
 
 #[get("/auth/login")]

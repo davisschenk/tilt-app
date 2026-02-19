@@ -1,13 +1,11 @@
 use std::{
-    collections::HashMap,
     net::IpAddr,
     num::NonZeroU32,
     sync::Arc,
-    time::Duration,
 };
 
 use governor::{
-    DefaultDirectRateLimiter, Quota, RateLimiter,
+    Quota, RateLimiter,
     clock::DefaultClock,
     state::keyed::DefaultKeyedStateStore,
 };
@@ -17,7 +15,6 @@ use rocket::{
     http::Status,
     outcome::Outcome,
 };
-use tokio::sync::Mutex;
 
 type KeyedLimiter = RateLimiter<IpAddr, DefaultKeyedStateStore<IpAddr>, DefaultClock>;
 
@@ -80,9 +77,11 @@ impl Fairing for RateLimit {
 
 /// Marker stored in request-local cache when rate limit is exceeded.
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub struct RateLimitExceeded(pub bool);
 
 /// Request guard that returns 429 if rate limit was exceeded.
+#[allow(dead_code)]
 pub struct RateLimitGuard;
 
 #[rocket::async_trait]

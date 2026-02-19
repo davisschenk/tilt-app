@@ -8,6 +8,7 @@ use sea_orm::DatabaseConnection;
 use crate::models::entities::api_keys;
 use crate::services::api_keys::{validate_api_key, ApiKeyError};
 
+#[allow(dead_code)]
 pub struct ApiKeyGuard {
     pub key: api_keys::Model,
 }

@@ -12,6 +12,7 @@ use crate::models::entities::api_keys::{self, ActiveModel, Entity as ApiKey};
 pub enum ApiKeyError {
     Expired,
     Invalid,
+    #[allow(dead_code)]
     Db(DbErr),
 }
 
