@@ -36,6 +36,11 @@ fn not_found() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "error": "not found" }))
 }
 
+#[catch(403)]
+fn forbidden() -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "error": "forbidden" }))
+}
+
 #[catch(422)]
 fn unprocessable_entity() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "error": "unprocessable entity" }))
@@ -58,8 +63,16 @@ fn setup_cors() -> rocket_cors::Cors {
     let allowed_origins = if frontend_url.is_empty() {
         rocket_cors::AllowedOrigins::all()
     } else {
-        let origins: Vec<&str> = frontend_url.split(',').map(str::trim).collect();
-        rocket_cors::AllowedOrigins::some_exact(&origins)
+        let port = std::env::var("ROCKET_PORT").unwrap_or_else(|_| "8000".to_string());
+        let mut origins: Vec<String> = frontend_url
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
+        origins.push(format!("http://localhost:{port}"));
+        origins.push(format!("http://127.0.0.1:{port}"));
+        origins.dedup();
+        let origin_refs: Vec<&str> = origins.iter().map(String::as_str).collect();
+        rocket_cors::AllowedOrigins::some_exact(&origin_refs)
     };
 
     rocket_cors::CorsOptions {
@@ -155,7 +168,7 @@ async fn rocket() -> Rocket<Build> {
         .mount("/", routes![spa_fallback])
         .register(
             "/",
-            catchers![not_found, unprocessable_entity, internal_error],
+            catchers![not_found, forbidden, unprocessable_entity, internal_error],
         );
 
     rocket = rocket
