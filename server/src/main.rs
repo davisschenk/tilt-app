@@ -143,6 +143,7 @@ async fn rocket() -> Rocket<Build> {
         .manage(db)
         .attach(cors)
         .attach(fairings::security_headers::SecurityHeaders)
+        .attach(fairings::session_cleanup::SessionCleanup)
         .mount("/api/v1", routes![health])
         .mount("/", routes![preflight])
         .mount("/api/v1", routes::hydrometers::routes())
