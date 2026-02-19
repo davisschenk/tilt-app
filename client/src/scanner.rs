@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::time::Duration;
 
-use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
+use btleplug::api::{Central, CentralEvent, Manager as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager};
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use shared::{TiltColor, TiltReading};
 use uuid::Uuid;
 
@@ -14,8 +14,9 @@ const IBEACON_LENGTH: u8 = 0x15;
 
 pub struct TiltScanner {
     adapter: Adapter,
-    /// Event stream kept alive to prevent bluez-async D-Bus cleanup panic.
-    #[allow(dead_code)]
+    /// Event stream created once and kept alive for the lifetime of the scanner.
+    /// Dropping it triggers a bluez-async panic (D-Bus match cleanup race),
+    /// so we hold it forever and reuse it across scan cycles.
     events: Pin<Box<dyn Stream<Item = CentralEvent> + Send>>,
 }
 
@@ -32,43 +33,49 @@ impl TiltScanner {
         let events = adapter.events().await
             .map_err(|e| anyhow::anyhow!("failed to get event stream: {e:#}"))?;
 
-        adapter.start_scan(ScanFilter::default()).await
-            .map_err(|e| anyhow::anyhow!("start_scan failed: {e:#}"))?;
-        tracing::info!("BLE scan started (continuous)");
-
         Ok(Self { adapter, events })
     }
 
-    pub async fn scan_once(&self, duration: Duration) -> anyhow::Result<Vec<TiltReading>> {
-        // Wait for the scan window to collect advertisements
-        tokio::time::sleep(duration).await;
+    pub async fn scan_once(&mut self, duration: Duration) -> anyhow::Result<Vec<TiltReading>> {
+        // Stop any previous scan to reset BlueZ discovery state.
+        // This forces re-discovery and fresh ManufacturerDataAdvertisement events.
+        let _ = self.adapter.stop_scan().await;
 
-        // Poll all peripherals BlueZ has discovered and check cached properties
-        let peripherals = self.adapter.peripherals().await
-            .map_err(|e| anyhow::anyhow!("peripherals() failed: {e:#}"))?;
+        self.adapter.start_scan(ScanFilter::default()).await
+            .map_err(|e| anyhow::anyhow!("start_scan failed: {e:#}"))?;
 
         let mut latest: HashMap<TiltColor, TiltReading> = HashMap::new();
+        let deadline = tokio::time::Instant::now() + duration;
 
-        for peripheral in peripherals {
-            let Some(properties) = peripheral.properties().await? else {
-                continue;
-            };
-
-            for (company_id, data) in &properties.manufacturer_data {
-                if *company_id != APPLE_COMPANY_ID {
-                    continue;
-                }
-                if let Some(reading) = parse_ibeacon_tilt(data) {
-                    tracing::debug!(
-                        color = ?reading.color,
-                        temp = reading.temperature_f,
-                        gravity = reading.gravity,
-                        "Tilt found via peripheral poll"
-                    );
-                    latest.insert(reading.color, reading);
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep_until(deadline) => break,
+                event = self.events.next() => {
+                    match event {
+                        Some(CentralEvent::ManufacturerDataAdvertisement { manufacturer_data, .. }) => {
+                            if let Some(data) = manufacturer_data.get(&APPLE_COMPANY_ID) {
+                                if let Some(reading) = parse_ibeacon_tilt(data) {
+                                    tracing::debug!(
+                                        color = ?reading.color,
+                                        temp = reading.temperature_f,
+                                        gravity = reading.gravity,
+                                        "Tilt advertisement"
+                                    );
+                                    latest.insert(reading.color, reading);
+                                }
+                            }
+                        }
+                        None => {
+                            tracing::warn!("BLE event stream ended unexpectedly");
+                            break;
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
+
+        let _ = self.adapter.stop_scan().await;
 
         Ok(latest.into_values().collect())
     }

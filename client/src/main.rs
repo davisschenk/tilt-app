@@ -160,7 +160,7 @@ async fn main() {
             }
         }
     } else {
-        let scanner = match TiltScanner::new().await {
+        let mut scanner = match TiltScanner::new().await {
             Ok(s) => s,
             Err(e) => {
                 tracing::error!("Failed to initialize BLE scanner: {e}");
