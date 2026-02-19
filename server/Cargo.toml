@@ -9,6 +9,7 @@ chrono = { version = "0.4.43", features = ["serde"] }
 dotenvy = "0.15.7"
 hex = "0.4.3"
 migration = { version = "0.1.0", path = "migration" }
+openidconnect = { version = "4.0.1", features = ["reqwest", "rustls-tls"] }
 rand = "0.10.0"
 rocket = { version = "0.5.1", features = ["json", "secrets"] }
 rocket_cors = "0.6.0"
@@ -20,4 +21,5 @@ sha2 = "0.10.9"
 shared = { version = "0.1.0", path = "../shared" }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+url = "2.5.8"
 uuid = { version = "1.21.0", features = ["v4", "serde"] }

@@ -1,4 +1,6 @@
+mod guards;
 mod models;
+mod oidc;
 mod routes;
 mod services;
 
@@ -94,12 +96,41 @@ async fn rocket() -> Rocket<Build> {
 
     let cors = setup_cors();
 
+    let oidc_issuer = std::env::var("AUTHENTIK_ISSUER_URL").unwrap_or_default();
+    let oidc_client_id = std::env::var("AUTHENTIK_CLIENT_ID").unwrap_or_default();
+    let oidc_client_secret = std::env::var("AUTHENTIK_CLIENT_SECRET").unwrap_or_default();
+    let oidc_redirect_url = std::env::var("AUTHENTIK_REDIRECT_URL")
+        .unwrap_or_else(|_| "http://localhost:8000/api/v1/auth/callback".to_string());
+
+    let oidc_state = if !oidc_issuer.is_empty() {
+        match oidc::OidcState::discover(
+            &oidc_issuer,
+            &oidc_client_id,
+            &oidc_client_secret,
+            &oidc_redirect_url,
+        )
+        .await
+        {
+            Ok(state) => {
+                tracing::info!("OIDC discovery successful");
+                Some(state)
+            }
+            Err(e) => {
+                tracing::warn!("OIDC discovery failed: {e} — auth routes will be unavailable");
+                None
+            }
+        }
+    } else {
+        tracing::warn!("AUTHENTIK_ISSUER_URL not set — auth routes will be unavailable");
+        None
+    };
+
     let web_dist = std::env::var("WEB_DIST_DIR")
         .unwrap_or_else(|_| "web/dist".to_string())
         .trim()
         .to_string();
 
-    rocket::build()
+    let mut rocket = rocket::build()
         .manage(db)
         .attach(cors)
         .mount("/api/v1", routes![health])
@@ -112,5 +143,13 @@ async fn rocket() -> Rocket<Build> {
         .register(
             "/",
             catchers![not_found, unprocessable_entity, internal_error],
-        )
+        );
+
+    if let Some(oidc) = oidc_state {
+        rocket = rocket
+            .manage(oidc)
+            .mount("/api/v1", routes::auth::routes());
+    }
+
+    rocket
 }

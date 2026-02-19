@@ -6,10 +6,12 @@ use uuid::Uuid;
 
 use shared::{BrewResponse, CreateBrew, UpdateBrew};
 
+use crate::guards::current_user::CurrentUser;
 use crate::services::brew_service;
 
 #[get("/brews?<status>")]
 async fn list(
+    _user: CurrentUser,
     db: &State<DatabaseConnection>,
     status: Option<&str>,
 ) -> Result<Json<Vec<BrewResponse>>, Status> {
@@ -20,7 +22,7 @@ async fn list(
 }
 
 #[get("/brews/<id>")]
-async fn get_by_id(db: &State<DatabaseConnection>, id: &str) -> Result<Json<BrewResponse>, Status> {
+async fn get_by_id(_user: CurrentUser, db: &State<DatabaseConnection>, id: &str) -> Result<Json<BrewResponse>, Status> {
     let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
     match brew_service::find_by_id(db.inner(), id).await {
         Ok(Some(b)) => Ok(Json(b)),
@@ -31,6 +33,7 @@ async fn get_by_id(db: &State<DatabaseConnection>, id: &str) -> Result<Json<Brew
 
 #[post("/brews", data = "<input>")]
 async fn create(
+    _user: CurrentUser,
     db: &State<DatabaseConnection>,
     input: Json<CreateBrew>,
 ) -> Result<(Status, Json<BrewResponse>), Status> {
@@ -42,6 +45,7 @@ async fn create(
 
 #[put("/brews/<id>", data = "<input>")]
 async fn update(
+    _user: CurrentUser,
     db: &State<DatabaseConnection>,
     id: &str,
     input: Json<UpdateBrew>,
@@ -55,7 +59,7 @@ async fn update(
 }
 
 #[delete("/brews/<id>")]
-async fn delete(db: &State<DatabaseConnection>, id: &str) -> Status {
+async fn delete(_user: CurrentUser, db: &State<DatabaseConnection>, id: &str) -> Status {
     let Ok(id) = Uuid::parse_str(id) else {
         return Status::UnprocessableEntity;
     };
