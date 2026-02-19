@@ -52,6 +52,50 @@ pub fn generate_api_key() -> (String, String, String) {
     (raw, hash, prefix)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generate_api_key_length() {
+        let (raw, hash, prefix) = generate_api_key();
+        assert_eq!(raw.len(), 64, "raw key should be 64 hex chars (32 bytes)");
+        assert_eq!(hash.len(), 64, "sha256 hash should be 64 hex chars");
+        assert_eq!(prefix.len(), 8, "prefix should be first 8 chars of raw key");
+        assert!(raw.starts_with(&prefix));
+    }
+
+    #[test]
+    fn generate_api_key_uniqueness() {
+        let (raw1, hash1, _) = generate_api_key();
+        let (raw2, hash2, _) = generate_api_key();
+        assert_ne!(raw1, raw2, "two generated keys should differ");
+        assert_ne!(hash1, hash2, "two generated hashes should differ");
+    }
+
+    #[test]
+    fn generate_api_key_hash_is_deterministic() {
+        let raw = "deadbeef".repeat(8);
+        let hash1 = format!("{:x}", Sha256::digest(raw.as_bytes()));
+        let hash2 = format!("{:x}", Sha256::digest(raw.as_bytes()));
+        assert_eq!(hash1, hash2, "same input should produce same hash");
+    }
+
+    #[test]
+    fn generate_api_key_hash_differs_from_raw() {
+        let (raw, hash, _) = generate_api_key();
+        assert_ne!(raw, hash, "hash should differ from raw key");
+    }
+
+    #[test]
+    fn generate_api_key_is_hex() {
+        let (raw, hash, prefix) = generate_api_key();
+        assert!(raw.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(prefix.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+}
+
 pub async fn create_api_key(
     db: &DatabaseConnection,
     name: String,
