@@ -5,3 +5,4 @@ pub mod prelude;
 pub mod brews;
 pub mod hydrometers;
 pub mod readings;
+pub mod user_sessions;
