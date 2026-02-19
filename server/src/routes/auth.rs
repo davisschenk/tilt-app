@@ -26,10 +26,10 @@ pub struct AuthMeResponse {
 
 #[get("/auth/login")]
 pub async fn login(
-    oidc: Option<&State<OidcState>>,
+    oidc: &State<Option<OidcState>>,
     cookies: &CookieJar<'_>,
 ) -> Result<Redirect, (Status, Json<serde_json::Value>)> {
-    let oidc = oidc.ok_or_else(|| {
+    let oidc = oidc.as_ref().ok_or_else(|| {
         (
             Status::ServiceUnavailable,
             Json(serde_json::json!({ "error": "authentication not configured" })),
@@ -67,11 +67,11 @@ pub async fn login(
 pub async fn callback(
     code: String,
     state: String,
-    oidc: Option<&State<OidcState>>,
+    oidc: &State<Option<OidcState>>,
     db: &State<DatabaseConnection>,
     cookies: &CookieJar<'_>,
 ) -> Result<Redirect, (Status, Json<serde_json::Value>)> {
-    let oidc = oidc.ok_or_else(|| {
+    let oidc = oidc.as_ref().ok_or_else(|| {
         (
             Status::ServiceUnavailable,
             Json(serde_json::json!({ "error": "authentication not configured" })),
@@ -106,8 +106,6 @@ pub async fn callback(
     cookies.remove_private("oidc_csrf");
     cookies.remove_private("oidc_nonce");
     cookies.remove_private("oidc_pkce");
-
-    let oidc = oidc.inner();
 
     let token_response: CoreTokenResponse = oidc
         .client

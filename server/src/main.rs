@@ -158,11 +158,8 @@ async fn rocket() -> Rocket<Build> {
             catchers![not_found, unprocessable_entity, internal_error],
         );
 
-    if let Some(oidc) = oidc_state {
-        rocket = rocket.manage(oidc);
-    }
-
     rocket = rocket
+        .manage(oidc_state)
         .mount("/api/v1", routes::auth::routes())
         .mount("/api/v1", routes::api_keys::routes());
 
