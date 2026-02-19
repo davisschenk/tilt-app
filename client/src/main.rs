@@ -3,7 +3,8 @@ mod scanner;
 mod simulator;
 mod uploader;
 
-use std::time::Duration;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use buffer::{Backoff, ReadingBuffer};
 use clap::Parser;
@@ -21,8 +22,11 @@ struct Args {
     #[arg(long, help = "Server URL to upload readings to")]
     server_url: String,
 
-    #[arg(long, default_value_t = 15, help = "BLE scan interval in seconds")]
+    #[arg(long, default_value_t = 5, help = "BLE scan window in seconds (how long to listen per cycle)")]
     scan_interval: u64,
+
+    #[arg(long, default_value_t = 60, help = "Minimum seconds between uploads per hydrometer color")]
+    upload_interval: u64,
 
     #[arg(
         long,
@@ -88,6 +92,7 @@ async fn main() {
         tracing::info!(
             server_url = %args.server_url,
             scan_interval = args.scan_interval,
+            upload_interval = args.upload_interval,
             buffer_size = args.buffer_size,
             sim_colors = %args.sim_colors,
             sim_og = args.sim_og,
@@ -99,6 +104,7 @@ async fn main() {
         tracing::info!(
             server_url = %args.server_url,
             scan_interval = args.scan_interval,
+            upload_interval = args.upload_interval,
             buffer_size = args.buffer_size,
             log_level = %args.log_level,
             "Starting Tilt Hydrometer BLE client"
@@ -109,6 +115,8 @@ async fn main() {
     let mut reading_buffer = ReadingBuffer::new(args.buffer_size);
     let mut backoff = Backoff::default();
     let scan_duration = Duration::from_secs(args.scan_interval);
+    let upload_interval = Duration::from_secs(args.upload_interval);
+    let mut last_uploaded: HashMap<TiltColor, Instant> = HashMap::new();
 
     if args.simulate {
         let colors: Vec<TiltColor> = args
@@ -179,8 +187,22 @@ async fn main() {
                 }
                 result = scanner.next_batch(scan_duration) => {
                     match result {
-                        Ok(mut readings) => {
-                            tracing::info!(count = readings.len(), "Scan complete");
+                        Ok(all_readings) => {
+                            tracing::debug!(count = all_readings.len(), "Scan complete");
+
+                            let now = Instant::now();
+                            let mut readings: Vec<_> = all_readings
+                                .into_iter()
+                                .filter(|r| {
+                                    last_uploaded
+                                        .get(&r.color)
+                                        .map_or(true, |t| now.duration_since(*t) >= upload_interval)
+                                })
+                                .collect();
+
+                            for r in &readings {
+                                last_uploaded.insert(r.color, now);
+                            }
 
                             if !reading_buffer.is_empty() {
                                 let buffered = reading_buffer.drain_all();
@@ -191,9 +213,11 @@ async fn main() {
                             }
 
                             if readings.is_empty() {
-                                tracing::debug!("No readings to upload");
+                                tracing::debug!("No readings due (throttled)");
                                 continue;
                             }
+
+                            tracing::info!(count = readings.len(), "Uploading readings");
 
                             match uploader.upload_batch(&readings).await {
                                 Ok(response) => {
