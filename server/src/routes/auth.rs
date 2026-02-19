@@ -25,7 +25,16 @@ pub struct AuthMeResponse {
 }
 
 #[get("/auth/login")]
-pub async fn login(oidc: &State<OidcState>, cookies: &CookieJar<'_>) -> Redirect {
+pub async fn login(
+    oidc: Option<&State<OidcState>>,
+    cookies: &CookieJar<'_>,
+) -> Result<Redirect, (Status, Json<serde_json::Value>)> {
+    let oidc = oidc.ok_or_else(|| {
+        (
+            Status::ServiceUnavailable,
+            Json(serde_json::json!({ "error": "authentication not configured" })),
+        )
+    })?;
     let (auth_url, csrf_token, nonce, pkce_verifier) = oidc.authorization_url();
 
     let nonce_val = nonce.secret().clone();
@@ -51,17 +60,23 @@ pub async fn login(oidc: &State<OidcState>, cookies: &CookieJar<'_>) -> Redirect
             .build(),
     );
 
-    Redirect::to(auth_url.to_string())
+    Ok(Redirect::to(auth_url.to_string()))
 }
 
 #[get("/auth/callback?<code>&<state>")]
 pub async fn callback(
     code: String,
     state: String,
-    oidc: &State<OidcState>,
+    oidc: Option<&State<OidcState>>,
     db: &State<DatabaseConnection>,
     cookies: &CookieJar<'_>,
 ) -> Result<Redirect, (Status, Json<serde_json::Value>)> {
+    let oidc = oidc.ok_or_else(|| {
+        (
+            Status::ServiceUnavailable,
+            Json(serde_json::json!({ "error": "authentication not configured" })),
+        )
+    })?;
     let err = |msg: &str| {
         (
             Status::BadRequest,
@@ -91,6 +106,8 @@ pub async fn callback(
     cookies.remove_private("oidc_csrf");
     cookies.remove_private("oidc_nonce");
     cookies.remove_private("oidc_pkce");
+
+    let oidc = oidc.inner();
 
     let token_response: CoreTokenResponse = oidc
         .client

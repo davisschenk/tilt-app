@@ -86,11 +86,11 @@ fn setup_cors() -> rocket_cors::Cors {
 async fn rocket() -> Rocket<Build> {
     dotenvy::dotenv().ok();
 
+    let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| {
+        "info,rocket::response::debug=off".to_string()
+    });
     tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
+        .with_env_filter(tracing_subscriber::EnvFilter::new(log_filter))
         .init();
 
     tracing::info!("Starting Tilt Hydrometer Platform server");
@@ -159,12 +159,12 @@ async fn rocket() -> Rocket<Build> {
         );
 
     if let Some(oidc) = oidc_state {
-        rocket = rocket
-            .manage(oidc)
-            .mount("/api/v1", routes::auth::routes());
+        rocket = rocket.manage(oidc);
     }
 
-    rocket = rocket.mount("/api/v1", routes::api_keys::routes());
+    rocket = rocket
+        .mount("/api/v1", routes::auth::routes())
+        .mount("/api/v1", routes::api_keys::routes());
 
     rocket
 }
