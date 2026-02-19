@@ -37,12 +37,11 @@ impl TiltScanner {
     }
 
     pub async fn scan_once(&mut self, duration: Duration) -> anyhow::Result<Vec<TiltReading>> {
-        // Stop any previous scan to reset BlueZ discovery state.
-        // This forces re-discovery and fresh ManufacturerDataAdvertisement events.
-        let _ = self.adapter.stop_scan().await;
-
         self.adapter.start_scan(ScanFilter::default()).await
             .map_err(|e| anyhow::anyhow!("start_scan failed: {e:#}"))?;
+
+        // Give BlueZ a moment to begin discovery before starting the deadline.
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         let mut latest: HashMap<TiltColor, TiltReading> = HashMap::new();
         let deadline = tokio::time::Instant::now() + duration;
