@@ -7,6 +7,7 @@ edition = "2024"
 anyhow = "1.0.101"
 chrono = { version = "0.4.43", features = ["serde"] }
 dotenvy = "0.15.7"
+governor = "0.10.4"
 hex = "0.4.3"
 migration = { version = "0.1.0", path = "migration" }
 openidconnect = { version = "4.0.1", features = ["reqwest", "rustls-tls"] }

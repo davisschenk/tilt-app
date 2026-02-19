@@ -142,6 +142,7 @@ async fn rocket() -> Rocket<Build> {
     let mut rocket = rocket::build()
         .manage(db)
         .attach(cors)
+        .attach(fairings::rate_limit::RateLimit::new())
         .attach(fairings::security_headers::SecurityHeaders)
         .attach(fairings::session_cleanup::SessionCleanup)
         .mount("/api/v1", routes![health])
