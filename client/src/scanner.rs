@@ -13,6 +13,7 @@ const IBEACON_TYPE: u8 = 0x02;
 const IBEACON_LENGTH: u8 = 0x15;
 
 pub struct TiltScanner {
+    #[allow(dead_code)]
     adapter: Adapter,
     /// Event stream created once and kept alive for the lifetime of the scanner.
     /// Dropping it triggers a bluez-async panic (D-Bus match cleanup race),
@@ -33,6 +34,9 @@ impl TiltScanner {
         let events = adapter.events().await
             .map_err(|e| anyhow::anyhow!("failed to get event stream: {e:#}"))?;
 
+        adapter.start_scan(ScanFilter::default()).await
+            .map_err(|e| anyhow::anyhow!("start_scan failed: {e:#}"))?;
+
         Ok(Self { adapter, events })
     }
 
@@ -40,12 +44,6 @@ impl TiltScanner {
     /// Deduplicates per color within the window (keeps latest), then returns the batch.
     /// Runs forever — call in a loop with a `ctrl_c` select arm.
     pub async fn next_batch(&mut self, interval: Duration) -> anyhow::Result<Vec<TiltReading>> {
-        self.adapter.start_scan(ScanFilter::default()).await
-            .map_err(|e| anyhow::anyhow!("start_scan failed: {e:#}"))?;
-
-        // Give BlueZ a moment to begin discovery before starting the deadline.
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
         let mut latest: HashMap<TiltColor, TiltReading> = HashMap::new();
         let deadline = tokio::time::Instant::now() + interval;
 
