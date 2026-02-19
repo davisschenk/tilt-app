@@ -2,6 +2,7 @@
 
 pub mod prelude;
 
+pub mod api_keys;
 pub mod brews;
 pub mod hydrometers;
 pub mod readings;

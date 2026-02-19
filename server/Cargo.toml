@@ -7,13 +7,16 @@ edition = "2024"
 anyhow = "1.0.101"
 chrono = { version = "0.4.43", features = ["serde"] }
 dotenvy = "0.15.7"
+hex = "0.4.3"
 migration = { version = "0.1.0", path = "migration" }
+rand = "0.10.0"
 rocket = { version = "0.5.1", features = ["json", "secrets"] }
 rocket_cors = "0.6.0"
 sea-orm = { version = "1.1.19", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
 sea-orm-migration = "1.1.19"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+sha2 = "0.10.9"
 shared = { version = "0.1.0", path = "../shared" }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
