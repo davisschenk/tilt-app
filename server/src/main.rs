@@ -1,3 +1,4 @@
+mod fairings;
 mod guards;
 mod models;
 mod oidc;
@@ -53,8 +54,16 @@ async fn setup_db() -> DatabaseConnection {
 }
 
 fn setup_cors() -> rocket_cors::Cors {
+    let frontend_url = std::env::var("FRONTEND_URL").unwrap_or_default();
+    let allowed_origins = if frontend_url.is_empty() {
+        rocket_cors::AllowedOrigins::all()
+    } else {
+        let origins: Vec<&str> = frontend_url.split(',').map(str::trim).collect();
+        rocket_cors::AllowedOrigins::some_exact(&origins)
+    };
+
     rocket_cors::CorsOptions {
-        allowed_origins: rocket_cors::AllowedOrigins::all(),
+        allowed_origins,
         allowed_methods: vec![
             rocket::http::Method::Get,
             rocket::http::Method::Post,
@@ -66,7 +75,7 @@ fn setup_cors() -> rocket_cors::Cors {
         .map(From::from)
         .collect(),
         allowed_headers: rocket_cors::AllowedHeaders::all(),
-        allow_credentials: false,
+        allow_credentials: true,
         ..Default::default()
     }
     .to_cors()
@@ -133,6 +142,7 @@ async fn rocket() -> Rocket<Build> {
     let mut rocket = rocket::build()
         .manage(db)
         .attach(cors)
+        .attach(fairings::security_headers::SecurityHeaders)
         .mount("/api/v1", routes![health])
         .mount("/", routes![preflight])
         .mount("/api/v1", routes::hydrometers::routes())
