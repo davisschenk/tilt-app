@@ -38,6 +38,9 @@ struct Args {
     )]
     buffer_size: usize,
 
+    #[arg(long, help = "API key for authenticating with the server (X-API-Key header)")]
+    api_key: Option<String>,
+
     #[arg(
         long,
         default_value_t = false,
@@ -102,7 +105,7 @@ async fn main() {
         );
     }
 
-    let uploader = Uploader::new(&args.server_url);
+    let uploader = Uploader::new(&args.server_url, args.api_key.clone());
     let mut reading_buffer = ReadingBuffer::new(args.buffer_size);
     let mut backoff = Backoff::default();
     let scan_duration = Duration::from_secs(args.scan_interval);

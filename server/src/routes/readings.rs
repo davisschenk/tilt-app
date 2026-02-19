@@ -6,12 +6,13 @@ use uuid::Uuid;
 
 use shared::{CreateReadingsBatch, ReadingResponse, ReadingsQuery, TiltReading};
 
+use crate::guards::auth_or_api_key::AuthOrApiKey;
 use crate::guards::current_user::CurrentUser;
 use crate::services::{brew_service, hydrometer_service, reading_service};
 
 #[post("/readings", data = "<batch>")]
 async fn create_batch(
-    _user: CurrentUser,
+    _auth: AuthOrApiKey,
     db: &State<DatabaseConnection>,
     batch: Json<CreateReadingsBatch>,
 ) -> Result<(Status, Json<serde_json::Value>), Status> {

@@ -31,14 +31,16 @@ impl From<reqwest::Error> for UploadError {
 pub struct Uploader {
     client: reqwest::Client,
     readings_url: String,
+    api_key: Option<String>,
 }
 
 impl Uploader {
-    pub fn new(server_url: &str) -> Self {
+    pub fn new(server_url: &str, api_key: Option<String>) -> Self {
         let base = server_url.trim_end_matches('/');
         Self {
             client: reqwest::Client::new(),
             readings_url: format!("{base}/api/v1/readings"),
+            api_key,
         }
     }
 
@@ -54,12 +56,13 @@ impl Uploader {
             "Uploading readings batch"
         );
 
-        let response = self
-            .client
-            .post(&self.readings_url)
-            .json(&batch)
-            .send()
-            .await?;
+        let mut request = self.client.post(&self.readings_url).json(&batch);
+
+        if let Some(ref key) = self.api_key {
+            request = request.header("X-API-Key", key);
+        }
+
+        let response = request.send().await?;
 
         let status = response.status();
         let body = response.text().await?;

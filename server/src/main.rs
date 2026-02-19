@@ -151,5 +151,7 @@ async fn rocket() -> Rocket<Build> {
             .mount("/api/v1", routes::auth::routes());
     }
 
+    rocket = rocket.mount("/api/v1", routes::api_keys::routes());
+
     rocket
 }
