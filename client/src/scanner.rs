@@ -36,7 +36,10 @@ impl TiltScanner {
         Ok(Self { adapter, events })
     }
 
-    pub async fn scan_once(&mut self, duration: Duration) -> anyhow::Result<Vec<TiltReading>> {
+    /// Scan continuously and collect all readings seen within each `interval` window.
+    /// Deduplicates per color within the window (keeps latest), then returns the batch.
+    /// Runs forever — call in a loop with a `ctrl_c` select arm.
+    pub async fn next_batch(&mut self, interval: Duration) -> anyhow::Result<Vec<TiltReading>> {
         self.adapter.start_scan(ScanFilter::default()).await
             .map_err(|e| anyhow::anyhow!("start_scan failed: {e:#}"))?;
 
@@ -44,7 +47,7 @@ impl TiltScanner {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let mut latest: HashMap<TiltColor, TiltReading> = HashMap::new();
-        let deadline = tokio::time::Instant::now() + duration;
+        let deadline = tokio::time::Instant::now() + interval;
 
         loop {
             tokio::select! {
@@ -73,8 +76,6 @@ impl TiltScanner {
                 }
             }
         }
-
-        let _ = self.adapter.stop_scan().await;
 
         Ok(latest.into_values().collect())
     }

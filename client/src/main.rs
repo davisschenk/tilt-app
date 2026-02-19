@@ -177,7 +177,7 @@ async fn main() {
                     tracing::info!("Received Ctrl+C, shutting down gracefully");
                     break;
                 }
-                result = scanner.scan_once(scan_duration) => {
+                result = scanner.next_batch(scan_duration) => {
                     match result {
                         Ok(mut readings) => {
                             tracing::info!(count = readings.len(), "Scan complete");
