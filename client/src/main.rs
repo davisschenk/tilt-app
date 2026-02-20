@@ -235,6 +235,7 @@ async fn main() {
                         }
                         Err(e) => {
                             tracing::warn!("Scan failed: {e:#}");
+                            tokio::time::sleep(Duration::from_secs(5)).await;
                         }
                     }
                 }
