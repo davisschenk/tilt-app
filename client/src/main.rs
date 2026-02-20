@@ -214,6 +214,7 @@ async fn main() {
 
                             if readings.is_empty() {
                                 tracing::debug!("No readings due (throttled)");
+                                tokio::time::sleep(Duration::from_secs(1)).await;
                                 continue;
                             }
 

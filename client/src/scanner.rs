@@ -67,7 +67,7 @@ impl TiltScanner {
                         }
                         None => {
                             tracing::warn!("BLE event stream ended unexpectedly");
-                            break;
+                            return Err(anyhow::anyhow!("BLE event stream ended"));
                         }
                         _ => {}
                     }
