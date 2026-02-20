@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::time::Duration;
 
-use btleplug::api::{Central, CentralEvent, Manager as _, ScanFilter};
-use btleplug::platform::{Adapter, Manager};
-use futures::{Stream, StreamExt};
+use bluer::monitor::{Monitor, MonitorEvent, Pattern, RssiSamplingPeriod};
+use bluer::Session;
+use futures::StreamExt;
 use shared::{TiltColor, TiltReading};
 use uuid::Uuid;
 
@@ -12,60 +11,82 @@ const APPLE_COMPANY_ID: u16 = 0x004C;
 const IBEACON_TYPE: u8 = 0x02;
 const IBEACON_LENGTH: u8 = 0x15;
 
+/// AD type 0xFF = Manufacturer Specific Data.
+/// Filter: bytes [0x4C, 0x00] at offset 0 = Apple company ID (little-endian).
+const AD_TYPE_MANUFACTURER: u8 = 0xFF;
+const APPLE_ID_BYTES: [u8; 2] = [0x4C, 0x00];
+
 pub struct TiltScanner {
-    #[allow(dead_code)]
-    adapter: Adapter,
-    /// Event stream created once and kept alive for the lifetime of the scanner.
-    events: Pin<Box<dyn Stream<Item = CentralEvent> + Send>>,
+    session: Session,
+    adapter_name: String,
 }
 
 impl TiltScanner {
     pub async fn new() -> anyhow::Result<Self> {
-        let manager = Manager::new().await?;
-        let adapters = manager.adapters().await?;
-        let adapter = adapters
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("No Bluetooth adapter found"))?;
-        tracing::info!("Using BLE adapter: {:?}", adapter.adapter_info().await?);
-
-        let events = adapter.events().await
-            .map_err(|e| anyhow::anyhow!("failed to get event stream: {e:#}"))?;
-
-        adapter.start_scan(ScanFilter::default()).await
-            .map_err(|e| anyhow::anyhow!("start_scan failed: {e:#}"))?;
-
-        Ok(Self { adapter, events })
+        let session = Session::new().await
+            .map_err(|e| anyhow::anyhow!("Failed to create bluer session: {e:#}"))?;
+        let adapter = session.default_adapter().await
+            .map_err(|e| anyhow::anyhow!("No Bluetooth adapter found: {e:#}"))?;
+        adapter.set_powered(true).await
+            .map_err(|e| anyhow::anyhow!("Failed to power on adapter: {e:#}"))?;
+        let adapter_name = adapter.name().to_string();
+        tracing::info!("Using BLE adapter: {}", adapter_name);
+        Ok(Self { session, adapter_name })
     }
 
     /// Scan continuously and collect all readings seen within each `interval` window.
     /// Deduplicates per color within the window (keeps latest), then returns the batch.
     /// Runs forever — call in a loop with a `ctrl_c` select arm.
     pub async fn next_batch(&mut self, interval: Duration) -> anyhow::Result<Vec<TiltReading>> {
+        let adapter = self.session.adapter(&self.adapter_name)
+            .map_err(|e| anyhow::anyhow!("Failed to open adapter: {e:#}"))?;
+
+        // Register an Advertisement Monitor that filters for Apple manufacturer data.
+        // BlueZ delivers MonitorEvent::DeviceFound for every matching advertisement,
+        // even from non-connectable iBeacon broadcasters.
+        let mm = adapter.monitor().await
+            .map_err(|e| anyhow::anyhow!("Failed to get monitor manager: {e:#}"))?;
+        let mut monitor_handle = mm.register(Monitor {
+            monitor_type: bluer::monitor::Type::OrPatterns,
+            rssi_sampling_period: Some(RssiSamplingPeriod::All),
+            patterns: Some(vec![Pattern {
+                data_type: AD_TYPE_MANUFACTURER,
+                start_position: 0,
+                content: APPLE_ID_BYTES.to_vec(),
+            }]),
+            ..Default::default()
+        }).await
+        .map_err(|e| anyhow::anyhow!("Failed to register monitor: {e:#}"))?;
+
         let mut latest: HashMap<TiltColor, TiltReading> = HashMap::new();
         let deadline = tokio::time::Instant::now() + interval;
 
         loop {
             tokio::select! {
                 _ = tokio::time::sleep_until(deadline) => break,
-                event = self.events.next() => {
-                    match event {
-                        Some(CentralEvent::ManufacturerDataAdvertisement { manufacturer_data, .. }) => {
-                            if let Some(data) = manufacturer_data.get(&APPLE_COMPANY_ID) {
-                                if let Some(reading) = parse_ibeacon_tilt(data) {
-                                    tracing::debug!(
-                                        color = ?reading.color,
-                                        temp = reading.temperature_f,
-                                        gravity = reading.gravity,
-                                        "Tilt advertisement"
-                                    );
-                                    latest.insert(reading.color, reading);
+                mevt = monitor_handle.next() => {
+                    match mevt {
+                        Some(MonitorEvent::DeviceFound(devid)) => {
+                            if let Ok(device) = adapter.device(devid.device) {
+                                // Read manufacturer_data immediately — it's populated on DeviceFound.
+                                if let Ok(Some(mfr_data)) = device.manufacturer_data().await {
+                                    if let Some(data) = mfr_data.get(&APPLE_COMPANY_ID) {
+                                        if let Some(reading) = parse_ibeacon_tilt(data) {
+                                            tracing::debug!(
+                                                color = ?reading.color,
+                                                temp = reading.temperature_f,
+                                                gravity = reading.gravity,
+                                                "Tilt advertisement"
+                                            );
+                                            latest.insert(reading.color, reading);
+                                        }
+                                    }
                                 }
                             }
                         }
                         None => {
-                            tracing::warn!("BLE event stream ended unexpectedly");
-                            return Err(anyhow::anyhow!("BLE event stream ended"));
+                            tracing::warn!("Monitor event stream ended unexpectedly");
+                            return Err(anyhow::anyhow!("Monitor event stream ended"));
                         }
                         _ => {}
                     }
