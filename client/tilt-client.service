@@ -24,7 +24,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/tilt-client.env
-ExecStart=/usr/local/bin/tilt-client --server-url https://tilt.schenkenberger.dev --api-key ${TILT_API_KEY} --scan-interval 5 --upload-interval 60
+ExecStart=/usr/local/bin/tilt-client --server-url https://tilt.schenkenberger.dev --api-key ${TILT_API_KEY} --scan-interval 5 --upload-interval 300
 Restart=always
 RestartSec=10
 Environment=RUST_LOG=info
