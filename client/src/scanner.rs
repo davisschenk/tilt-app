@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::time::Duration;
 
-use bluer::{AdapterEvent, Session};
-use futures::StreamExt;
+use btleplug::api::{Central, CentralEvent, Manager as _, ScanFilter};
+use btleplug::platform::{Adapter, Manager};
+use futures::{Stream, StreamExt};
 use shared::{TiltColor, TiltReading};
 use uuid::Uuid;
 
@@ -11,67 +13,53 @@ const IBEACON_TYPE: u8 = 0x02;
 const IBEACON_LENGTH: u8 = 0x15;
 
 pub struct TiltScanner {
-    /// bluer session kept alive for the lifetime of the scanner.
     #[allow(dead_code)]
-    session: Session,
-    adapter_name: String,
+    adapter: Adapter,
+    /// Event stream created once and kept alive for the lifetime of the scanner.
+    events: Pin<Box<dyn Stream<Item = CentralEvent> + Send>>,
 }
 
 impl TiltScanner {
     pub async fn new() -> anyhow::Result<Self> {
-        let session = Session::new().await
-            .map_err(|e| anyhow::anyhow!("Failed to create bluer session: {e:#}"))?;
-        let adapter_names = session.adapter_names().await
-            .map_err(|e| anyhow::anyhow!("Failed to list adapters: {e:#}"))?;
-        let adapter_name = adapter_names
+        let manager = Manager::new().await?;
+        let adapters = manager.adapters().await?;
+        let adapter = adapters
             .into_iter()
             .next()
             .ok_or_else(|| anyhow::anyhow!("No Bluetooth adapter found"))?;
+        tracing::info!("Using BLE adapter: {:?}", adapter.adapter_info().await?);
 
-        tracing::info!("Using BLE adapter: {}", adapter_name);
+        let events = adapter.events().await
+            .map_err(|e| anyhow::anyhow!("failed to get event stream: {e:#}"))?;
 
-        let adapter = session.adapter(&adapter_name)
-            .map_err(|e| anyhow::anyhow!("Failed to open adapter: {e:#}"))?;
-        adapter.set_powered(true).await
-            .map_err(|e| anyhow::anyhow!("Failed to power on adapter: {e:#}"))?;
+        adapter.start_scan(ScanFilter::default()).await
+            .map_err(|e| anyhow::anyhow!("start_scan failed: {e:#}"))?;
 
-        Ok(Self { session, adapter_name })
+        Ok(Self { adapter, events })
     }
 
     /// Scan continuously and collect all readings seen within each `interval` window.
     /// Deduplicates per color within the window (keeps latest), then returns the batch.
     /// Runs forever — call in a loop with a `ctrl_c` select arm.
     pub async fn next_batch(&mut self, interval: Duration) -> anyhow::Result<Vec<TiltReading>> {
-        let adapter = self.session.adapter(&self.adapter_name)
-            .map_err(|e| anyhow::anyhow!("Failed to open adapter: {e:#}"))?;
-
-        // discover_devices_with_changes re-emits DeviceAdded whenever a device's
-        // properties (including manufacturer_data) change, so we catch every broadcast.
-        let mut discover = adapter.discover_devices_with_changes().await
-            .map_err(|e| anyhow::anyhow!("discover_devices failed: {e:#}"))?;
-
         let mut latest: HashMap<TiltColor, TiltReading> = HashMap::new();
         let deadline = tokio::time::Instant::now() + interval;
 
         loop {
             tokio::select! {
                 _ = tokio::time::sleep_until(deadline) => break,
-                event = discover.next() => {
+                event = self.events.next() => {
                     match event {
-                        Some(AdapterEvent::DeviceAdded(addr)) => {
-                            if let Ok(device) = adapter.device(addr) {
-                                if let Ok(Some(mfr_data)) = device.manufacturer_data().await {
-                                    if let Some(data) = mfr_data.get(&APPLE_COMPANY_ID) {
-                                        if let Some(reading) = parse_ibeacon_tilt(data) {
-                                            tracing::debug!(
-                                                color = ?reading.color,
-                                                temp = reading.temperature_f,
-                                                gravity = reading.gravity,
-                                                "Tilt advertisement"
-                                            );
-                                            latest.insert(reading.color, reading);
-                                        }
-                                    }
+                        Some(CentralEvent::ManufacturerDataAdvertisement { manufacturer_data, .. }) => {
+                            if let Some(data) = manufacturer_data.get(&APPLE_COMPANY_ID) {
+                                if let Some(reading) = parse_ibeacon_tilt(data) {
+                                    tracing::debug!(
+                                        color = ?reading.color,
+                                        temp = reading.temperature_f,
+                                        gravity = reading.gravity,
+                                        "Tilt advertisement"
+                                    );
+                                    latest.insert(reading.color, reading);
                                 }
                             }
                         }
