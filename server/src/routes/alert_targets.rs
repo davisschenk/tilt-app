@@ -7,7 +7,7 @@ use uuid::Uuid;
 use shared::{AlertTargetResponse, CreateAlertTarget, UpdateAlertTarget};
 
 use crate::guards::current_user::CurrentUser;
-use crate::services::alert_target_service;
+use crate::services::{alert_target_service, webhook_dispatcher};
 
 #[get("/alert-targets")]
 async fn list(
@@ -73,6 +73,41 @@ async fn delete_target(_user: CurrentUser, db: &State<DatabaseConnection>, id: &
     }
 }
 
+#[post("/alert-targets/<id>/test")]
+async fn test_fire(
+    _user: CurrentUser,
+    db: &State<DatabaseConnection>,
+    http_client: &State<reqwest::Client>,
+    id: &str,
+) -> Json<serde_json::Value> {
+    let Ok(id) = Uuid::parse_str(id) else {
+        return Json(serde_json::json!({ "ok": false, "error": "Invalid UUID" }));
+    };
+
+    let target = match alert_target_service::find_by_id_raw(db.inner(), id).await {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            return Json(serde_json::json!({ "ok": false, "error": "Alert target not found" }));
+        }
+        Err(e) => {
+            return Json(
+                serde_json::json!({ "ok": false, "error": format!("Database error: {e}") }),
+            );
+        }
+    };
+
+    match webhook_dispatcher::dispatch_test(http_client.inner(), &target).await {
+        Ok(status_code) => Json(serde_json::json!({
+            "ok": true,
+            "statusCode": status_code
+        })),
+        Err(e) => Json(serde_json::json!({
+            "ok": false,
+            "error": format!("{e}")
+        })),
+    }
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list, get_by_id, create, update, delete_target]
+    routes![list, get_by_id, create, update, delete_target, test_fire]
 }

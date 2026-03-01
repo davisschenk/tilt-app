@@ -205,7 +205,6 @@ pub async fn dispatch(
 }
 
 /// Send a test payload to verify webhook configuration.
-#[allow(dead_code)]
 pub async fn dispatch_test(
     client: &reqwest::Client,
     target: &alert_targets::Model,
