@@ -1,3 +1,4 @@
+pub mod alert_target_service;
 pub mod api_keys;
 pub mod brew_service;
 pub mod hydrometer_service;
