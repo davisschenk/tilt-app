@@ -99,3 +99,80 @@ export interface ReadingsQuery {
   until?: string;
   limit?: number;
 }
+
+export type WebhookFormat = "generic_json" | "discord" | "slack";
+export type AlertMetric = "gravity" | "temperature_f";
+export type AlertOperator = "lte" | "gte" | "lt" | "gt" | "eq";
+
+export interface AlertTargetResponse {
+  id: string;
+  name: string;
+  url: string;
+  format: WebhookFormat;
+  secretHeader: string | null;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAlertTarget {
+  name: string;
+  url: string;
+  format: WebhookFormat;
+  secretHeader?: string | null;
+  enabled?: boolean;
+}
+
+export interface UpdateAlertTarget {
+  name?: string | null;
+  url?: string | null;
+  format?: WebhookFormat | null;
+  secretHeader?: string | null;
+  enabled?: boolean | null;
+}
+
+export interface AlertRuleResponse {
+  id: string;
+  name: string;
+  brewId: string | null;
+  hydrometerId: string | null;
+  metric: AlertMetric;
+  operator: AlertOperator;
+  threshold: number;
+  alertTargetId: string;
+  enabled: boolean;
+  cooldownMinutes: number;
+  lastTriggeredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAlertRule {
+  name: string;
+  metric: AlertMetric;
+  operator: AlertOperator;
+  threshold: number;
+  alertTargetId: string;
+  brewId?: string | null;
+  hydrometerId?: string | null;
+  cooldownMinutes?: number;
+  enabled?: boolean;
+}
+
+export interface UpdateAlertRule {
+  name?: string | null;
+  metric?: AlertMetric | null;
+  operator?: AlertOperator | null;
+  threshold?: number | null;
+  alertTargetId?: string | null;
+  brewId?: string | null;
+  hydrometerId?: string | null;
+  cooldownMinutes?: number | null;
+  enabled?: boolean | null;
+}
+
+export interface TestFireResult {
+  ok: boolean;
+  statusCode?: number;
+  error?: string;
+}
