@@ -1,7 +1,10 @@
-use openidconnect::{AuthorizationCode, Nonce, PkceCodeVerifier, TokenResponse, core::CoreTokenResponse};
+use openidconnect::{
+    AuthorizationCode, Nonce, PkceCodeVerifier, TokenResponse, core::CoreTokenResponse,
+};
 use rocket::{
-    State, get, post,
+    State, get,
     http::{Cookie, CookieJar, SameSite, Status},
+    post,
     response::Redirect,
     serde::json::Json,
     time::Duration,

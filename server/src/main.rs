@@ -28,7 +28,9 @@ async fn spa_fallback(_path: PathBuf) -> Option<NamedFile> {
         .unwrap_or_else(|_| "web/dist".to_string())
         .trim()
         .to_string();
-    NamedFile::open(PathBuf::from(&web_dist).join("index.html")).await.ok()
+    NamedFile::open(PathBuf::from(&web_dist).join("index.html"))
+        .await
+        .ok()
 }
 
 #[catch(404)]
@@ -99,9 +101,8 @@ fn setup_cors() -> rocket_cors::Cors {
 async fn rocket() -> Rocket<Build> {
     dotenvy::dotenv().ok();
 
-    let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| {
-        "info,rocket::response::debug=off".to_string()
-    });
+    let log_filter = std::env::var("RUST_LOG")
+        .unwrap_or_else(|_| "info,rocket::response::debug=off".to_string());
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::new(log_filter))
         .init();

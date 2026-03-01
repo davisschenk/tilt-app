@@ -19,9 +19,12 @@ pub struct TiltScanner {
 
 impl TiltScanner {
     pub async fn new() -> anyhow::Result<Self> {
-        let session = Session::new().await
+        let session = Session::new()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to create bluer session: {e:#}"))?;
-        let adapter_names = session.adapter_names().await
+        let adapter_names = session
+            .adapter_names()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to list adapters: {e:#}"))?;
         let adapter_name = adapter_names
             .into_iter()
@@ -30,24 +33,34 @@ impl TiltScanner {
 
         tracing::info!("Using BLE adapter: {}", adapter_name);
 
-        let adapter = session.adapter(&adapter_name)
+        let adapter = session
+            .adapter(&adapter_name)
             .map_err(|e| anyhow::anyhow!("Failed to open adapter: {e:#}"))?;
-        adapter.set_powered(true).await
+        adapter
+            .set_powered(true)
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to power on adapter: {e:#}"))?;
 
-        Ok(Self { session, adapter_name })
+        Ok(Self {
+            session,
+            adapter_name,
+        })
     }
 
     /// Scan continuously and collect all readings seen within each `interval` window.
     /// Deduplicates per color within the window (keeps latest), then returns the batch.
     /// Runs forever — call in a loop with a `ctrl_c` select arm.
     pub async fn next_batch(&mut self, interval: Duration) -> anyhow::Result<Vec<TiltReading>> {
-        let adapter = self.session.adapter(&self.adapter_name)
+        let adapter = self
+            .session
+            .adapter(&self.adapter_name)
             .map_err(|e| anyhow::anyhow!("Failed to open adapter: {e:#}"))?;
 
         // discover_devices_with_changes re-emits DeviceAdded whenever a device's
         // properties (including manufacturer_data) change, so we catch every broadcast.
-        let mut discover = adapter.discover_devices_with_changes().await
+        let mut discover = adapter
+            .discover_devices_with_changes()
+            .await
             .map_err(|e| anyhow::anyhow!("discover_devices failed: {e:#}"))?;
 
         let mut latest: HashMap<TiltColor, TiltReading> = HashMap::new();

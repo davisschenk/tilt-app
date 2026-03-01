@@ -31,10 +31,7 @@ fn model_to_response(model: brews::Model, latest: Option<TiltReading>) -> BrewRe
     }
 }
 
-async fn latest_reading_for(
-    db: &DatabaseConnection,
-    brew: &brews::Model,
-) -> Option<TiltReading> {
+async fn latest_reading_for(db: &DatabaseConnection, brew: &brews::Model) -> Option<TiltReading> {
     let hydrometer = Hydrometer::find_by_id(brew.hydrometer_id)
         .one(db)
         .await

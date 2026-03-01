@@ -16,18 +16,9 @@ impl Fairing for SecurityHeaders {
     }
 
     async fn on_response<'r>(&self, _req: &'r Request<'_>, res: &mut Response<'r>) {
-        res.set_header(Header::new(
-            "X-Content-Type-Options",
-            "nosniff",
-        ));
-        res.set_header(Header::new(
-            "X-Frame-Options",
-            "DENY",
-        ));
-        res.set_header(Header::new(
-            "X-XSS-Protection",
-            "1; mode=block",
-        ));
+        res.set_header(Header::new("X-Content-Type-Options", "nosniff"));
+        res.set_header(Header::new("X-Frame-Options", "DENY"));
+        res.set_header(Header::new("X-XSS-Protection", "1; mode=block"));
         res.set_header(Header::new(
             "Referrer-Policy",
             "strict-origin-when-cross-origin",

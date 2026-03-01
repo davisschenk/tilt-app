@@ -77,7 +77,12 @@ pub async fn find_filtered(
         .await?;
 
     // Build a hydrometer_id -> TiltColor lookup
-    let hydro_ids: Vec<Uuid> = models.iter().map(|m| m.hydrometer_id).collect::<std::collections::HashSet<_>>().into_iter().collect();
+    let hydro_ids: Vec<Uuid> = models
+        .iter()
+        .map(|m| m.hydrometer_id)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
     let hydrometers = Hydrometer::find()
         .filter(crate::models::entities::hydrometers::Column::Id.is_in(hydro_ids))
         .all(db)
@@ -90,7 +95,10 @@ pub async fn find_filtered(
     Ok(models
         .into_iter()
         .map(|m| {
-            let color = color_map.get(&m.hydrometer_id).copied().unwrap_or(TiltColor::Red);
+            let color = color_map
+                .get(&m.hydrometer_id)
+                .copied()
+                .unwrap_or(TiltColor::Red);
             model_to_response(m, color)
         })
         .collect())

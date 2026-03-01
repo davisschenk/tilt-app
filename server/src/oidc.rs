@@ -37,10 +37,9 @@ impl OidcState {
             .build()
             .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-        let provider_metadata =
-            CoreProviderMetadata::discover_async(issuer, &http_client)
-                .await
-                .map_err(|e| format!("OIDC discovery failed: {e}"))?;
+        let provider_metadata = CoreProviderMetadata::discover_async(issuer, &http_client)
+            .await
+            .map_err(|e| format!("OIDC discovery failed: {e}"))?;
 
         let client = CoreClient::from_provider_metadata(
             provider_metadata,
@@ -52,7 +51,10 @@ impl OidcState {
                 .map_err(|e| format!("Invalid redirect URL: {e}"))?,
         );
 
-        Ok(Self { client, http_client })
+        Ok(Self {
+            client,
+            http_client,
+        })
     }
 
     pub fn authorization_url(&self) -> (url::Url, CsrfToken, Nonce, PkceCodeVerifier) {

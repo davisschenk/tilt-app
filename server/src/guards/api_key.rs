@@ -6,7 +6,7 @@ use rocket::{
 use sea_orm::DatabaseConnection;
 
 use crate::models::entities::api_keys;
-use crate::services::api_keys::{validate_api_key, ApiKeyError};
+use crate::services::api_keys::{ApiKeyError, validate_api_key};
 
 #[allow(dead_code)]
 pub struct ApiKeyGuard {

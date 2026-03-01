@@ -1,14 +1,6 @@
-use std::{
-    net::IpAddr,
-    num::NonZeroU32,
-    sync::Arc,
-};
+use std::{net::IpAddr, num::NonZeroU32, sync::Arc};
 
-use governor::{
-    Quota, RateLimiter,
-    clock::DefaultClock,
-    state::keyed::DefaultKeyedStateStore,
-};
+use governor::{Quota, RateLimiter, clock::DefaultClock, state::keyed::DefaultKeyedStateStore};
 use rocket::{
     Data, Request,
     fairing::{Fairing, Info, Kind},
@@ -38,8 +30,7 @@ impl RateLimit {
 }
 
 fn client_ip(req: &Request<'_>) -> IpAddr {
-    req.client_ip()
-        .unwrap_or(IpAddr::from([127, 0, 0, 1]))
+    req.client_ip().unwrap_or(IpAddr::from([127, 0, 0, 1]))
 }
 
 fn is_auth_path(path: &str) -> bool {
@@ -86,13 +77,8 @@ pub struct RateLimitGuard;
 impl<'r> rocket::request::FromRequest<'r> for RateLimitGuard {
     type Error = ();
 
-    async fn from_request(
-        req: &'r Request<'_>,
-    ) -> rocket::request::Outcome<Self, Self::Error> {
-        if req
-            .local_cache(|| RateLimitExceeded(false))
-            .0
-        {
+    async fn from_request(req: &'r Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
+        if req.local_cache(|| RateLimitExceeded(false)).0 {
             Outcome::Error((Status::TooManyRequests, ()))
         } else {
             Outcome::Success(RateLimitGuard)

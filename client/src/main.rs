@@ -22,10 +22,18 @@ struct Args {
     #[arg(long, help = "Server URL to upload readings to")]
     server_url: String,
 
-    #[arg(long, default_value_t = 5, help = "BLE scan window in seconds (how long to listen per cycle)")]
+    #[arg(
+        long,
+        default_value_t = 5,
+        help = "BLE scan window in seconds (how long to listen per cycle)"
+    )]
     scan_interval: u64,
 
-    #[arg(long, default_value_t = 60, help = "Minimum seconds between uploads per hydrometer color")]
+    #[arg(
+        long,
+        default_value_t = 60,
+        help = "Minimum seconds between uploads per hydrometer color"
+    )]
     upload_interval: u64,
 
     #[arg(
@@ -42,7 +50,10 @@ struct Args {
     )]
     buffer_size: usize,
 
-    #[arg(long, help = "API key for authenticating with the server (X-API-Key header)")]
+    #[arg(
+        long,
+        help = "API key for authenticating with the server (X-API-Key header)"
+    )]
     api_key: Option<String>,
 
     #[arg(

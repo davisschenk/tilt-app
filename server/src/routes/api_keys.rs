@@ -1,9 +1,5 @@
 use chrono::DateTime;
-use rocket::{
-    State, delete, get, post,
-    http::Status,
-    serde::json::Json,
-};
+use rocket::{State, delete, get, http::Status, post, serde::json::Json};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -45,11 +41,7 @@ pub async fn create(
 }
 
 #[delete("/api-keys/<id>")]
-pub async fn delete(
-    user: CurrentUser,
-    db: &State<DatabaseConnection>,
-    id: &str,
-) -> Status {
+pub async fn delete(user: CurrentUser, db: &State<DatabaseConnection>, id: &str) -> Status {
     let Ok(id) = Uuid::parse_str(id) else {
         return Status::UnprocessableEntity;
     };

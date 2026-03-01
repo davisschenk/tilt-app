@@ -22,7 +22,11 @@ async fn list(
 }
 
 #[get("/brews/<id>")]
-async fn get_by_id(_user: CurrentUser, db: &State<DatabaseConnection>, id: &str) -> Result<Json<BrewResponse>, Status> {
+async fn get_by_id(
+    _user: CurrentUser,
+    db: &State<DatabaseConnection>,
+    id: &str,
+) -> Result<Json<BrewResponse>, Status> {
     let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
     match brew_service::find_by_id(db.inner(), id).await {
         Ok(Some(b)) => Ok(Json(b)),

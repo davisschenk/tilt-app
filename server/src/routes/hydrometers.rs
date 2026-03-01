@@ -10,7 +10,10 @@ use crate::guards::current_user::CurrentUser;
 use crate::services::hydrometer_service;
 
 #[get("/hydrometers")]
-async fn list(_user: CurrentUser, db: &State<DatabaseConnection>) -> Result<Json<Vec<HydrometerResponse>>, Status> {
+async fn list(
+    _user: CurrentUser,
+    db: &State<DatabaseConnection>,
+) -> Result<Json<Vec<HydrometerResponse>>, Status> {
     hydrometer_service::find_all(db.inner())
         .await
         .map(Json)

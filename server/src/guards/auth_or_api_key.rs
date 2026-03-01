@@ -5,11 +5,11 @@ use rocket::{
 };
 use sea_orm::DatabaseConnection;
 
+use crate::guards::current_user::SESSION_COOKIE;
 use crate::services::{
-    api_keys::{validate_api_key, ApiKeyError},
+    api_keys::{ApiKeyError, validate_api_key},
     sessions,
 };
-use crate::guards::current_user::SESSION_COOKIE;
 use uuid::Uuid;
 
 /// A guard that accepts either a valid session cookie (CurrentUser) OR a valid API key.
@@ -42,7 +42,9 @@ impl<'r> FromRequest<'r> for AuthOrApiKey {
                 Ok(_) => return Outcome::Success(AuthOrApiKey),
                 Err(ApiKeyError::Expired) => return Outcome::Error((Status::Unauthorized, ())),
                 Err(ApiKeyError::Invalid) => {} // fall through to session check
-                Err(ApiKeyError::Db(_)) => return Outcome::Error((Status::InternalServerError, ())),
+                Err(ApiKeyError::Db(_)) => {
+                    return Outcome::Error((Status::InternalServerError, ()));
+                }
             }
         }
 
