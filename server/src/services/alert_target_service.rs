@@ -34,6 +34,13 @@ pub async fn find_by_id(
     Ok(model.map(model_to_response))
 }
 
+pub async fn find_by_id_raw(
+    db: &DatabaseConnection,
+    id: Uuid,
+) -> Result<Option<alert_targets::Model>, DbErr> {
+    AlertTarget::find_by_id(id).one(db).await
+}
+
 pub async fn create(
     db: &DatabaseConnection,
     input: CreateAlertTarget,

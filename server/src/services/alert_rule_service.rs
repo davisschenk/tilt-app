@@ -139,7 +139,6 @@ pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
 
 /// Find all enabled alert rules that match the given reading and whose cooldown has expired.
 /// Returns the raw DB models so the dispatcher can access alert_target_id directly.
-#[allow(dead_code)]
 pub async fn find_triggered_rules(
     db: &DatabaseConnection,
     gravity: f64,
@@ -200,7 +199,6 @@ pub async fn find_triggered_rules(
 }
 
 /// Update last_triggered_at for a rule after successful dispatch.
-#[allow(dead_code)]
 pub async fn update_last_triggered(db: &DatabaseConnection, id: Uuid) -> Result<(), DbErr> {
     let Some(existing) = AlertRule::find_by_id(id).one(db).await? else {
         return Ok(());

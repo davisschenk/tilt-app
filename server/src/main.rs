@@ -153,8 +153,11 @@ async fn rocket() -> Rocket<Build> {
         .trim()
         .to_string();
 
+    let http_client = reqwest::Client::new();
+
     let mut rocket = rocket::build()
         .manage(db)
+        .manage(http_client)
         .attach(cors)
         .attach(fairings::rate_limit::RateLimit::new())
         .attach(fairings::request_logger::RequestLogger)
