@@ -258,6 +258,110 @@ impl ReadingsQuery {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WebhookFormat {
+    GenericJson,
+    Discord,
+    Slack,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlertMetric {
+    Gravity,
+    TemperatureF,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlertOperator {
+    Lte,
+    Gte,
+    Lt,
+    Gt,
+    Eq,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlertTargetResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub url: String,
+    pub format: WebhookFormat,
+    pub secret_header: Option<String>,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAlertTarget {
+    pub name: String,
+    pub url: String,
+    pub format: WebhookFormat,
+    pub secret_header: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAlertTarget {
+    pub name: Option<String>,
+    pub url: Option<String>,
+    pub format: Option<WebhookFormat>,
+    pub secret_header: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlertRuleResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub brew_id: Option<Uuid>,
+    pub hydrometer_id: Option<Uuid>,
+    pub metric: AlertMetric,
+    pub operator: AlertOperator,
+    pub threshold: f64,
+    pub alert_target_id: Uuid,
+    pub enabled: bool,
+    pub cooldown_minutes: i32,
+    pub last_triggered_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAlertRule {
+    pub name: String,
+    pub metric: AlertMetric,
+    pub operator: AlertOperator,
+    pub threshold: f64,
+    pub alert_target_id: Uuid,
+    pub brew_id: Option<Uuid>,
+    pub hydrometer_id: Option<Uuid>,
+    pub cooldown_minutes: Option<i32>,
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAlertRule {
+    pub name: Option<String>,
+    pub metric: Option<AlertMetric>,
+    pub operator: Option<AlertOperator>,
+    pub threshold: Option<f64>,
+    pub alert_target_id: Option<Uuid>,
+    pub brew_id: Option<Uuid>,
+    pub hydrometer_id: Option<Uuid>,
+    pub cooldown_minutes: Option<i32>,
+    pub enabled: Option<bool>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -610,5 +714,213 @@ mod tests {
         let json = r#"{"limit":50}"#;
         let query: ReadingsQuery = serde_json::from_str(json).unwrap();
         assert_eq!(query.limit_or_default(), 50);
+    }
+
+    #[test]
+    fn webhook_format_serializes_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&WebhookFormat::GenericJson).unwrap(),
+            "\"generic_json\""
+        );
+        assert_eq!(
+            serde_json::to_string(&WebhookFormat::Discord).unwrap(),
+            "\"discord\""
+        );
+        assert_eq!(
+            serde_json::to_string(&WebhookFormat::Slack).unwrap(),
+            "\"slack\""
+        );
+    }
+
+    #[test]
+    fn webhook_format_deserializes() {
+        let fmt: WebhookFormat = serde_json::from_str("\"generic_json\"").unwrap();
+        assert_eq!(fmt, WebhookFormat::GenericJson);
+        let fmt: WebhookFormat = serde_json::from_str("\"discord\"").unwrap();
+        assert_eq!(fmt, WebhookFormat::Discord);
+    }
+
+    #[test]
+    fn alert_metric_serializes_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&AlertMetric::Gravity).unwrap(),
+            "\"gravity\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AlertMetric::TemperatureF).unwrap(),
+            "\"temperature_f\""
+        );
+    }
+
+    #[test]
+    fn alert_metric_deserializes() {
+        let m: AlertMetric = serde_json::from_str("\"gravity\"").unwrap();
+        assert_eq!(m, AlertMetric::Gravity);
+        let m: AlertMetric = serde_json::from_str("\"temperature_f\"").unwrap();
+        assert_eq!(m, AlertMetric::TemperatureF);
+    }
+
+    #[test]
+    fn alert_operator_serializes_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&AlertOperator::Lte).unwrap(),
+            "\"lte\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AlertOperator::Gte).unwrap(),
+            "\"gte\""
+        );
+        assert_eq!(serde_json::to_string(&AlertOperator::Lt).unwrap(), "\"lt\"");
+        assert_eq!(serde_json::to_string(&AlertOperator::Gt).unwrap(), "\"gt\"");
+        assert_eq!(serde_json::to_string(&AlertOperator::Eq).unwrap(), "\"eq\"");
+    }
+
+    #[test]
+    fn alert_operator_deserializes() {
+        let op: AlertOperator = serde_json::from_str("\"lte\"").unwrap();
+        assert_eq!(op, AlertOperator::Lte);
+        let op: AlertOperator = serde_json::from_str("\"eq\"").unwrap();
+        assert_eq!(op, AlertOperator::Eq);
+    }
+
+    #[test]
+    fn create_alert_target_required_and_optional() {
+        let json = r#"{"name":"Discord Alerts","url":"https://discord.com/api/webhooks/123","format":"discord"}"#;
+        let target: CreateAlertTarget = serde_json::from_str(json).unwrap();
+        assert_eq!(target.name, "Discord Alerts");
+        assert_eq!(target.format, WebhookFormat::Discord);
+        assert!(target.secret_header.is_none());
+        assert!(target.enabled.is_none());
+    }
+
+    #[test]
+    fn create_alert_target_with_all_fields() {
+        let target = CreateAlertTarget {
+            name: "Slack Hook".to_string(),
+            url: "https://hooks.slack.com/services/T00/B00/xxx".to_string(),
+            format: WebhookFormat::Slack,
+            secret_header: Some("Bearer tok123".to_string()),
+            enabled: Some(false),
+        };
+        let json = serde_json::to_string(&target).unwrap();
+        assert!(json.contains("\"secretHeader\""));
+        let deserialized: CreateAlertTarget = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.format, WebhookFormat::Slack);
+        assert_eq!(deserialized.secret_header.unwrap(), "Bearer tok123");
+        assert_eq!(deserialized.enabled, Some(false));
+    }
+
+    #[test]
+    fn update_alert_target_all_optional() {
+        let update: UpdateAlertTarget = serde_json::from_str("{}").unwrap();
+        assert!(update.name.is_none());
+        assert!(update.url.is_none());
+        assert!(update.format.is_none());
+        assert!(update.secret_header.is_none());
+        assert!(update.enabled.is_none());
+    }
+
+    #[test]
+    fn alert_target_response_serde_round_trip() {
+        let now = Utc::now();
+        let resp = AlertTargetResponse {
+            id: Uuid::new_v4(),
+            name: "My Webhook".to_string(),
+            url: "https://example.com/hook".to_string(),
+            format: WebhookFormat::GenericJson,
+            secret_header: None,
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"createdAt\""));
+        assert!(json.contains("\"updatedAt\""));
+        let deserialized: AlertTargetResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "My Webhook");
+        assert_eq!(deserialized.format, WebhookFormat::GenericJson);
+    }
+
+    #[test]
+    fn create_alert_rule_required_and_optional() {
+        let target_id = Uuid::new_v4();
+        let json = format!(
+            r#"{{"name":"Low Gravity","metric":"gravity","operator":"lte","threshold":1.010,"alertTargetId":"{}"}}"#,
+            target_id
+        );
+        let rule: CreateAlertRule = serde_json::from_str(&json).unwrap();
+        assert_eq!(rule.name, "Low Gravity");
+        assert_eq!(rule.metric, AlertMetric::Gravity);
+        assert_eq!(rule.operator, AlertOperator::Lte);
+        assert!((rule.threshold - 1.010).abs() < f64::EPSILON);
+        assert_eq!(rule.alert_target_id, target_id);
+        assert!(rule.brew_id.is_none());
+        assert!(rule.hydrometer_id.is_none());
+        assert!(rule.cooldown_minutes.is_none());
+        assert!(rule.enabled.is_none());
+    }
+
+    #[test]
+    fn create_alert_rule_with_all_fields() {
+        let rule = CreateAlertRule {
+            name: "High Temp".to_string(),
+            metric: AlertMetric::TemperatureF,
+            operator: AlertOperator::Gte,
+            threshold: 80.0,
+            alert_target_id: Uuid::new_v4(),
+            brew_id: Some(Uuid::new_v4()),
+            hydrometer_id: Some(Uuid::new_v4()),
+            cooldown_minutes: Some(30),
+            enabled: Some(true),
+        };
+        let json = serde_json::to_string(&rule).unwrap();
+        assert!(json.contains("\"alertTargetId\""));
+        assert!(json.contains("\"cooldownMinutes\""));
+        assert!(json.contains("\"brewId\""));
+        assert!(json.contains("\"hydrometerId\""));
+        let deserialized: CreateAlertRule = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.metric, AlertMetric::TemperatureF);
+        assert_eq!(deserialized.cooldown_minutes, Some(30));
+    }
+
+    #[test]
+    fn update_alert_rule_all_optional() {
+        let update: UpdateAlertRule = serde_json::from_str("{}").unwrap();
+        assert!(update.name.is_none());
+        assert!(update.metric.is_none());
+        assert!(update.operator.is_none());
+        assert!(update.threshold.is_none());
+        assert!(update.alert_target_id.is_none());
+        assert!(update.brew_id.is_none());
+        assert!(update.hydrometer_id.is_none());
+        assert!(update.cooldown_minutes.is_none());
+        assert!(update.enabled.is_none());
+    }
+
+    #[test]
+    fn alert_rule_response_serde_round_trip() {
+        let now = Utc::now();
+        let resp = AlertRuleResponse {
+            id: Uuid::new_v4(),
+            name: "FG Reached".to_string(),
+            brew_id: Some(Uuid::new_v4()),
+            hydrometer_id: None,
+            metric: AlertMetric::Gravity,
+            operator: AlertOperator::Lte,
+            threshold: 1.012,
+            alert_target_id: Uuid::new_v4(),
+            enabled: true,
+            cooldown_minutes: 60,
+            last_triggered_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"lastTriggeredAt\""));
+        assert!(json.contains("\"cooldownMinutes\""));
+        let deserialized: AlertRuleResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "FG Reached");
+        assert_eq!(deserialized.operator, AlertOperator::Lte);
+        assert!(deserialized.last_triggered_at.is_none());
     }
 }
