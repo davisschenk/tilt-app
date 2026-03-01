@@ -62,18 +62,26 @@ async fn create_batch(
 
         total_count += count;
 
-        // Alert evaluation: use the latest reading from this batch
+        // Alert evaluation: spawn as background task so it never blocks the response
         if let Some(latest) = batch_readings.last() {
-            evaluate_alerts(
-                db.inner(),
-                http_client.inner(),
-                latest.gravity,
-                latest.temperature_f,
-                latest.recorded_at,
-                brew_id,
-                Some(hydrometer.id),
-            )
-            .await;
+            let db_ref = db.inner().clone();
+            let client_ref = http_client.inner().clone();
+            let gravity = latest.gravity;
+            let temp_f = latest.temperature_f;
+            let recorded_at = latest.recorded_at;
+            let hydro_id = hydrometer.id;
+            tokio::spawn(async move {
+                evaluate_alerts(
+                    &db_ref,
+                    &client_ref,
+                    gravity,
+                    temp_f,
+                    recorded_at,
+                    brew_id,
+                    Some(hydro_id),
+                )
+                .await;
+            });
         }
     }
 

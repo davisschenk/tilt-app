@@ -153,7 +153,11 @@ async fn rocket() -> Rocket<Build> {
         .trim()
         .to_string();
 
-    let http_client = reqwest::Client::new();
+    let http_client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .expect("Failed to build HTTP client");
 
     let mut rocket = rocket::build()
         .manage(db)

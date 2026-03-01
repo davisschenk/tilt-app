@@ -1,0 +1,39 @@
+# Version control
+.git
+.gitignore
+
+# Build artifacts
+target/
+web/node_modules/
+web/dist/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project management (not needed for build)
+progress.md
+prd.json
+prd-backend.json
+init_progress.txt
+agents.md
+README.md
+.windsurf/
+
+# Cross-compilation (not needed in server Docker build)
+cross/
+Cross.toml
+
+# Docker files
+docker-compose.yml
+docker-compose.prod.yml
+Makefile
+justfile
+
+# Environment
+.env
+.env.*
+!.env.example
