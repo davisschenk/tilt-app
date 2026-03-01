@@ -7,6 +7,7 @@ import BrewDetail from "@/pages/brew-detail";
 import BrewNew from "@/pages/brew-new";
 import HydrometerList from "@/pages/hydrometer-list";
 import AlertTargets from "@/pages/alert-targets";
+import AlertRules from "@/pages/alert-rules";
 import ApiKeysPage from "@/pages/api-keys";
 import NotFound from "@/pages/not-found";
 
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/brews/:id" element={<BrewDetail />} />
           <Route path="/hydrometers" element={<HydrometerList />} />
           <Route path="/alert-targets" element={<AlertTargets />} />
+          <Route path="/alert-rules" element={<AlertRules />} />
           <Route path="/settings/api-keys" element={<ApiKeysPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
