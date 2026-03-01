@@ -163,10 +163,10 @@ export default function CreateAlertRuleDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="rule-brew">Brew (optional)</Label>
-              <Select value={brewId} onValueChange={setBrewId}>
+              <Select value={brewId || "__any__"} onValueChange={(v) => setBrewId(v === "__any__" ? "" : v)}>
                 <SelectTrigger id="rule-brew"><SelectValue placeholder="Any brew" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any brew</SelectItem>
+                  <SelectItem value="__any__">Any brew</SelectItem>
                   {brews?.map((b) => (
                     <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                   ))}
@@ -175,10 +175,10 @@ export default function CreateAlertRuleDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="rule-hydro">Hydrometer (optional)</Label>
-              <Select value={hydrometerId} onValueChange={setHydrometerId}>
+              <Select value={hydrometerId || "__any__"} onValueChange={(v) => setHydrometerId(v === "__any__" ? "" : v)}>
                 <SelectTrigger id="rule-hydro"><SelectValue placeholder="Any hydrometer" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any hydrometer</SelectItem>
+                  <SelectItem value="__any__">Any hydrometer</SelectItem>
                   {hydrometers?.map((h) => (
                     <SelectItem key={h.id} value={h.id}>{h.name ?? h.color}</SelectItem>
                   ))}
