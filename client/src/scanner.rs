@@ -59,20 +59,18 @@ impl TiltScanner {
                 event = discover.next() => {
                     match event {
                         Some(AdapterEvent::DeviceAdded(addr)) => {
-                            if let Ok(device) = adapter.device(addr) {
-                                if let Ok(Some(mfr_data)) = device.manufacturer_data().await {
-                                    if let Some(data) = mfr_data.get(&APPLE_COMPANY_ID) {
-                                        if let Some(reading) = parse_ibeacon_tilt(data) {
-                                            tracing::debug!(
-                                                color = ?reading.color,
-                                                temp = reading.temperature_f,
-                                                gravity = reading.gravity,
-                                                "Tilt advertisement"
-                                            );
-                                            latest.insert(reading.color, reading);
-                                        }
-                                    }
-                                }
+                            if let Ok(device) = adapter.device(addr)
+                                && let Ok(Some(mfr_data)) = device.manufacturer_data().await
+                                && let Some(data) = mfr_data.get(&APPLE_COMPANY_ID)
+                                && let Some(reading) = parse_ibeacon_tilt(data)
+                            {
+                                tracing::debug!(
+                                    color = ?reading.color,
+                                    temp = reading.temperature_f,
+                                    gravity = reading.gravity,
+                                    "Tilt advertisement"
+                                );
+                                latest.insert(reading.color, reading);
                             }
                         }
                         None => {

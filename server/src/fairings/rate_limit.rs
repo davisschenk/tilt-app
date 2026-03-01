@@ -67,10 +67,8 @@ impl Fairing for RateLimit {
             if self.auth_limiter.check_key(&ip).is_err() {
                 req.local_cache(|| RateLimitExceeded(true));
             }
-        } else if is_api_path(&path) {
-            if self.api_limiter.check_key(&ip).is_err() {
-                req.local_cache(|| RateLimitExceeded(true));
-            }
+        } else if is_api_path(&path) && self.api_limiter.check_key(&ip).is_err() {
+            req.local_cache(|| RateLimitExceeded(true));
         }
     }
 }

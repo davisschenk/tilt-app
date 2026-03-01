@@ -196,7 +196,7 @@ async fn main() {
                                 .filter(|r| {
                                     last_uploaded
                                         .get(&r.color)
-                                        .map_or(true, |t| now.duration_since(*t) >= upload_interval)
+                                        .is_none_or(|t| now.duration_since(*t) >= upload_interval)
                                 })
                                 .collect();
 

@@ -188,10 +188,10 @@ pub async fn validate_api_key(
         .map_err(ApiKeyError::Db)?
         .ok_or(ApiKeyError::Invalid)?;
 
-    if let Some(expires_at) = key.expires_at {
-        if expires_at < Utc::now().fixed_offset() {
-            return Err(ApiKeyError::Expired);
-        }
+    if let Some(expires_at) = key.expires_at
+        && expires_at < Utc::now().fixed_offset()
+    {
+        return Err(ApiKeyError::Expired);
     }
 
     let mut active: api_keys::ActiveModel = key.clone().into();
