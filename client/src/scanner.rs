@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use bluer::monitor::{Monitor, MonitorEvent, Pattern, RssiSamplingPeriod};
-use bluer::Session;
+use bluer::{AdapterEvent, Session};
 use futures::StreamExt;
 use shared::{TiltColor, TiltReading};
 use uuid::Uuid;
@@ -11,12 +10,9 @@ const APPLE_COMPANY_ID: u16 = 0x004C;
 const IBEACON_TYPE: u8 = 0x02;
 const IBEACON_LENGTH: u8 = 0x15;
 
-/// AD type 0xFF = Manufacturer Specific Data.
-/// Filter: bytes [0x4C, 0x00] at offset 0 = Apple company ID (little-endian).
-const AD_TYPE_MANUFACTURER: u8 = 0xFF;
-const APPLE_ID_BYTES: [u8; 2] = [0x4C, 0x00];
-
 pub struct TiltScanner {
+    /// bluer session kept alive for the lifetime of the scanner.
+    #[allow(dead_code)]
     session: Session,
     adapter_name: String,
 }
@@ -25,12 +21,20 @@ impl TiltScanner {
     pub async fn new() -> anyhow::Result<Self> {
         let session = Session::new().await
             .map_err(|e| anyhow::anyhow!("Failed to create bluer session: {e:#}"))?;
-        let adapter = session.default_adapter().await
-            .map_err(|e| anyhow::anyhow!("No Bluetooth adapter found: {e:#}"))?;
+        let adapter_names = session.adapter_names().await
+            .map_err(|e| anyhow::anyhow!("Failed to list adapters: {e:#}"))?;
+        let adapter_name = adapter_names
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("No Bluetooth adapter found"))?;
+
+        tracing::info!("Using BLE adapter: {}", adapter_name);
+
+        let adapter = session.adapter(&adapter_name)
+            .map_err(|e| anyhow::anyhow!("Failed to open adapter: {e:#}"))?;
         adapter.set_powered(true).await
             .map_err(|e| anyhow::anyhow!("Failed to power on adapter: {e:#}"))?;
-        let adapter_name = adapter.name().to_string();
-        tracing::info!("Using BLE adapter: {}", adapter_name);
+
         Ok(Self { session, adapter_name })
     }
 
@@ -41,22 +45,10 @@ impl TiltScanner {
         let adapter = self.session.adapter(&self.adapter_name)
             .map_err(|e| anyhow::anyhow!("Failed to open adapter: {e:#}"))?;
 
-        // Register an Advertisement Monitor that filters for Apple manufacturer data.
-        // BlueZ delivers MonitorEvent::DeviceFound for every matching advertisement,
-        // even from non-connectable iBeacon broadcasters.
-        let mm = adapter.monitor().await
-            .map_err(|e| anyhow::anyhow!("Failed to get monitor manager: {e:#}"))?;
-        let mut monitor_handle = mm.register(Monitor {
-            monitor_type: bluer::monitor::Type::OrPatterns,
-            rssi_sampling_period: Some(RssiSamplingPeriod::All),
-            patterns: Some(vec![Pattern {
-                data_type: AD_TYPE_MANUFACTURER,
-                start_position: 0,
-                content: APPLE_ID_BYTES.to_vec(),
-            }]),
-            ..Default::default()
-        }).await
-        .map_err(|e| anyhow::anyhow!("Failed to register monitor: {e:#}"))?;
+        // discover_devices_with_changes re-emits DeviceAdded whenever a device's
+        // properties (including manufacturer_data) change, so we catch every broadcast.
+        let mut discover = adapter.discover_devices_with_changes().await
+            .map_err(|e| anyhow::anyhow!("discover_devices failed: {e:#}"))?;
 
         let mut latest: HashMap<TiltColor, TiltReading> = HashMap::new();
         let deadline = tokio::time::Instant::now() + interval;
@@ -64,11 +56,10 @@ impl TiltScanner {
         loop {
             tokio::select! {
                 _ = tokio::time::sleep_until(deadline) => break,
-                mevt = monitor_handle.next() => {
-                    match mevt {
-                        Some(MonitorEvent::DeviceFound(devid)) => {
-                            if let Ok(device) = adapter.device(devid.device) {
-                                // Read manufacturer_data immediately — it's populated on DeviceFound.
+                event = discover.next() => {
+                    match event {
+                        Some(AdapterEvent::DeviceAdded(addr)) => {
+                            if let Ok(device) = adapter.device(addr) {
                                 if let Ok(Some(mfr_data)) = device.manufacturer_data().await {
                                     if let Some(data) = mfr_data.get(&APPLE_COMPANY_ID) {
                                         if let Some(reading) = parse_ibeacon_tilt(data) {
@@ -85,8 +76,8 @@ impl TiltScanner {
                             }
                         }
                         None => {
-                            tracing::warn!("Monitor event stream ended unexpectedly");
-                            return Err(anyhow::anyhow!("Monitor event stream ended"));
+                            tracing::warn!("BLE event stream ended unexpectedly");
+                            return Err(anyhow::anyhow!("BLE event stream ended"));
                         }
                         _ => {}
                     }
