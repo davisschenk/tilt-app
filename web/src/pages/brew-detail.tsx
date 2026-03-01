@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { format } from "date-fns";
-import { Pencil, CheckCircle, Archive, Trash2, PartyPopper } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
+import { Pencil, CheckCircle, Archive, Trash2, PartyPopper, Bell, ChevronDown, ChevronUp, Plus } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -11,13 +11,30 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBrew, useUpdateBrew } from "@/hooks/use-brews";
 import { useHydrometer } from "@/hooks/use-hydrometers";
+import { useAlertRules } from "@/hooks/use-alert-rules";
+import { useAlertTargets } from "@/hooks/use-alert-targets";
 import EditBrewDialog from "@/components/brew/edit-brew-dialog";
 import DeleteBrewDialog from "@/components/brew/delete-brew-dialog";
+import CreateAlertRuleDialog from "@/components/alerts/create-alert-rule-dialog";
 import ReadingsChart from "@/components/readings/readings-chart";
 import ReadingsTable from "@/components/readings/readings-table";
 import FermentationStats from "@/components/readings/fermentation-stats";
 import BrewNotes from "@/components/brew/brew-notes";
 import * as toast from "@/lib/toast";
+import type { AlertMetric, AlertOperator } from "@/types";
+
+const METRIC_LABELS: Record<AlertMetric, string> = {
+  gravity: "Gravity",
+  temperature_f: "Temperature (°F)",
+};
+
+const OPERATOR_SYMBOLS: Record<AlertOperator, string> = {
+  lte: "≤",
+  gte: "≥",
+  lt: "<",
+  gt: ">",
+  eq: "=",
+};
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   Active: "default",
@@ -42,6 +59,10 @@ export default function BrewDetail() {
   const { data: hydrometer } = useHydrometer(brew?.hydrometerId ?? "");
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [alertsExpanded, setAlertsExpanded] = useState(false);
+  const [addAlertOpen, setAddAlertOpen] = useState(false);
+  const { data: alertRules } = useAlertRules(id);
+  const { data: alertTargets } = useAlertTargets();
 
   function handleStatusChange(status: "Completed" | "Archived") {
     updateBrew.mutate(
@@ -225,6 +246,70 @@ export default function BrewDetail() {
         <ReadingsChart brewId={brew.id} targetFg={brew.targetFg} />
         <ReadingsTable brewId={brew.id} />
       </div>
+
+      <Separator className="my-8" />
+
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <button
+            type="button"
+            className="flex items-center gap-2 text-lg font-semibold hover:text-primary transition-colors"
+            onClick={() => setAlertsExpanded(!alertsExpanded)}
+          >
+            <Bell className="h-5 w-5" />
+            Recent Alerts
+            {alertsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {alertRules && alertRules.length > 0 && (
+              <Badge variant="secondary" className="ml-1">{alertRules.length}</Badge>
+            )}
+          </button>
+          <Button variant="outline" size="sm" onClick={() => setAddAlertOpen(true)}>
+            <Plus className="mr-1 h-3 w-3" />
+            Add Alert
+          </Button>
+        </div>
+
+        {alertsExpanded && (
+          <div className="space-y-3">
+            {(() => {
+              const targetMap = new Map(alertTargets?.map((t) => [t.id, t.name]) ?? []);
+              const triggered = alertRules
+                ?.filter((r) => r.lastTriggeredAt)
+                .sort((a, b) => new Date(b.lastTriggeredAt!).getTime() - new Date(a.lastTriggeredAt!).getTime())
+                .slice(0, 5) ?? [];
+
+              if (triggered.length === 0) {
+                return (
+                  <p className="text-muted-foreground text-sm py-4">No alerts fired yet.</p>
+                );
+              }
+
+              return triggered.map((r) => {
+                const metricLabel = METRIC_LABELS[r.metric] ?? r.metric;
+                const opSymbol = OPERATOR_SYMBOLS[r.operator] ?? r.operator;
+                const value = r.metric === "gravity" ? r.threshold.toFixed(3) : r.threshold.toFixed(1);
+                return (
+                  <Card key={r.id}>
+                    <CardContent className="py-3 flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-sm">{r.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {metricLabel} {opSymbol} {value} → {targetMap.get(r.alertTargetId) ?? "Unknown target"}
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(r.lastTriggeredAt!), { addSuffix: true })}
+                      </p>
+                    </CardContent>
+                  </Card>
+                );
+              });
+            })()}
+          </div>
+        )}
+      </div>
+
+      <CreateAlertRuleDialog open={addAlertOpen} onOpenChange={setAddAlertOpen} defaultBrewId={brew.id} />
     </div>
   );
 }
