@@ -4,6 +4,12 @@ set dotenv-load
 default:
     @just --list
 
+# Install git hooks (run once after cloning)
+install-hooks:
+    cp .githooks/pre-commit .git/hooks/pre-commit
+    chmod +x .git/hooks/pre-commit
+    @echo "Git hooks installed."
+
 # Start the Postgres database container
 db-up:
     docker compose up -d db
