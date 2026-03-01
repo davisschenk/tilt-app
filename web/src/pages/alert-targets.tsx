@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAlertTargets, useTestFireTarget } from "@/hooks/use-alert-targets";
+import CreateAlertTargetDialog from "@/components/alerts/create-alert-target-dialog";
+import EditAlertTargetDialog from "@/components/alerts/edit-alert-target-dialog";
+import DeleteAlertTargetDialog from "@/components/alerts/delete-alert-target-dialog";
 import { toast } from "sonner";
 import type { AlertTargetResponse, WebhookFormat } from "@/types";
 
@@ -30,7 +33,9 @@ function truncateUrl(url: string, max = 50) {
 export default function AlertTargets() {
   const { data: targets, isLoading } = useAlertTargets();
   const testFire = useTestFireTarget();
-  const [_createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<AlertTargetResponse | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AlertTargetResponse | null>(null);
 
   function handleTestFire(target: AlertTargetResponse) {
     testFire.mutate(target.id, {
@@ -122,11 +127,11 @@ export default function AlertTargets() {
                     <Zap className="mr-1 h-3 w-3" />
                     Test
                   </Button>
-                  <Button variant="outline" size="sm" disabled>
+                  <Button variant="outline" size="sm" onClick={() => setEditTarget(t)}>
                     <Pencil className="mr-1 h-3 w-3" />
                     Edit
                   </Button>
-                  <Button variant="outline" size="sm" disabled>
+                  <Button variant="outline" size="sm" onClick={() => setDeleteTarget(t)}>
                     <Trash2 className="mr-1 h-3 w-3" />
                     Delete
                   </Button>
@@ -143,6 +148,23 @@ export default function AlertTargets() {
             Add Target
           </Button>
         </div>
+      )}
+
+      <CreateAlertTargetDialog open={createOpen} onOpenChange={setCreateOpen} />
+      {editTarget && (
+        <EditAlertTargetDialog
+          target={editTarget}
+          open={!!editTarget}
+          onOpenChange={(open) => { if (!open) setEditTarget(null); }}
+        />
+      )}
+      {deleteTarget && (
+        <DeleteAlertTargetDialog
+          targetId={deleteTarget.id}
+          targetName={deleteTarget.name}
+          open={!!deleteTarget}
+          onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        />
       )}
     </div>
   );
