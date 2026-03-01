@@ -90,10 +90,18 @@ check:
 cross-client:
     cross build --release --target arm-unknown-linux-gnueabihf -p client
 
+# Configure a Raspberry Pi for the tilt-client (BlueZ experimental flag, etc.)
+# Usage: just setup-pi tilt@192.168.1.100
+setup-pi host:
+    ssh {{host}} "sudo mkdir -p /etc/systemd/system/bluetooth.service.d && printf '[Service]\nExecStart=\nExecStart=/usr/libexec/bluetooth/bluetoothd --experimental\n' | sudo tee /etc/systemd/system/bluetooth.service.d/experimental.conf"
+    ssh {{host}} "sudo systemctl daemon-reload && sudo systemctl restart bluetooth"
+    @echo "BlueZ experimental mode enabled on {{host}}"
+
 # Deploy the cross-compiled client binary to a Raspberry Pi via SSH
 # Usage: just deploy-client tilt@192.168.1.100
 deploy-client host:
     just cross-client
+    just setup-pi {{host}}
     scp target/arm-unknown-linux-gnueabihf/release/client {{host}}:/tmp/tilt-client
     scp client/tilt-client.service {{host}}:/tmp/tilt-client.service
     ssh {{host}} "sudo mv /tmp/tilt-client /usr/local/bin/tilt-client && sudo chmod +x /usr/local/bin/tilt-client"
