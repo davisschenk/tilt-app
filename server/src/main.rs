@@ -166,6 +166,7 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes::brews::routes())
         .mount("/api/v1", routes::readings::routes())
         .mount("/api/v1", routes::alert_targets::routes())
+        .mount("/api/v1", routes::alert_rules::routes())
         .mount("/", FileServer::from(PathBuf::from(&web_dist)))
         .mount("/", routes![spa_fallback])
         .register(
