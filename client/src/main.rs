@@ -190,6 +190,8 @@ async fn main() {
             }
         };
 
+        let mut empty_scan_count: u64 = 0;
+
         loop {
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {
@@ -199,6 +201,14 @@ async fn main() {
                 result = scanner.next_batch(scan_duration) => {
                     match result {
                         Ok(all_readings) => {
+                            if all_readings.is_empty() {
+                                empty_scan_count += 1;
+                                if empty_scan_count.is_multiple_of(60) {
+                                    tracing::info!(empty_scans = empty_scan_count, "Heartbeat: scanning but no Tilt devices in range");
+                                }
+                            } else {
+                                empty_scan_count = 0;
+                            }
                             tracing::debug!(count = all_readings.len(), "Scan complete");
 
                             let now = Instant::now();

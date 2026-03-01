@@ -58,10 +58,26 @@ impl TiltScanner {
 
         // discover_devices_with_changes re-emits DeviceAdded whenever a device's
         // properties (including manufacturer_data) change, so we catch every broadcast.
-        let mut discover = adapter
-            .discover_devices_with_changes()
-            .await
-            .map_err(|e| anyhow::anyhow!("discover_devices failed: {e:#}"))?;
+        tracing::debug!("Starting BLE discovery...");
+        let mut discover = match tokio::time::timeout(
+            Duration::from_secs(10),
+            adapter.discover_devices_with_changes(),
+        )
+        .await
+        {
+            Ok(Ok(stream)) => {
+                tracing::debug!("BLE discovery started successfully");
+                stream
+            }
+            Ok(Err(e)) => {
+                return Err(anyhow::anyhow!("discover_devices failed: {e:#}"));
+            }
+            Err(_) => {
+                return Err(anyhow::anyhow!(
+                    "BLE discovery setup timed out after 10s — adapter may be stuck"
+                ));
+            }
+        };
 
         let mut latest: HashMap<TiltColor, TiltReading> = HashMap::new();
         let deadline = tokio::time::Instant::now() + interval;
