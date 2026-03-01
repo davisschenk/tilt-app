@@ -30,6 +30,8 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(has_many = "super::alert_rules::Entity")]
+    AlertRules,
     #[sea_orm(
         belongs_to = "super::hydrometers::Entity",
         from = "Column::HydrometerId",
@@ -40,6 +42,12 @@ pub enum Relation {
     Hydrometers,
     #[sea_orm(has_many = "super::readings::Entity")]
     Readings,
+}
+
+impl Related<super::alert_rules::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::AlertRules.def()
+    }
 }
 
 impl Related<super::hydrometers::Entity> for Entity {

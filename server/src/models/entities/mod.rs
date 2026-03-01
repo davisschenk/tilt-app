@@ -2,6 +2,7 @@
 
 pub mod prelude;
 
+pub mod alert_rules;
 pub mod alert_targets;
 pub mod api_keys;
 pub mod brews;
