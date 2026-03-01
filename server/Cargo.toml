@@ -12,6 +12,7 @@ hex = "0.4.3"
 migration = { version = "0.1.0", path = "migration" }
 openidconnect = { version = "4.0.1", features = ["reqwest", "rustls-tls"] }
 rand = "0.10.0"
+reqwest = { version = "0.13.2", features = ["json"] }
 rocket = { version = "0.5.1", features = ["json", "secrets"] }
 rocket_cors = "0.6.0"
 sea-orm = { version = "1.1.19", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }

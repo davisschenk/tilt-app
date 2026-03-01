@@ -5,12 +5,12 @@ use uuid::Uuid;
 use crate::models::entities::alert_rules::{self, ActiveModel, Column, Entity as AlertRule};
 use shared::{AlertMetric, AlertOperator, AlertRuleResponse, CreateAlertRule, UpdateAlertRule};
 
-fn parse_metric(s: &str) -> AlertMetric {
+pub fn parse_metric(s: &str) -> AlertMetric {
     serde_json::from_value::<AlertMetric>(serde_json::Value::String(s.to_string()))
         .unwrap_or(AlertMetric::Gravity)
 }
 
-fn parse_operator(s: &str) -> AlertOperator {
+pub fn parse_operator(s: &str) -> AlertOperator {
     serde_json::from_value::<AlertOperator>(serde_json::Value::String(s.to_string()))
         .unwrap_or(AlertOperator::Lte)
 }
