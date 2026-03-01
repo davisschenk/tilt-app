@@ -16,6 +16,9 @@ import {
 } from "@/components/ui/table";
 import { useAlertRules } from "@/hooks/use-alert-rules";
 import { useAlertTargets } from "@/hooks/use-alert-targets";
+import CreateAlertRuleDialog from "@/components/alerts/create-alert-rule-dialog";
+import EditAlertRuleDialog from "@/components/alerts/edit-alert-rule-dialog";
+import DeleteAlertRuleDialog from "@/components/alerts/delete-alert-rule-dialog";
 import type { AlertRuleResponse, AlertMetric, AlertOperator } from "@/types";
 
 const METRIC_LABELS: Record<AlertMetric, string> = {
@@ -41,7 +44,9 @@ function formatCondition(metric: AlertMetric, operator: AlertOperator, threshold
 export default function AlertRules() {
   const { data: rules, isLoading } = useAlertRules();
   const { data: targets } = useAlertTargets();
-  const [_createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<AlertRuleResponse | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AlertRuleResponse | null>(null);
 
   const targetMap = new Map(targets?.map((t) => [t.id, t.name]) ?? []);
 
@@ -114,10 +119,10 @@ export default function AlertRules() {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditTarget(r)}>
                         <Pencil className="h-3 w-3" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDeleteTarget(r)}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
@@ -135,6 +140,23 @@ export default function AlertRules() {
             Add Rule
           </Button>
         </div>
+      )}
+
+      <CreateAlertRuleDialog open={createOpen} onOpenChange={setCreateOpen} />
+      {editTarget && (
+        <EditAlertRuleDialog
+          rule={editTarget}
+          open={!!editTarget}
+          onOpenChange={(open) => { if (!open) setEditTarget(null); }}
+        />
+      )}
+      {deleteTarget && (
+        <DeleteAlertRuleDialog
+          ruleId={deleteTarget.id}
+          ruleName={deleteTarget.name}
+          open={!!deleteTarget}
+          onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        />
       )}
     </div>
   );
