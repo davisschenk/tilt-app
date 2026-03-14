@@ -80,7 +80,7 @@ fn run() -> Result<()> {
     wifi_manager.connect().context("Initial WiFi connection failed")?;
 
     // Initialize BLE scanner
-    let ble_scanner = ble::BleScanner::new().context("Failed to initialize BLE scanner")?;
+    let mut ble_scanner = ble::BleScanner::new().context("Failed to initialize BLE scanner")?;
 
     // Initialize HTTP uploader
     let uploader = http::HttpUploader::new(cfg.server_url, cfg.api_key);
@@ -104,9 +104,13 @@ fn run() -> Result<()> {
 
         // Phase 1: Scan for Tilt hydrometers
         let readings = match ble_scanner.scan_for_tilts(cfg.scan_interval_secs) {
-            Ok(r) => r,
+            Ok(r) => {
+                ble_scanner.reset_recovery_counter();
+                r
+            }
             Err(e) => {
                 log::warn!("BLE scan error: {:?}", e);
+                ble_scanner.attempt_recovery(&e);
                 consecutive_errors += 1;
                 if consecutive_errors >= 10 {
                     log::error!(

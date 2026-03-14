@@ -12,10 +12,13 @@ use esp_idf_svc::hal::task::block_on;
 
 use crate::tilt::{self, TiltColor, TiltReading};
 
+const MAX_RECOVERY_FAILURES: u32 = 3;
+
 pub struct BleScanner {
     ble_device: &'static BLEDevice,
     scan_interval: u16,
     scan_window: u16,
+    consecutive_recovery_failures: u32,
 }
 
 impl BleScanner {
@@ -26,10 +29,48 @@ impl BleScanner {
             ble_device,
             scan_interval: 100,
             scan_window: 99,
+            consecutive_recovery_failures: 0,
         })
     }
 
-    pub fn scan_for_tilts(&self, duration_secs: u32) -> Result<Vec<TiltReading>> {
+    /// Attempt to recover the BLE stack after a scan failure.
+    /// Deinits and reinits the NimBLE host stack. After 3 consecutive
+    /// recovery failures, triggers a full device reboot via esp_restart().
+    pub fn attempt_recovery(&mut self, original_error: &anyhow::Error) {
+        log::warn!(
+            "Attempting BLE stack recovery (failure #{}) due to: {:?}",
+            self.consecutive_recovery_failures + 1,
+            original_error,
+        );
+
+        // Deinitialize NimBLE
+        if let Err(e) = BLEDevice::deinit() {
+            log::warn!("BLE deinit failed: {:?}", e);
+            self.consecutive_recovery_failures += 1;
+            if self.consecutive_recovery_failures >= MAX_RECOVERY_FAILURES {
+                log::error!(
+                    "BLE recovery failed {} times, rebooting device!",
+                    self.consecutive_recovery_failures,
+                );
+                unsafe {
+                    esp_idf_svc::sys::esp_restart();
+                }
+            }
+            return;
+        }
+
+        // Reinitialize NimBLE
+        self.ble_device = BLEDevice::take();
+        self.consecutive_recovery_failures = 0;
+        log::info!("BLE stack recovery successful");
+    }
+
+    /// Reset the recovery failure counter after a successful scan.
+    pub fn reset_recovery_counter(&mut self) {
+        self.consecutive_recovery_failures = 0;
+    }
+
+    pub fn scan_for_tilts(&mut self, duration_secs: u32) -> Result<Vec<TiltReading>> {
         let readings: Arc<Mutex<HashMap<TiltColor, TiltReading>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let readings_clone = readings.clone();
