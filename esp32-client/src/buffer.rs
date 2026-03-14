@@ -4,6 +4,7 @@
 //! unreachable. Oldest readings are dropped when the buffer is full.
 
 use std::collections::VecDeque;
+use std::time::Duration;
 
 use crate::tilt::TiltReading;
 
@@ -39,6 +40,38 @@ impl ReadingBuffer {
 
     pub fn is_empty(&self) -> bool {
         self.readings.is_empty()
+    }
+}
+
+pub struct Backoff {
+    initial_ms: u64,
+    max_ms: u64,
+    factor: u64,
+    current_ms: u64,
+}
+
+impl Backoff {
+    pub fn new(initial_ms: u64, max_ms: u64, factor: u64) -> Self {
+        Self {
+            initial_ms,
+            max_ms,
+            factor,
+            current_ms: initial_ms,
+        }
+    }
+
+    pub fn next_delay(&mut self) -> Duration {
+        let delay = Duration::from_millis(self.current_ms);
+        self.current_ms = (self.current_ms.saturating_mul(self.factor)).min(self.max_ms);
+        delay
+    }
+
+    pub fn reset(&mut self) {
+        self.current_ms = self.initial_ms;
+    }
+
+    pub fn current_delay_ms(&self) -> u64 {
+        self.current_ms
     }
 }
 
@@ -104,5 +137,51 @@ mod tests {
         buf.push_batch(&[make_reading(3.0)]);
         assert_eq!(buf.len(), 1);
         assert_eq!(buf.drain_all().len(), 1);
+    }
+
+    #[test]
+    fn backoff_doubles_each_call() {
+        let mut b = Backoff::new(1000, 60000, 2);
+        assert_eq!(b.next_delay(), Duration::from_millis(1000));
+        assert_eq!(b.next_delay(), Duration::from_millis(2000));
+        assert_eq!(b.next_delay(), Duration::from_millis(4000));
+        assert_eq!(b.next_delay(), Duration::from_millis(8000));
+    }
+
+    #[test]
+    fn backoff_caps_at_max() {
+        let mut b = Backoff::new(1000, 5000, 2);
+        b.next_delay(); // 1000
+        b.next_delay(); // 2000
+        b.next_delay(); // 4000
+        let d = b.next_delay(); // should be capped at 5000
+        assert_eq!(d, Duration::from_millis(5000));
+        let d2 = b.next_delay(); // still capped
+        assert_eq!(d2, Duration::from_millis(5000));
+    }
+
+    #[test]
+    fn backoff_reset() {
+        let mut b = Backoff::new(1000, 60000, 2);
+        b.next_delay(); // 1000
+        b.next_delay(); // 2000
+        b.reset();
+        assert_eq!(b.next_delay(), Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn backoff_no_overflow() {
+        // Use large but reasonable values to verify saturating_mul doesn't panic
+        let mut b = Backoff::new(30_000, 60_000, 2);
+        b.next_delay(); // 30_000
+        b.next_delay(); // 60_000 (capped)
+        // Should stay at max without overflow
+        assert_eq!(b.next_delay(), Duration::from_millis(60_000));
+        assert_eq!(b.current_delay_ms(), 60_000);
+
+        // Verify saturating_mul with extreme values doesn't panic
+        let mut b2 = Backoff::new(u64::MAX / 4, u64::MAX, 2);
+        b2.next_delay();
+        b2.next_delay(); // saturating_mul should cap, not panic
     }
 }
