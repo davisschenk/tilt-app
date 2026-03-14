@@ -25,6 +25,77 @@ pub struct Config {
     health_report_interval_cycles: u32,
 }
 
+const NVS_NAMESPACE: &str = "tilt_cfg";
+
+pub fn nvs_get_string(
+    nvs: &esp_idf_svc::nvs::EspNvs<esp_idf_svc::nvs::NvsDefault>,
+    key: &str,
+) -> Option<String> {
+    let mut buf = [0u8; 256];
+    match nvs.get_str(key, &mut buf) {
+        Ok(Some(s)) => {
+            let s = s.trim_end_matches('\0').to_string();
+            if s.is_empty() { None } else { Some(s) }
+        }
+        _ => None,
+    }
+}
+
+pub fn nvs_set_string(
+    nvs: &mut esp_idf_svc::nvs::EspNvs<esp_idf_svc::nvs::NvsDefault>,
+    key: &str,
+    value: &str,
+) -> anyhow::Result<()> {
+    nvs.set_str(key, value)
+        .map_err(|e| anyhow::anyhow!("NVS set_str('{}') failed: {:?}", key, e))
+}
+
+pub fn nvs_get_u32(
+    nvs: &esp_idf_svc::nvs::EspNvs<esp_idf_svc::nvs::NvsDefault>,
+    key: &str,
+) -> Option<u32> {
+    nvs.get_u32(key).ok().flatten()
+}
+
+pub fn nvs_set_u32(
+    nvs: &mut esp_idf_svc::nvs::EspNvs<esp_idf_svc::nvs::NvsDefault>,
+    key: &str,
+    value: u32,
+) -> anyhow::Result<()> {
+    nvs.set_u32(key, value)
+        .map_err(|e| anyhow::anyhow!("NVS set_u32('{}') failed: {:?}", key, e))
+}
+
+pub fn apply_nvs_overrides(
+    cfg: &mut Config,
+    nvs_partition: &esp_idf_svc::nvs::EspDefaultNvsPartition,
+) {
+    let nvs = match esp_idf_svc::nvs::EspNvs::new(nvs_partition.clone(), NVS_NAMESPACE, true) {
+        Ok(nvs) => nvs,
+        Err(e) => {
+            log::warn!("Failed to open NVS namespace '{}': {:?}, using compile-time defaults", NVS_NAMESPACE, e);
+            return;
+        }
+    };
+
+    if let Some(val) = nvs_get_string(&nvs, "server_url") {
+        log::info!("NVS override: server_url = '{}'", val);
+        cfg.server_url = Box::leak(val.into_boxed_str());
+    }
+    if let Some(val) = nvs_get_string(&nvs, "api_key") {
+        log::info!("NVS override: api_key = ***");
+        cfg.api_key = Box::leak(val.into_boxed_str());
+    }
+    if let Some(val) = nvs_get_u32(&nvs, "scan_interval") {
+        log::info!("NVS override: scan_interval_secs = {}", val);
+        cfg.scan_interval_secs = val;
+    }
+    if let Some(val) = nvs_get_u32(&nvs, "upload_interval") {
+        log::info!("NVS override: upload_interval_secs = {}", val);
+        cfg.upload_interval_secs = val;
+    }
+}
+
 pub fn validate_config(cfg: &Config) -> anyhow::Result<()> {
     if cfg.wifi_ssid.is_empty() {
         anyhow::bail!("wifi_ssid must not be empty");

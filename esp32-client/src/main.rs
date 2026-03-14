@@ -54,7 +54,13 @@ fn main() {
 }
 
 fn run() -> Result<()> {
-    let cfg = config::CONFIG;
+    let mut cfg = config::CONFIG;
+
+    // Take NVS partition early so we can apply overrides before validation
+    let nvs = esp_idf_svc::nvs::EspDefaultNvsPartition::take()
+        .context("Failed to take NVS partition")?;
+    config::apply_nvs_overrides(&mut cfg, &nvs);
+
     config::log_config(&cfg);
     config::validate_config(&cfg).context("Configuration validation failed")?;
 
@@ -66,8 +72,6 @@ fn run() -> Result<()> {
         esp_idf_svc::hal::peripherals::Peripherals::take().context("Failed to take peripherals")?;
     let sys_loop =
         esp_idf_svc::eventloop::EspSystemEventLoop::take().context("Failed to take event loop")?;
-    let nvs = esp_idf_svc::nvs::EspDefaultNvsPartition::take()
-        .context("Failed to take NVS partition")?;
 
     let mut wifi_manager =
         wifi::WifiManager::new(peripherals.modem, sys_loop, nvs, cfg.wifi_ssid, cfg.wifi_password)
