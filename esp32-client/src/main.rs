@@ -55,13 +55,8 @@ fn main() {
 
 fn run() -> Result<()> {
     let cfg = config::CONFIG;
-    log::info!(
-        "Config: server_url={}, scan_interval={}s, upload_interval={}s, buffer_capacity={}",
-        cfg.server_url,
-        cfg.scan_interval_secs,
-        cfg.upload_interval_secs,
-        cfg.buffer_capacity,
-    );
+    config::log_config(&cfg);
+    config::validate_config(&cfg).context("Configuration validation failed")?;
 
     // Initialize watchdog
     init_watchdog().context("Watchdog initialization failed")?;
