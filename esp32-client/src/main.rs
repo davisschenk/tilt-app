@@ -5,6 +5,8 @@ mod http;
 mod tilt;
 mod wifi;
 
+use std::time::Instant;
+
 use anyhow::{Context, Result};
 
 /// Subscribe the current task to the Task Watchdog Timer (TWDT).
@@ -89,10 +91,17 @@ fn run() -> Result<()> {
 
     let mut consecutive_errors: u32 = 0;
     let scan_interval = std::time::Duration::from_secs(cfg.scan_interval_secs as u64);
+    let start_time = Instant::now();
+    let mut total_scans: u64 = 0;
+    let mut successful_uploads: u64 = 0;
+    let mut failed_uploads: u64 = 0;
+    let health_interval = cfg.health_report_interval_cycles as u64;
 
     log::info!("Entering main scan-upload loop");
 
     loop {
+        total_scans = total_scans.wrapping_add(1);
+
         // Phase 1: Scan for Tilt hydrometers
         let readings = match ble_scanner.scan_for_tilts(cfg.scan_interval_secs) {
             Ok(r) => r,
@@ -131,6 +140,7 @@ fn run() -> Result<()> {
                         log::info!("Uploaded {} readings", all_readings.len());
                         backoff.reset();
                         consecutive_errors = 0;
+                        successful_uploads = successful_uploads.wrapping_add(1);
                     }
                     Err(e) => {
                         log::warn!(
@@ -144,6 +154,7 @@ fn run() -> Result<()> {
                         let delay = backoff.next_delay();
                         std::thread::sleep(delay);
                         consecutive_errors += 1;
+                        failed_uploads = failed_uploads.wrapping_add(1);
                     }
                 }
             }
@@ -158,10 +169,23 @@ fn run() -> Result<()> {
             }
         }
 
-        // Phase 3: Feed watchdog — always, regardless of success/failure
+        // Phase 3: Periodic health report
+        if health_interval > 0 && total_scans % health_interval == 0 {
+            let uptime = start_time.elapsed();
+            let hours = uptime.as_secs() / 3600;
+            let minutes = (uptime.as_secs() % 3600) / 60;
+            let free_heap = unsafe { esp_idf_svc::sys::esp_get_free_heap_size() };
+            log::info!(
+                "HEALTH: uptime={}h{}m scans={} uploads_ok={} uploads_fail={} buffer={} wifi={} heap={} errors={}",
+                hours, minutes, total_scans, successful_uploads, failed_uploads,
+                reading_buffer.len(), wifi_manager.is_connected(), free_heap, consecutive_errors,
+            );
+        }
+
+        // Phase 4: Feed watchdog — always, regardless of success/failure
         let _ = feed_watchdog();
 
-        // Phase 4: Sleep until next scan cycle
+        // Phase 5: Sleep until next scan cycle
         std::thread::sleep(scan_interval);
     }
 }
