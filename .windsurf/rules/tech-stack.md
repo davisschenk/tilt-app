@@ -55,6 +55,20 @@ trigger: always_on
 - **date-fns** — lightweight date formatting/manipulation
 - API base URL configured via `VITE_API_URL` env var (defaults to `http://localhost:8000/api/v1`)
 
+## ESP32 Client Crate (`esp32-client/`)
+- **esp-idf-svc** — safe Rust bindings for ESP-IDF (WiFi, BLE, NVS, HTTP client, event loop, watchdog)
+- **esp-idf-hal** — hardware abstraction layer for ESP32 peripherals
+- **esp-idf-sys** — low-level ESP-IDF bindings (build system integration)
+- **esp32-nimble** — NimBLE Rust bindings for BLE scanning on ESP32
+- **embedded-svc** — trait abstractions for embedded services (WiFi, HTTP, etc.)
+- **serde / serde_json** — JSON serialization for API payloads
+- **log** — standard Rust logging facade (esp-idf-svc provides the backend)
+- **toml-cfg** or **NVS** — runtime configuration storage (WiFi credentials, server URL, scan interval)
+- **anyhow** — error handling
+- Target: `xtensa-esp32-espidf` (ESP32) or `xtensa-esp32s3-espidf` (ESP32-S3) via `esp-idf-sys` build system
+- **NOT** part of the Cargo workspace (separate build toolchain via `espup` / `esp-idf`)
+- Replicates Tilt iBeacon parsing logic from `shared` crate (cannot depend on `shared` due to `no_std`/esp-idf incompatibilities)
+
 ## Infrastructure
 - **Docker Compose** — Postgres + server container
 - **Dockerfile** — multi-stage build (cargo-chef for caching)
@@ -101,6 +115,18 @@ trigger: always_on
 - Graceful retry with exponential backoff on HTTP failures
 - Local buffer/queue if server unreachable (in-memory VecDeque, bounded)
 - Run as systemd service on the Pi
+
+## ESP32 Client Patterns
+- Scan loop: BLE scan via NimBLE → filter Tilt UUIDs → parse major/minor → batch HTTP POST to server
+- Configurable via NVS (Non-Volatile Storage) or compile-time `cfg.toml`: WiFi SSID/password, server URL, scan interval, API key
+- WiFi auto-reconnect with exponential backoff on disconnect
+- Hardware watchdog timer (WDT) fed every scan cycle to auto-reboot on hangs
+- In-memory bounded buffer when server unreachable (same pattern as Pi client)
+- Logging via `log` crate (esp-idf-svc provides the `EspLogger` backend)
+- **No `.unwrap()` in production code** — use `anyhow::Result` or explicit error handling
+- Replicate Tilt iBeacon UUID constants and parsing logic locally (cannot import `shared` crate)
+- All JSON payloads use camelCase to match server API expectations
+- Separate build toolchain — use `cargo build` with esp-idf build system, NOT workspace `cargo build`
 
 ## Testing
 - `#[cfg(test)]` unit tests in each module
