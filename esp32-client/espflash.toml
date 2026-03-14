@@ -1,0 +1,9 @@
+[connection]
+# Baud rate for flashing (921600 for fast flashing)
+baudrate = 921600
+
+[flash]
+# Flash mode: dio is the most compatible
+mode = "dio"
+# Flash frequency in MHz
+frequency = "40MHz"
