@@ -1,0 +1,31 @@
+# ESP32 Tilt Client Configuration
+# Copy this file to cfg.toml and fill in your values.
+# WARNING: cfg.toml contains credentials — do NOT commit it to version control.
+
+[esp32-client]
+# WiFi network name (required)
+wifi_ssid = "YourNetworkSSID"
+
+# WiFi password (required, compile-time only for security)
+wifi_password = "YourNetworkPassword"
+
+# Tilt server API base URL (required)
+server_url = "http://192.168.1.100:8000"
+
+# API key for server authentication (optional, leave empty if not required)
+api_key = ""
+
+# BLE scan interval in seconds (default: 15, range: 5-300)
+scan_interval_secs = 15
+
+# How often to upload readings in seconds (default: 60, must be >= scan_interval_secs)
+upload_interval_secs = 60
+
+# Max readings to buffer when server is unreachable (default: 50, range: 10-500)
+buffer_capacity = 50
+
+# Hardware watchdog timeout in seconds (default: 120, must be >= 2 * scan_interval_secs)
+watchdog_timeout_secs = 120
+
+# Log a health report every N scan cycles (default: 60)
+health_report_interval_cycles = 60
