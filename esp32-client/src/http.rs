@@ -33,11 +33,11 @@ impl HttpUploader {
             ..Default::default()
         };
 
-        let mut client =
+        let mut conn =
             EspHttpConnection::new(&config).context("Failed to create HTTP connection")?;
 
         let content_len_str = payload.len().to_string();
-        let mut headers = vec![
+        let mut headers: Vec<(&str, &str)> = vec![
             ("Content-Type", "application/json"),
             ("Content-Length", content_len_str.as_str()),
         ];
@@ -45,23 +45,24 @@ impl HttpUploader {
             headers.push(("X-API-Key", self.api_key));
         }
 
-        use embedded_svc::http::client::Client as _;
-        let mut request = client
-            .request(embedded_svc::http::Method::Post, &url, &headers)
-            .context("Failed to create HTTP request")?;
+        conn.initiate_request(
+            esp_idf_svc::http::Method::Post,
+            &url,
+            &headers,
+        )
+        .context("Failed to initiate HTTP request")?;
 
-        use embedded_svc::io::Write;
-        request
-            .write_all(&payload)
+        conn.write_all(&payload)
             .context("Failed to write request body")?;
 
-        let mut response = request.submit().context("Failed to submit HTTP request")?;
-        let status = response.status();
+        conn.initiate_response()
+            .context("Failed to initiate HTTP response")?;
+
+        let status = conn.status();
 
         // Read response body for error messages
-        use embedded_svc::io::Read;
         let mut body = [0u8; 256];
-        let bytes_read = response.read(&mut body).unwrap_or(0);
+        let bytes_read = conn.read(&mut body).unwrap_or(0);
 
         if (200..300).contains(&(status as u32)) {
             log::debug!("Upload successful: {} readings, status={}", readings.len(), status);

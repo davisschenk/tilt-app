@@ -89,17 +89,15 @@ impl BleScanner {
                 .start(
                     self.ble_device,
                     (duration_secs * 1000) as i32,
-                    |_device, data| {
-                        let rssi = data.rssi();
+                    |device, data| {
+                        let rssi = device.rssi();
                         if let Some(mfg_data) = data.manufacture_data() {
-                            // Apple company ID is 0x004C (little-endian: 0x4C, 0x00)
-                            if mfg_data.len() >= 2
-                                && mfg_data[0] == 0x4C
-                                && mfg_data[1] == 0x00
-                            {
-                                // Pass data after company ID to iBeacon parser
-                                if let Some(mut reading) = tilt::parse_ibeacon(&mfg_data[2..]) {
-                                    reading.rssi = Some(rssi as i8);
+                            // Apple company ID is 0x004C
+                            if mfg_data.company_identifier == 0x004C {
+                                if let Some(mut reading) =
+                                    tilt::parse_ibeacon(mfg_data.payload)
+                                {
+                                    reading.rssi = Some(rssi);
                                     log::info!(
                                         "Tilt {:?}: temp={:.1}°F gravity={:.4} rssi={}",
                                         reading.color,

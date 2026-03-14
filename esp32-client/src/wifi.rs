@@ -6,11 +6,12 @@
 use core::convert::TryInto;
 
 use anyhow::{Context, Result};
-use embedded_svc::wifi::{AuthMethod, ClientConfiguration, Configuration};
 use esp_idf_svc::eventloop::EspSystemEventLoop;
-use esp_idf_svc::hal::modem::Modem;
+use esp_idf_svc::hal::modem::WifiModemPeripheral;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
-use esp_idf_svc::wifi::{BlockingWifi, EspWifi};
+use esp_idf_svc::wifi::{
+    AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi,
+};
 
 pub struct WifiManager {
     wifi: BlockingWifi<EspWifi<'static>>,
@@ -20,7 +21,7 @@ pub struct WifiManager {
 
 impl WifiManager {
     pub fn new(
-        modem: Modem,
+        modem: impl WifiModemPeripheral + 'static,
         sys_loop: EspSystemEventLoop,
         nvs: EspDefaultNvsPartition,
         ssid: &'static str,
