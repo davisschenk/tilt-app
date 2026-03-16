@@ -362,6 +362,59 @@ pub struct UpdateAlertRule {
     pub enabled: Option<bool>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BrewEventType {
+    YeastPitch,
+    DryHop,
+    FermentationComplete,
+    DiacetylRest,
+    ColdCrash,
+    FiningAddition,
+    Transfer,
+    Packaged,
+    GravitySample,
+    TastingNote,
+    TemperatureChange,
+    Note,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrewEventResponse {
+    pub id: Uuid,
+    pub brew_id: Uuid,
+    pub event_type: BrewEventType,
+    pub label: String,
+    pub notes: Option<String>,
+    pub gravity_at_event: Option<f64>,
+    pub temp_at_event: Option<f64>,
+    pub event_time: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateBrewEvent {
+    pub brew_id: Uuid,
+    pub event_type: BrewEventType,
+    pub label: String,
+    pub notes: Option<String>,
+    pub gravity_at_event: Option<f64>,
+    pub temp_at_event: Option<f64>,
+    pub event_time: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateBrewEvent {
+    pub label: Option<String>,
+    pub notes: Option<String>,
+    pub gravity_at_event: Option<f64>,
+    pub temp_at_event: Option<f64>,
+    pub event_time: Option<DateTime<Utc>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -895,6 +948,163 @@ mod tests {
         assert!(update.hydrometer_id.is_none());
         assert!(update.cooldown_minutes.is_none());
         assert!(update.enabled.is_none());
+    }
+
+    #[test]
+    fn brew_event_type_serializes_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::YeastPitch).unwrap(),
+            "\"yeast_pitch\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::DryHop).unwrap(),
+            "\"dry_hop\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::FermentationComplete).unwrap(),
+            "\"fermentation_complete\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::DiacetylRest).unwrap(),
+            "\"diacetyl_rest\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::ColdCrash).unwrap(),
+            "\"cold_crash\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::FiningAddition).unwrap(),
+            "\"fining_addition\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::Transfer).unwrap(),
+            "\"transfer\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::Packaged).unwrap(),
+            "\"packaged\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::GravitySample).unwrap(),
+            "\"gravity_sample\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::TastingNote).unwrap(),
+            "\"tasting_note\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::TemperatureChange).unwrap(),
+            "\"temperature_change\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BrewEventType::Note).unwrap(),
+            "\"note\""
+        );
+    }
+
+    #[test]
+    fn brew_event_type_deserializes_all_variants() {
+        let variants = [
+            ("\"yeast_pitch\"", BrewEventType::YeastPitch),
+            ("\"dry_hop\"", BrewEventType::DryHop),
+            (
+                "\"fermentation_complete\"",
+                BrewEventType::FermentationComplete,
+            ),
+            ("\"diacetyl_rest\"", BrewEventType::DiacetylRest),
+            ("\"cold_crash\"", BrewEventType::ColdCrash),
+            ("\"fining_addition\"", BrewEventType::FiningAddition),
+            ("\"transfer\"", BrewEventType::Transfer),
+            ("\"packaged\"", BrewEventType::Packaged),
+            ("\"gravity_sample\"", BrewEventType::GravitySample),
+            ("\"tasting_note\"", BrewEventType::TastingNote),
+            ("\"temperature_change\"", BrewEventType::TemperatureChange),
+            ("\"note\"", BrewEventType::Note),
+        ];
+        for (json, expected) in &variants {
+            let got: BrewEventType = serde_json::from_str(json).unwrap();
+            assert_eq!(got, *expected, "Failed to deserialize {json}");
+        }
+    }
+
+    #[test]
+    fn create_brew_event_required_fields() {
+        let now = Utc::now();
+        let event = CreateBrewEvent {
+            brew_id: Uuid::new_v4(),
+            event_type: BrewEventType::DryHop,
+            label: "Citra 2oz".to_string(),
+            notes: None,
+            gravity_at_event: None,
+            temp_at_event: None,
+            event_time: now,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"brewId\""));
+        assert!(json.contains("\"eventType\""));
+        assert!(json.contains("\"dry_hop\""));
+        assert!(json.contains("\"eventTime\""));
+        let deserialized: CreateBrewEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.event_type, BrewEventType::DryHop);
+        assert_eq!(deserialized.label, "Citra 2oz");
+        assert!(deserialized.notes.is_none());
+        assert!(deserialized.gravity_at_event.is_none());
+    }
+
+    #[test]
+    fn create_brew_event_with_all_fields() {
+        let now = Utc::now();
+        let event = CreateBrewEvent {
+            brew_id: Uuid::new_v4(),
+            event_type: BrewEventType::GravitySample,
+            label: "Day 3 sample".to_string(),
+            notes: Some("Tastes clean".to_string()),
+            gravity_at_event: Some(1.040),
+            temp_at_event: Some(68.5),
+            event_time: now,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"gravityAtEvent\""));
+        assert!(json.contains("\"tempAtEvent\""));
+        let deserialized: CreateBrewEvent = serde_json::from_str(&json).unwrap();
+        assert!((deserialized.gravity_at_event.unwrap() - 1.040).abs() < f64::EPSILON);
+        assert!((deserialized.temp_at_event.unwrap() - 68.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn update_brew_event_all_optional() {
+        let update: UpdateBrewEvent = serde_json::from_str("{}").unwrap();
+        assert!(update.label.is_none());
+        assert!(update.notes.is_none());
+        assert!(update.gravity_at_event.is_none());
+        assert!(update.temp_at_event.is_none());
+        assert!(update.event_time.is_none());
+    }
+
+    #[test]
+    fn brew_event_response_serde_round_trip() {
+        let now = Utc::now();
+        let resp = BrewEventResponse {
+            id: Uuid::new_v4(),
+            brew_id: Uuid::new_v4(),
+            event_type: BrewEventType::YeastPitch,
+            label: "US-05 pitched".to_string(),
+            notes: Some("Rehydrated dry yeast".to_string()),
+            gravity_at_event: Some(1.055),
+            temp_at_event: Some(65.0),
+            event_time: now,
+            created_at: now,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"brewId\""));
+        assert!(json.contains("\"eventType\""));
+        assert!(json.contains("\"yeast_pitch\""));
+        assert!(json.contains("\"gravityAtEvent\""));
+        assert!(json.contains("\"createdAt\""));
+        let deserialized: BrewEventResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.event_type, BrewEventType::YeastPitch);
+        assert_eq!(deserialized.label, "US-05 pitched");
+        assert!((deserialized.gravity_at_event.unwrap() - 1.055).abs() < f64::EPSILON);
     }
 
     #[test]
