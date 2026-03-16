@@ -24,6 +24,7 @@ import type { AlertRuleResponse, AlertMetric, AlertOperator } from "@/types";
 const METRIC_LABELS: Record<AlertMetric, string> = {
   gravity: "Gravity",
   temperature_f: "Temperature (°F)",
+  gravity_plateau: "Gravity Plateau",
 };
 
 const OPERATOR_SYMBOLS: Record<AlertOperator, string> = {
@@ -32,6 +33,7 @@ const OPERATOR_SYMBOLS: Record<AlertOperator, string> = {
   lt: "<",
   gt: ">",
   eq: "=",
+  plateau: "plateau",
 };
 
 function formatCondition(metric: AlertMetric, operator: AlertOperator, threshold: number): string {

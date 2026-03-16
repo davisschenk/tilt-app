@@ -57,6 +57,9 @@ export interface BrewResponse {
   createdAt: string;
   updatedAt: string;
   latestReading: TiltReading | null;
+  liveAbv: number | null;
+  apparentAttenuation: number | null;
+  finalAbv: number | null;
 }
 
 export interface CreateHydrometer {
@@ -100,9 +103,70 @@ export interface ReadingsQuery {
   limit?: number;
 }
 
+export type BrewEventType =
+  | "yeast_pitch"
+  | "dry_hop"
+  | "fermentation_complete"
+  | "diacetyl_rest"
+  | "cold_crash"
+  | "fining_addition"
+  | "transfer"
+  | "packaged"
+  | "gravity_sample"
+  | "tasting_note"
+  | "temperature_change"
+  | "note";
+
+export interface BrewEventResponse {
+  id: string;
+  brewId: string;
+  eventType: BrewEventType;
+  label: string;
+  notes: string | null;
+  gravityAtEvent: number | null;
+  tempAtEvent: number | null;
+  eventTime: string;
+  createdAt: string;
+}
+
+export interface CreateBrewEvent {
+  brewId: string;
+  eventType: BrewEventType;
+  label: string;
+  notes?: string | null;
+  gravityAtEvent?: number | null;
+  tempAtEvent?: number | null;
+  eventTime: string;
+}
+
+export interface UpdateBrewEvent {
+  label?: string | null;
+  notes?: string | null;
+  gravityAtEvent?: number | null;
+  tempAtEvent?: number | null;
+  eventTime?: string | null;
+}
+
+export interface ReadingGap {
+  startAt: string;
+  endAt: string;
+  durationMinutes: number;
+}
+
+export interface BrewAnalytics {
+  currentGravity: number | null;
+  currentTempF: number | null;
+  lastReadingAt: string | null;
+  liveAbv: number | null;
+  apparentAttenuation: number | null;
+  predictedFgDate: string | null;
+  hoursRemaining: number | null;
+  gaps: ReadingGap[];
+}
+
 export type WebhookFormat = "generic_json" | "discord" | "slack";
-export type AlertMetric = "gravity" | "temperature_f";
-export type AlertOperator = "lte" | "gte" | "lt" | "gt" | "eq";
+export type AlertMetric = "gravity" | "temperature_f" | "gravity_plateau";
+export type AlertOperator = "lte" | "gte" | "lt" | "gt" | "eq" | "plateau";
 
 export interface AlertTargetResponse {
   id: string;
@@ -142,6 +206,7 @@ export interface AlertRuleResponse {
   alertTargetId: string;
   enabled: boolean;
   cooldownMinutes: number;
+  windowHours: number;
   lastTriggeredAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -156,6 +221,7 @@ export interface CreateAlertRule {
   brewId?: string | null;
   hydrometerId?: string | null;
   cooldownMinutes?: number;
+  windowHours?: number;
   enabled?: boolean;
 }
 
@@ -168,6 +234,7 @@ export interface UpdateAlertRule {
   brewId?: string | null;
   hydrometerId?: string | null;
   cooldownMinutes?: number | null;
+  windowHours?: number | null;
   enabled?: boolean | null;
 }
 

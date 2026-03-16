@@ -14,6 +14,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useReadings } from "@/hooks/use-readings";
+import { useBrewEvents } from "@/hooks/use-brew-events";
+import type { BrewEventType } from "@/types";
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
 
@@ -22,6 +24,36 @@ const RANGE_HOURS: Record<TimeRange, number | null> = {
   "7d": 168,
   "30d": 720,
   all: null,
+};
+
+const EVENT_COLORS: Record<BrewEventType, string> = {
+  yeast_pitch: "#2f9e44",
+  dry_hop: "#e67700",
+  fermentation_complete: "#087f5b",
+  diacetyl_rest: "#e9c46a",
+  cold_crash: "#4dabf7",
+  fining_addition: "#f06595",
+  transfer: "#4c6ef5",
+  packaged: "#7048e8",
+  gravity_sample: "#0ca678",
+  tasting_note: "#f59f00",
+  temperature_change: "#ae3ec9",
+  note: "#868e96",
+};
+
+const EVENT_LABELS: Record<BrewEventType, string> = {
+  yeast_pitch: "Pitch",
+  dry_hop: "Dry Hop",
+  fermentation_complete: "FG",
+  diacetyl_rest: "D-Rest",
+  cold_crash: "Cold Crash",
+  fining_addition: "Finings",
+  transfer: "Transfer",
+  packaged: "Packaged",
+  gravity_sample: "Sample",
+  tasting_note: "Taste",
+  temperature_change: "Temp ↑",
+  note: "Note",
 };
 
 interface ReadingsChartProps {
@@ -41,6 +73,7 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
   }, [range]);
 
   const { data: readings, isLoading } = useReadings({ brewId, since });
+  const { data: events } = useBrewEvents(brewId);
 
   const chartData = useMemo(() => {
     if (!readings || readings.length === 0) return [];
@@ -54,6 +87,16 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
         temperature: r.temperatureF,
       }));
   }, [readings, range]);
+
+  const visibleEvents = useMemo(() => {
+    if (!events || chartData.length === 0) return [];
+    const minTs = chartData[0].timestamp;
+    const maxTs = chartData[chartData.length - 1].timestamp;
+    return events.filter((e) => {
+      const ts = new Date(e.eventTime).getTime();
+      return ts >= minTs && ts <= maxTs;
+    });
+  }, [events, chartData]);
 
   return (
     <Card>
@@ -125,6 +168,22 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
                   label={{ value: `Target FG: ${targetFg.toFixed(3)}`, position: "insideTopRight", fontSize: 11, fill: "#2F9E44" }}
                 />
               )}
+              {visibleEvents.map((ev) => {
+                const color = EVENT_COLORS[ev.eventType];
+                const shortLabel = EVENT_LABELS[ev.eventType];
+                const evTime = format(new Date(ev.eventTime), range === "24h" ? "HH:mm" : "MMM d HH:mm");
+                return (
+                  <ReferenceLine
+                    key={ev.id}
+                    yAxisId="gravity"
+                    x={evTime}
+                    stroke={color}
+                    strokeDasharray="4 3"
+                    strokeWidth={1.5}
+                    label={{ value: shortLabel, position: "insideTopLeft", fontSize: 9, fill: color, angle: -90 }}
+                  />
+                );
+              })}
               <Legend />
               <Line
                 yAxisId="gravity"
