@@ -21,6 +21,7 @@ pub struct Model {
     pub last_triggered_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    pub window_hours: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -274,6 +274,7 @@ pub enum WebhookFormat {
 pub enum AlertMetric {
     Gravity,
     TemperatureF,
+    GravityPlateau,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -284,6 +285,7 @@ pub enum AlertOperator {
     Lt,
     Gt,
     Eq,
+    Plateau,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -332,6 +334,7 @@ pub struct AlertRuleResponse {
     pub alert_target_id: Uuid,
     pub enabled: bool,
     pub cooldown_minutes: i32,
+    pub window_hours: i32,
     pub last_triggered_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -348,6 +351,7 @@ pub struct CreateAlertRule {
     pub brew_id: Option<Uuid>,
     pub hydrometer_id: Option<Uuid>,
     pub cooldown_minutes: Option<i32>,
+    pub window_hours: Option<i32>,
     pub enabled: Option<bool>,
 }
 
@@ -362,6 +366,7 @@ pub struct UpdateAlertRule {
     pub brew_id: Option<Uuid>,
     pub hydrometer_id: Option<Uuid>,
     pub cooldown_minutes: Option<i32>,
+    pub window_hours: Option<i32>,
     pub enabled: Option<bool>,
 }
 
@@ -954,6 +959,7 @@ mod tests {
             brew_id: Some(Uuid::new_v4()),
             hydrometer_id: Some(Uuid::new_v4()),
             cooldown_minutes: Some(30),
+            window_hours: Some(24),
             enabled: Some(true),
         };
         let json = serde_json::to_string(&rule).unwrap();
@@ -1151,6 +1157,7 @@ mod tests {
             alert_target_id: Uuid::new_v4(),
             enabled: true,
             cooldown_minutes: 60,
+            window_hours: 24,
             last_triggered_at: None,
             created_at: now,
             updated_at: now,
@@ -1158,6 +1165,7 @@ mod tests {
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"lastTriggeredAt\""));
         assert!(json.contains("\"cooldownMinutes\""));
+        assert!(json.contains("\"windowHours\""));
         let deserialized: AlertRuleResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.name, "FG Reached");
         assert_eq!(deserialized.operator, AlertOperator::Lte);

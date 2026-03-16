@@ -25,6 +25,7 @@ fn format_metric(metric: &AlertMetric) -> &'static str {
     match metric {
         AlertMetric::Gravity => "Gravity",
         AlertMetric::TemperatureF => "Temperature (°F)",
+        AlertMetric::GravityPlateau => "Gravity Plateau",
     }
 }
 
@@ -35,6 +36,7 @@ fn format_operator(op: &AlertOperator) -> &'static str {
         AlertOperator::Lt => "<",
         AlertOperator::Gt => ">",
         AlertOperator::Eq => "=",
+        AlertOperator::Plateau => "plateau",
     }
 }
 
@@ -42,6 +44,7 @@ fn actual_value(metric: &AlertMetric, gravity: f64, temperature_f: f64) -> f64 {
     match metric {
         AlertMetric::Gravity => gravity,
         AlertMetric::TemperatureF => temperature_f,
+        AlertMetric::GravityPlateau => gravity,
     }
 }
 
@@ -72,8 +75,9 @@ fn build_discord_payload(
     recorded_at: DateTime<Utc>,
 ) -> serde_json::Value {
     let color = match metric {
-        AlertMetric::Gravity => 0x3498DB,      // blue
-        AlertMetric::TemperatureF => 0xE67E22, // orange
+        AlertMetric::Gravity => 0x3498DB,        // blue
+        AlertMetric::TemperatureF => 0xE67E22,   // orange
+        AlertMetric::GravityPlateau => 0x27AE60, // green
     };
 
     json!({

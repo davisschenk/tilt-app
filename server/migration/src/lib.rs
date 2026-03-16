@@ -8,6 +8,7 @@ mod m20260219_012410_create_api_keys;
 mod m20260301_000001_create_alert_targets;
 mod m20260301_000002_create_alert_rules;
 mod m20260316_000001_create_brew_events;
+mod m20260316_000002_add_window_hours_to_alert_rules;
 
 pub struct Migrator;
 
@@ -23,6 +24,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260301_000001_create_alert_targets::Migration),
             Box::new(m20260301_000002_create_alert_rules::Migration),
             Box::new(m20260316_000001_create_brew_events::Migration),
+            Box::new(m20260316_000002_add_window_hours_to_alert_rules::Migration),
         ]
     }
 }

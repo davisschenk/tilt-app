@@ -34,6 +34,7 @@ fn model_to_response(model: alert_rules::Model) -> AlertRuleResponse {
         alert_target_id: model.alert_target_id,
         enabled: model.enabled,
         cooldown_minutes: model.cooldown_minutes,
+        window_hours: model.window_hours,
         last_triggered_at: model.last_triggered_at.map(Into::into),
         created_at: model.created_at.into(),
         updated_at: model.updated_at.into(),
@@ -80,6 +81,7 @@ pub async fn create(
         alert_target_id: Set(input.alert_target_id),
         enabled: Set(input.enabled.unwrap_or(true)),
         cooldown_minutes: Set(input.cooldown_minutes.unwrap_or(60)),
+        window_hours: Set(input.window_hours.unwrap_or(24)),
         last_triggered_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
@@ -122,6 +124,9 @@ pub async fn update(
     }
     if let Some(cooldown_minutes) = input.cooldown_minutes {
         active.cooldown_minutes = Set(cooldown_minutes);
+    }
+    if let Some(window_hours) = input.window_hours {
+        active.window_hours = Set(window_hours);
     }
     if let Some(enabled) = input.enabled {
         active.enabled = Set(enabled);
@@ -178,11 +183,17 @@ pub async fn find_triggered_rules(
                 }
             }
 
-            // Get the actual value based on metric
+            // Plateau rules are evaluated separately (need historical readings)
             let metric = parse_metric(&rule.metric);
+            if metric == AlertMetric::GravityPlateau {
+                return false; // plateau rules skipped in per-reading evaluation
+            }
+
+            // Get the actual value based on metric
             let actual = match metric {
                 AlertMetric::Gravity => gravity,
                 AlertMetric::TemperatureF => temperature_f,
+                AlertMetric::GravityPlateau => unreachable!(),
             };
 
             // Evaluate the operator
@@ -193,9 +204,84 @@ pub async fn find_triggered_rules(
                 AlertOperator::Lt => actual < rule.threshold,
                 AlertOperator::Gt => actual > rule.threshold,
                 AlertOperator::Eq => (actual - rule.threshold).abs() < f64::EPSILON,
+                AlertOperator::Plateau => false, // handled by evaluate_plateau_rule
             }
         })
         .collect())
+}
+
+#[allow(dead_code)]
+/// Evaluate a gravity plateau rule against a slice of (recorded_at_hours, gravity) tuples.
+///
+/// Returns true when max(gravity) - min(gravity) over the window is <= threshold,
+/// meaning gravity has been stable. Returns false if fewer than 2 readings in window.
+pub fn evaluate_plateau_rule(readings_in_window: &[(f64, f64)], threshold: f64) -> bool {
+    if readings_in_window.len() < 2 {
+        return false;
+    }
+    let max_g = readings_in_window
+        .iter()
+        .map(|(_, g)| *g)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let min_g = readings_in_window
+        .iter()
+        .map(|(_, g)| *g)
+        .fold(f64::INFINITY, f64::min);
+    (max_g - min_g) <= threshold
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn flat(g: f64, n: usize) -> Vec<(f64, f64)> {
+        (0..n).map(|i| (i as f64, g)).collect()
+    }
+
+    #[test]
+    fn plateau_true_when_gravity_flat_within_threshold() {
+        let readings: Vec<(f64, f64)> = (0..24)
+            .map(|i| (i as f64, 1.012 + (i as f64 * 0.00005)))
+            .collect();
+        assert!(evaluate_plateau_rule(&readings, 0.002));
+    }
+
+    #[test]
+    fn plateau_false_when_gravity_drops_more_than_threshold() {
+        let readings: Vec<(f64, f64)> = vec![(0.0, 1.030), (12.0, 1.025), (24.0, 1.020)];
+        assert!(!evaluate_plateau_rule(&readings, 0.002));
+    }
+
+    #[test]
+    fn plateau_false_when_fewer_than_2_readings() {
+        assert!(!evaluate_plateau_rule(&[(0.0, 1.012)], 0.002));
+        assert!(!evaluate_plateau_rule(&[], 0.002));
+    }
+
+    #[test]
+    fn plateau_scan_rate_agnostic_dense_vs_sparse() {
+        // Same gravity range, different density — both should trigger
+        let dense: Vec<(f64, f64)> = (0..96).map(|i| (i as f64 * 0.25, 1.012)).collect();
+        let sparse: Vec<(f64, f64)> = (0..4).map(|i| (i as f64 * 6.0, 1.012)).collect();
+        assert!(evaluate_plateau_rule(&dense, 0.002));
+        assert!(evaluate_plateau_rule(&sparse, 0.002));
+    }
+
+    #[test]
+    fn alert_metric_gravity_plateau_serializes() {
+        let s = serde_json::to_string(&shared::AlertMetric::GravityPlateau).unwrap();
+        assert_eq!(s, "\"gravity_plateau\"");
+        let d: shared::AlertMetric = serde_json::from_str("\"gravity_plateau\"").unwrap();
+        assert_eq!(d, shared::AlertMetric::GravityPlateau);
+    }
+
+    #[test]
+    fn alert_operator_plateau_serializes() {
+        let s = serde_json::to_string(&shared::AlertOperator::Plateau).unwrap();
+        assert_eq!(s, "\"plateau\"");
+        let d: shared::AlertOperator = serde_json::from_str("\"plateau\"").unwrap();
+        assert_eq!(d, shared::AlertOperator::Plateau);
+    }
 }
 
 /// Update last_triggered_at for a rule after successful dispatch.
