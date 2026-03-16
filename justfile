@@ -115,5 +115,29 @@ deploy-client host:
     ssh {{host}} "sudo systemctl daemon-reload && sudo systemctl enable tilt-client && sudo systemctl restart tilt-client"
     @echo "Deployed and started tilt-client on {{host}}"
 
+# Build the ESP32 client firmware (requires: . $HOME/export-esp.sh)
+esp32-build:
+    cd esp32-client && cargo build --release
+
+# Flash the ESP32 client and open serial monitor
+esp32-flash: esp32-build
+    cd esp32-client && espflash flash --monitor target/xtensa-esp32-espidf/release/esp32-client
+
+# Open ESP32 serial monitor without reflashing
+esp32-monitor:
+    cd esp32-client && espflash monitor
+
+# Check ESP32 client compilation (fast feedback)
+esp32-check:
+    cd esp32-client && cargo check
+
+# Run ESP32 client unit tests on host (tilt.rs, buffer.rs)
+esp32-test:
+    cd esp32-client && ./test-host.sh
+
+# Remove ESP32 client build artifacts
+esp32-clean:
+    cd esp32-client && cargo clean
+
 # Full CI pipeline: format check, lint, and test
 ci: fmt-check lint test

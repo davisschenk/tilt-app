@@ -4,6 +4,7 @@
 pub use super::alert_rules::Entity as AlertRules;
 pub use super::alert_targets::Entity as AlertTargets;
 pub use super::api_keys::Entity as ApiKeys;
+pub use super::brew_events::Entity as BrewEvents;
 pub use super::brews::Entity as Brews;
 pub use super::hydrometers::Entity as Hydrometers;
 pub use super::readings::Entity as Readings;

@@ -5,6 +5,7 @@
 //! enum, UUID constants, iBeacon parsing, and the TiltReading struct.
 
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 const TILT_UUID_RED: [u8; 16] = [
     0xA4, 0x95, 0xBB, 0x10, 0xC5, 0xB1, 0x4B, 0x44, 0xB5, 0x12, 0x13, 0x70, 0xF0, 0x2D, 0x74,
@@ -103,7 +104,7 @@ pub struct TiltReading {
     pub color: TiltColor,
     pub temperature_f: f64,
     pub gravity: f64,
-    pub rssi: Option<i8>,
+    pub rssi: Option<i16>,
     pub recorded_at: String,
 }
 
@@ -112,7 +113,7 @@ impl TiltReading {
         color: TiltColor,
         temperature_f: f64,
         gravity: f64,
-        rssi: Option<i8>,
+        rssi: Option<i16>,
         recorded_at: String,
     ) -> Self {
         Self {
@@ -153,6 +154,39 @@ pub fn parse_ibeacon(manufacturer_data: &[u8]) -> Option<TiltReading> {
         u16::from_be_bytes([manufacturer_data[20], manufacturer_data[21]]) as f64 / 1000.0;
 
     Some(TiltReading::new(color, temperature_f, gravity, None, String::new()))
+}
+
+/// Format a `SystemTime` as an RFC 3339 / ISO 8601 UTC timestamp string.
+/// This avoids needing the `chrono` crate on ESP32.
+pub fn format_timestamp(t: SystemTime) -> String {
+    let dur = t
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = dur.as_secs();
+
+    // Break epoch seconds into date/time components (UTC)
+    let days = secs / 86400;
+    let day_secs = secs % 86400;
+    let hour = day_secs / 3600;
+    let minute = (day_secs % 3600) / 60;
+    let second = day_secs % 60;
+
+    // Civil date from days since 1970-01-01 (Rata Die algorithm)
+    let z = days as i64 + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64; // day of era
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y, m, d, hour, minute, second
+    )
 }
 
 #[cfg(test)]
@@ -268,5 +302,25 @@ mod tests {
         let mut data = make_ibeacon_data(TILT_UUID_RED, 70, 1000, 0);
         data[0] = 0xFF;
         assert!(parse_ibeacon(&data).is_none());
+    }
+
+    #[test]
+    fn format_timestamp_unix_epoch() {
+        let t = SystemTime::UNIX_EPOCH;
+        assert_eq!(format_timestamp(t), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn format_timestamp_known_date() {
+        // 2026-03-19T00:00:00Z = 1773878400 seconds since epoch
+        let t = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1773878400);
+        assert_eq!(format_timestamp(t), "2026-03-19T00:00:00Z");
+    }
+
+    #[test]
+    fn format_timestamp_with_time() {
+        // 2025-06-15T15:10:45Z = 1750000245 seconds since epoch
+        let t = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1750000245);
+        assert_eq!(format_timestamp(t), "2025-06-15T15:10:45Z");
     }
 }

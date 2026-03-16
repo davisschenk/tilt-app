@@ -52,7 +52,7 @@ impl WifiManager {
         let wifi_config = Configuration::Client(ClientConfiguration {
             ssid: ssid_heapless,
             password: password_heapless,
-            auth_method: AuthMethod::WPA2Personal,
+            auth_method: AuthMethod::None,
             ..Default::default()
         });
 

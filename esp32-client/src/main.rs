@@ -5,9 +5,10 @@ mod http;
 mod tilt;
 mod wifi;
 
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 use anyhow::{Context, Result};
+use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 
 /// Subscribe the current task to the Task Watchdog Timer (TWDT).
 /// The TWDT is configured in sdkconfig.defaults with a 120s timeout.
@@ -78,6 +79,22 @@ fn run() -> Result<()> {
             .context("Failed to create WiFi manager")?;
     wifi_manager.connect().context("Initial WiFi connection failed")?;
 
+    // Initialize SNTP time sync
+    let _sntp = EspSntp::new_default().context("Failed to initialize SNTP")?;
+    log::info!("SNTP initialized, waiting for time sync...");
+    // Wait up to 15 seconds for initial time sync
+    for _ in 0..30 {
+        if _sntp.get_sync_status() == SyncStatus::Completed {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    if _sntp.get_sync_status() == SyncStatus::Completed {
+        log::info!("Time synced: {}", tilt::format_timestamp(SystemTime::now()));
+    } else {
+        log::warn!("SNTP sync not yet complete, timestamps may be inaccurate");
+    }
+
     // Initialize BLE scanner
     let mut ble_scanner = ble::BleScanner::new().context("Failed to initialize BLE scanner")?;
 
@@ -137,6 +154,14 @@ fn run() -> Result<()> {
                 // Prepend buffered readings to current batch
                 let mut all_readings = reading_buffer.drain_all();
                 all_readings.extend_from_slice(&readings);
+
+                // Stamp readings with current time
+                let now_ts = tilt::format_timestamp(SystemTime::now());
+                for r in &mut all_readings {
+                    if r.recorded_at.is_empty() {
+                        r.recorded_at = now_ts.clone();
+                    }
+                }
 
                 match uploader.upload_batch(&all_readings) {
                     Ok(()) => {

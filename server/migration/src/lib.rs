@@ -7,6 +7,7 @@ mod m20260219_012142_create_user_sessions;
 mod m20260219_012410_create_api_keys;
 mod m20260301_000001_create_alert_targets;
 mod m20260301_000002_create_alert_rules;
+mod m20260316_000001_create_brew_events;
 
 pub struct Migrator;
 
@@ -21,6 +22,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260219_012410_create_api_keys::Migration),
             Box::new(m20260301_000001_create_alert_targets::Migration),
             Box::new(m20260301_000002_create_alert_rules::Migration),
+            Box::new(m20260316_000001_create_brew_events::Migration),
         ]
     }
 }

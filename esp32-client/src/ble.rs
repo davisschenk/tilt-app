@@ -97,7 +97,7 @@ impl BleScanner {
                                 if let Some(mut reading) =
                                     tilt::parse_ibeacon(mfg_data.payload)
                                 {
-                                    reading.rssi = Some(rssi);
+                                    reading.rssi = Some(rssi as i16);
                                     log::info!(
                                         "Tilt {:?}: temp={:.1}°F gravity={:.4} rssi={}",
                                         reading.color,
