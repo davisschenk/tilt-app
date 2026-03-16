@@ -199,6 +199,9 @@ pub struct BrewResponse {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub latest_reading: Option<TiltReading>,
+    pub live_abv: Option<f64>,
+    pub apparent_attenuation: Option<f64>,
+    pub final_abv: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -636,13 +639,19 @@ mod tests {
             created_at: now,
             updated_at: now,
             latest_reading: None,
+            live_abv: Some(4.2),
+            apparent_attenuation: Some(75.0),
+            final_abv: None,
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"latestReading\""));
         assert!(json.contains("\"createdAt\""));
+        assert!(json.contains("\"liveAbv\""));
+        assert!(json.contains("\"apparentAttenuation\""));
         let deserialized: BrewResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.name, "Pale Ale");
         assert_eq!(deserialized.status, BrewStatus::Active);
+        assert!((deserialized.live_abv.unwrap() - 4.2).abs() < f64::EPSILON);
     }
 
     #[test]

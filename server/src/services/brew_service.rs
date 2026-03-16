@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::models::entities::brews::{self, ActiveModel, Column, Entity as Brew};
 use crate::models::entities::hydrometers::Entity as Hydrometer;
 use crate::models::entities::readings::{self, Entity as Reading};
+use crate::services::analytics_service;
 use shared::{BrewResponse, BrewStatus, CreateBrew, TiltColor, TiltReading, UpdateBrew};
 
 fn model_to_response(model: brews::Model, latest: Option<TiltReading>) -> BrewResponse {
@@ -12,6 +13,18 @@ fn model_to_response(model: brews::Model, latest: Option<TiltReading>) -> BrewRe
         "Archived" => BrewStatus::Archived,
         _ => BrewStatus::Active,
     };
+    let live_abv = model
+        .og
+        .zip(latest.as_ref().map(|r| r.gravity))
+        .map(|(og, g)| analytics_service::compute_live_abv(og, g));
+    let apparent_attenuation = model
+        .og
+        .zip(latest.as_ref().map(|r| r.gravity))
+        .map(|(og, g)| analytics_service::compute_apparent_attenuation(og, g));
+    let final_abv = model
+        .og
+        .zip(model.fg)
+        .map(|(og, fg)| analytics_service::compute_abv(og, fg));
     BrewResponse {
         id: model.id,
         name: model.name,
@@ -28,6 +41,9 @@ fn model_to_response(model: brews::Model, latest: Option<TiltReading>) -> BrewRe
         created_at: model.created_at.into(),
         updated_at: model.updated_at.into(),
         latest_reading: latest,
+        live_abv,
+        apparent_attenuation,
+        final_abv,
     }
 }
 
