@@ -80,6 +80,22 @@ pub fn predict_fg_date(
     Some(reference_time + delta)
 }
 
+/// Detect gaps in a sorted sequence of (timestamp_hours, _) tuples.
+///
+/// A gap exists between consecutive readings when the elapsed time exceeds
+/// `threshold_minutes`. Returns gaps ordered by start ascending.
+pub fn find_reading_gaps(timestamps_hours: &[f64], threshold_minutes: f64) -> Vec<(f64, f64)> {
+    let threshold_hours = threshold_minutes / 60.0;
+    let mut gaps = Vec::new();
+    for window in timestamps_hours.windows(2) {
+        let diff = window[1] - window[0];
+        if diff > threshold_hours {
+            gaps.push((window[0], window[1]));
+        }
+    }
+    gaps
+}
+
 /// Compute ABV using the standard homebrewing formula.
 /// ABV = (OG - FG) × 131.25
 pub fn compute_abv(og: f64, fg: f64) -> f64 {
@@ -112,6 +128,38 @@ mod tests {
                 gravity: *g,
             })
             .collect()
+    }
+
+    #[test]
+    fn find_gaps_empty_when_no_gap_exceeds_threshold() {
+        // 15-minute readings, threshold 45 min
+        let hours: Vec<f64> = (0..10).map(|i| i as f64 * 0.25).collect();
+        let gaps = find_reading_gaps(&hours, 45.0);
+        assert!(gaps.is_empty());
+    }
+
+    #[test]
+    fn find_gaps_detects_2_hour_gap() {
+        // Regular 15-min readings with a 2-hour gap between index 3 and 4
+        let hours = vec![0.0, 0.25, 0.5, 0.75, 2.75, 3.0, 3.25];
+        let gaps = find_reading_gaps(&hours, 45.0);
+        assert_eq!(gaps.len(), 1);
+        assert!((gaps[0].0 - 0.75).abs() < 0.001);
+        assert!((gaps[0].1 - 2.75).abs() < 0.001);
+    }
+
+    #[test]
+    fn find_gaps_ordered_ascending() {
+        let hours = vec![0.0, 2.0, 2.25, 2.5, 5.0, 5.25];
+        let gaps = find_reading_gaps(&hours, 45.0);
+        assert_eq!(gaps.len(), 2);
+        assert!(gaps[0].0 < gaps[1].0);
+    }
+
+    #[test]
+    fn find_gaps_empty_for_single_reading() {
+        let gaps = find_reading_gaps(&[1.0], 45.0);
+        assert!(gaps.is_empty());
     }
 
     #[test]

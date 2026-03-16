@@ -89,21 +89,40 @@ pub async fn brew_analytics(
         (None, None)
     };
 
-    let expected_interval = 15.0_f64;
-    let threshold = expected_interval * 3.0;
-    let mut gaps = Vec::new();
-    for window in all_readings.windows(2) {
-        let a: chrono::DateTime<Utc> = window[0].recorded_at.into();
-        let b: chrono::DateTime<Utc> = window[1].recorded_at.into();
-        let diff_minutes = (b - a).num_seconds() as f64 / 60.0;
-        if diff_minutes > threshold {
-            gaps.push(shared::ReadingGap {
-                start_at: a,
-                end_at: b,
-                duration_minutes: diff_minutes,
-            });
-        }
-    }
+    let expected_interval_minutes = 15.0_f64;
+    let threshold_minutes = expected_interval_minutes * 3.0;
+
+    // Build parallel arrays: timestamps and DateTime values
+    let reading_times: Vec<chrono::DateTime<Utc>> =
+        all_readings.iter().map(|r| r.recorded_at.into()).collect();
+    let reading_hours: Vec<f64> = {
+        let first = reading_times.first().copied().unwrap_or(Utc::now());
+        reading_times
+            .iter()
+            .map(|t| (*t - first).num_seconds() as f64 / 3600.0)
+            .collect()
+    };
+    let raw_gaps = analytics_service::find_reading_gaps(&reading_hours, threshold_minutes);
+    let gaps: Vec<shared::ReadingGap> = raw_gaps
+        .into_iter()
+        .filter_map(|(start_h, end_h)| {
+            // Find the matching DateTime values by index lookup
+            let start_idx = reading_hours
+                .iter()
+                .position(|&h| (h - start_h).abs() < 1e-9)?;
+            let end_idx = reading_hours
+                .iter()
+                .position(|&h| (h - end_h).abs() < 1e-9)?;
+            let start_at = reading_times[start_idx];
+            let end_at = reading_times[end_idx];
+            let duration_minutes = (end_at - start_at).num_seconds() as f64 / 60.0;
+            Some(shared::ReadingGap {
+                start_at,
+                end_at,
+                duration_minutes,
+            })
+        })
+        .collect();
 
     let _ = Hydrometer::find_by_id(brew.hydrometer_id)
         .one(db.inner())
