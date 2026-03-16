@@ -365,6 +365,27 @@ pub struct UpdateAlertRule {
     pub enabled: Option<bool>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadingGap {
+    pub start_at: DateTime<Utc>,
+    pub end_at: DateTime<Utc>,
+    pub duration_minutes: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrewAnalytics {
+    pub current_gravity: Option<f64>,
+    pub current_temp_f: Option<f64>,
+    pub last_reading_at: Option<DateTime<Utc>>,
+    pub live_abv: Option<f64>,
+    pub apparent_attenuation: Option<f64>,
+    pub predicted_fg_date: Option<DateTime<Utc>>,
+    pub hours_remaining: Option<f64>,
+    pub gaps: Vec<ReadingGap>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BrewEventType {

@@ -1,5 +1,6 @@
 pub mod alert_rules;
 pub mod alert_targets;
+pub mod analytics;
 pub mod api_keys;
 pub mod auth;
 pub mod brew_events;
