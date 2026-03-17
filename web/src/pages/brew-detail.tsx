@@ -20,6 +20,7 @@ import ReadingsChart from "@/components/readings/readings-chart";
 import ReadingsTable from "@/components/readings/readings-table";
 import FermentationStats from "@/components/readings/fermentation-stats";
 import BrewNotes from "@/components/brew/brew-notes";
+import BrewEventLog from "@/components/brew/brew-event-log";
 import * as toast from "@/lib/toast";
 import type { AlertMetric, AlertOperator } from "@/types";
 
@@ -248,6 +249,10 @@ export default function BrewDetail() {
         <ReadingsChart brewId={brew.id} targetFg={brew.targetFg} />
         <ReadingsTable brewId={brew.id} />
       </div>
+
+      <Separator className="my-8" />
+
+      <BrewEventLog brewId={brew.id} />
 
       <Separator className="my-8" />
 
