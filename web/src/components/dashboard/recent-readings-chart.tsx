@@ -15,7 +15,7 @@ import "chartjs-adapter-date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useReadings } from "@/hooks/use-readings";
-import { resolveColor } from "@/lib/chart-theme";
+import { resolveColor, resolveFont } from "@/lib/chart-theme";
 
 ChartJS.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
@@ -75,19 +75,33 @@ export default function RecentReadingsChart() {
     plugins: {
       legend: {
         position: "bottom",
-        labels: { boxWidth: 12, font: { size: 11 }, color: resolveColor("--foreground") },
+        labels: {
+          boxWidth: 12,
+          usePointStyle: true,
+          pointStyleWidth: 16,
+          font: { size: 12, family: resolveFont() },
+          color: resolveColor("--foreground"),
+          padding: 16,
+        },
       },
       tooltip: {
-        backgroundColor: resolveColor("--card"),
+        displayColors: false,
+        backgroundColor: resolveColor("--popover"),
         borderColor: resolveColor("--border"),
         borderWidth: 1,
         titleColor: resolveColor("--muted-foreground"),
-        bodyColor: resolveColor("--foreground"),
-        titleFont: { size: 11 },
-        bodyFont: { size: 11 },
+        bodyColor: resolveColor("--popover-foreground"),
+        padding: 10,
+        caretSize: 5,
+        cornerRadius: 8,
+        titleFont: { size: 12, family: resolveFont() },
+        bodyFont: { size: 13, family: resolveFont() },
         callbacks: {
-          title: (items) => `Time: ${new Date(Number(items[0]?.parsed.x)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
-          label: (item) => item.parsed.y != null ? ` ${item.dataset.label}: ${item.parsed.y.toFixed(3)} SG` : "",
+          title: (items) => {
+            const d = new Date(Number(items[0]?.parsed.x));
+            return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} · ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+          },
+          label: (item) => item.parsed.y != null ? `${item.dataset.label}    ${item.parsed.y.toFixed(3)} SG` : "",
         },
       },
     },
@@ -95,12 +109,12 @@ export default function RecentReadingsChart() {
       x: {
         type: "time",
         time: { unit: "hour", displayFormats: { hour: "HH:mm" } },
-        ticks: { maxTicksLimit: 8, font: { size: 11 }, color: resolveColor("--muted-foreground"), maxRotation: 0 },
+        ticks: { maxTicksLimit: 8, font: { size: 11, family: resolveFont() }, color: resolveColor("--muted-foreground"), maxRotation: 0 },
         grid: { color: "rgba(128,128,128,0.1)" },
       },
       y: {
         ticks: {
-          font: { size: 11 },
+          font: { size: 11, family: resolveFont() },
           color: resolveColor("--muted-foreground"),
           callback: (v) => Number(v).toFixed(3),
         },

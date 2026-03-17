@@ -25,7 +25,7 @@ import { useReadings } from "@/hooks/use-readings";
 import { useBrewEvents } from "@/hooks/use-brew-events";
 import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
 import type { BrewEventType, BrewEventResponse } from "@/types";
-import { resolveColor } from "@/lib/chart-theme";
+import { resolveColor, resolveFont } from "@/lib/chart-theme";
 
 ChartJS.register(
   CategoryScale,
@@ -334,13 +334,14 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
           boxWidth: 12,
           usePointStyle: true,
           pointStyleWidth: 16,
-          font: { size: 12, family: "inherit" },
+          font: { size: 12, family: resolveFont() },
           color: resolveColor("--foreground"),
           padding: 16,
         },
       },
       tooltip: {
         enabled: !hoveredEvent,
+        displayColors: false,
         backgroundColor: resolveColor("--popover"),
         borderColor: resolveColor("--border"),
         borderWidth: 1,
@@ -349,14 +350,14 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         padding: 10,
         caretSize: 5,
         cornerRadius: 8,
-        titleFont: { size: 11, family: "inherit", weight: "normal" },
-        bodyFont: { size: 12, family: "inherit" },
+        titleFont: { size: 12, family: resolveFont() },
+        bodyFont: { size: 13, family: resolveFont() },
         callbacks: {
           title: (items) => format(new Date(Number(items[0]?.parsed.x)), "MMM d, yyyy · HH:mm"),
           label: (item) => {
             if (item.parsed.y == null) return;
-            if (item.datasetIndex === 0) return `  Gravity  ${item.parsed.y.toFixed(3)} SG`;
-            return `  Temp       ${item.parsed.y.toFixed(1)}°F`;
+            if (item.datasetIndex === 0) return `Gravity    ${item.parsed.y.toFixed(3)} SG`;
+            return `Temp        ${item.parsed.y.toFixed(1)}°F`;
           },
         },
       },
@@ -373,7 +374,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         },
         ticks: {
           maxTicksLimit: 8,
-          font: { size: 11 },
+          font: { size: 11, family: resolveFont() },
           color: resolveColor("--muted-foreground"),
           maxRotation: 0,
         },
@@ -384,7 +385,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         min: Math.floor(gravityMin * 1000 - 1) / 1000,
         max: Math.ceil(gravityMax * 1000 + 1) / 1000,
         ticks: {
-          font: { size: 11 },
+          font: { size: 11, family: resolveFont() },
           color: "#1971C2",
           callback: (v) => Number(v).toFixed(3),
         },
@@ -395,7 +396,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         min: Math.floor(tempMin - 2),
         max: Math.ceil(tempMax + 2),
         ticks: {
-          font: { size: 11 },
+          font: { size: 11, family: resolveFont() },
           color: "#E8590C",
           callback: (v) => `${Number(v).toFixed(1)}°F`,
         },
