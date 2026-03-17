@@ -32,7 +32,6 @@ fn model_to_response(model: brews::Model, latest: Option<TiltReading>) -> BrewRe
         og: model.og,
         fg: model.fg,
         target_fg: model.target_fg,
-        abv: model.abv,
         status,
         start_date: model.start_date.map(Into::into),
         end_date: model.end_date.map(Into::into),
@@ -102,7 +101,6 @@ pub async fn create(db: &DatabaseConnection, input: CreateBrew) -> Result<BrewRe
         og: Set(input.og),
         fg: Set(None),
         target_fg: Set(input.target_fg),
-        abv: Set(None),
         status: Set("Active".to_string()),
         start_date: Set(Some(now.into())),
         end_date: Set(None),
@@ -140,9 +138,6 @@ pub async fn update(
     }
     if let Some(target_fg) = input.target_fg {
         active.target_fg = Set(Some(target_fg));
-    }
-    if let Some(abv) = input.abv {
-        active.abv = Set(Some(abv));
     }
     if let Some(status) = input.status {
         active.status = Set(format!("{:?}", status));

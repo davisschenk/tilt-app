@@ -35,7 +35,6 @@ export interface UpdateBrew {
   og?: number | null;
   fg?: number | null;
   targetFg?: number | null;
-  abv?: number | null;
   status?: BrewStatus | null;
   notes?: string | null;
   endDate?: string | null;
@@ -48,7 +47,6 @@ export interface BrewResponse {
   og: number | null;
   fg: number | null;
   targetFg: number | null;
-  abv: number | null;
   status: BrewStatus;
   startDate: string | null;
   endDate: string | null;

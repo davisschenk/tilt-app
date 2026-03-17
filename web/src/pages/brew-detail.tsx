@@ -82,17 +82,14 @@ export default function BrewDetail() {
 
   function handleFinishBrew() {
     const fg = brew?.latestReading?.gravity;
-    const og = brew?.og;
-    const abv = og != null && fg != null ? (og - fg) * 131.25 : null;
     updateBrew.mutate(
       {
         status: "Completed" as const,
         fg: fg ?? null,
-        abv: abv != null ? parseFloat(abv.toFixed(1)) : null,
         endDate: new Date().toISOString(),
       },
       {
-        onSuccess: () => toast.success(`Brew finished${fg ? ` with FG ${fg.toFixed(3)}` : ""}${abv != null ? ` — ${abv.toFixed(1)}% ABV` : ""}`),
+        onSuccess: () => toast.success(`Brew finished${fg ? ` with FG ${fg.toFixed(3)}` : ""}`),
         onError: () => toast.error("Failed to finish brew"),
       },
     );
@@ -196,7 +193,7 @@ export default function BrewDetail() {
               <StatItem label="OG" value={brew.og?.toFixed(3) ?? "—"} />
               <StatItem label="FG" value={brew.fg?.toFixed(3) ?? "—"} />
               <StatItem label="Target FG" value={brew.targetFg?.toFixed(3) ?? "—"} />
-              <StatItem label="ABV" value={brew.abv != null ? `${brew.abv.toFixed(1)}%` : "—"} />
+              <StatItem label="ABV" value={brew.finalAbv != null ? `${brew.finalAbv.toFixed(1)}%` : "—"} />
             </div>
           </CardContent>
         </Card>

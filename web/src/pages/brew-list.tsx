@@ -78,7 +78,7 @@ export default function BrewList() {
                 <TableHead>Status</TableHead>
                 <TableHead className="hidden lg:table-cell">OG</TableHead>
                 <TableHead className="hidden lg:table-cell">Current SG</TableHead>
-                <TableHead className="hidden lg:table-cell">ABV</TableHead>
+                <TableHead className="hidden lg:table-cell">Live ABV</TableHead>
                 <TableHead className="hidden sm:table-cell">Start Date</TableHead>
               </TableRow>
             </TableHeader>
@@ -113,7 +113,7 @@ export default function BrewList() {
                       {brew.latestReading?.gravity.toFixed(3) ?? "—"}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      {brew.abv != null ? `${brew.abv.toFixed(1)}%` : "—"}
+                      {brew.liveAbv != null ? `${brew.liveAbv.toFixed(1)}%` : "—"}
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
                       {brew.startDate

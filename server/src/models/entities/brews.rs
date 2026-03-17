@@ -16,8 +16,6 @@ pub struct Model {
     pub fg: Option<f64>,
     #[sea_orm(column_type = "Double", nullable)]
     pub target_fg: Option<f64>,
-    #[sea_orm(column_type = "Double", nullable)]
-    pub abv: Option<f64>,
     pub status: String,
     pub start_date: Option<DateTimeWithTimeZone>,
     pub end_date: Option<DateTimeWithTimeZone>,

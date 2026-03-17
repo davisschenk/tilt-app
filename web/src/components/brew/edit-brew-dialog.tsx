@@ -35,7 +35,6 @@ export default function EditBrewDialog({ brew, open, onOpenChange }: EditBrewDia
   const [og, setOg] = useState(brew.og?.toString() ?? "");
   const [fg, setFg] = useState(brew.fg?.toString() ?? "");
   const [targetFg, setTargetFg] = useState(brew.targetFg?.toString() ?? "");
-  const [abv, setAbv] = useState(brew.abv?.toString() ?? "");
   const [notes, setNotes] = useState(brew.notes ?? "");
   const [status, setStatus] = useState<BrewStatus>(brew.status);
 
@@ -46,7 +45,6 @@ export default function EditBrewDialog({ brew, open, onOpenChange }: EditBrewDia
       setOg(brew.og?.toString() ?? "");
       setFg(brew.fg?.toString() ?? "");
       setTargetFg(brew.targetFg?.toString() ?? "");
-      setAbv(brew.abv?.toString() ?? "");
       setNotes(brew.notes ?? "");
       setStatus(brew.status);
     }
@@ -61,7 +59,6 @@ export default function EditBrewDialog({ brew, open, onOpenChange }: EditBrewDia
         og: og ? parseFloat(og) : null,
         fg: fg ? parseFloat(fg) : null,
         targetFg: targetFg ? parseFloat(targetFg) : null,
-        abv: abv ? parseFloat(abv) : null,
         notes: notes.trim() || null,
         status,
       },
@@ -105,15 +102,9 @@ export default function EditBrewDialog({ brew, open, onOpenChange }: EditBrewDia
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-target-fg">Target FG</Label>
-              <Input id="edit-target-fg" type="number" step="0.001" value={targetFg} onChange={(e) => setTargetFg(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-abv">ABV (%)</Label>
-              <Input id="edit-abv" type="number" step="0.1" value={abv} onChange={(e) => setAbv(e.target.value)} />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-target-fg">Target FG</Label>
+            <Input id="edit-target-fg" type="number" step="0.001" value={targetFg} onChange={(e) => setTargetFg(e.target.value)} />
           </div>
 
           <div className="space-y-2">

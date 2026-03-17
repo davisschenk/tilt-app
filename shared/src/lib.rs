@@ -175,7 +175,6 @@ pub struct UpdateBrew {
     pub og: Option<f64>,
     pub fg: Option<f64>,
     pub target_fg: Option<f64>,
-    pub abv: Option<f64>,
     pub status: Option<BrewStatus>,
     pub notes: Option<String>,
     pub end_date: Option<DateTime<Utc>>,
@@ -190,7 +189,6 @@ pub struct BrewResponse {
     pub og: Option<f64>,
     pub fg: Option<f64>,
     pub target_fg: Option<f64>,
-    pub abv: Option<f64>,
     pub status: BrewStatus,
     pub start_date: Option<DateTime<Utc>>,
     pub end_date: Option<DateTime<Utc>>,
@@ -640,7 +638,6 @@ mod tests {
         assert!(update.og.is_none());
         assert!(update.fg.is_none());
         assert!(update.target_fg.is_none());
-        assert!(update.abv.is_none());
         assert!(update.status.is_none());
         assert!(update.notes.is_none());
         assert!(update.end_date.is_none());
@@ -656,7 +653,6 @@ mod tests {
             og: Some(1.055),
             fg: None,
             target_fg: Some(1.012),
-            abv: None,
             status: BrewStatus::Active,
             start_date: Some(now),
             end_date: None,
