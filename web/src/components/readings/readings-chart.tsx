@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
   LineChart,
   Line,
@@ -9,6 +9,7 @@ import {
   ReferenceLine,
   ReferenceArea,
   ResponsiveContainer,
+  Customized,
 } from "recharts";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useReadings } from "@/hooks/use-readings";
 import { useBrewEvents } from "@/hooks/use-brew-events";
 import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
-import type { BrewEventType } from "@/types";
+import type { BrewEventType, BrewEventResponse } from "@/types";
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
 
@@ -64,8 +65,16 @@ interface ReadingsChartProps {
   predictedFgDate?: string | null;
 }
 
+interface EventTooltipState {
+  event: BrewEventResponse;
+  x: number;
+  y: number;
+}
+
 export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: ReadingsChartProps) {
   const [range, setRange] = useState<TimeRange>("7d");
+  const [hoveredEvent, setHoveredEvent] = useState<EventTooltipState | null>(null);
+  const chartWrapperRef = useRef<HTMLDivElement>(null);
 
   const since = useMemo(() => {
     const hours = RANGE_HOURS[range];
@@ -145,8 +154,9 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
             No readings for this time range
           </div>
         ) : (
+          <div ref={chartWrapperRef} className="relative">
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
+            <LineChart data={chartData} onMouseLeave={() => setHoveredEvent(null)}>
               <XAxis
                 dataKey="timestamp"
                 type="number"
@@ -235,6 +245,47 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
                   />
                 );
               })}
+              <Customized component={(props: Record<string, unknown>) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const xAxisMap = props.xAxisMap as Record<string, any>;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const yAxisMap = props.yAxisMap as Record<string, any>;
+                if (!xAxisMap || !yAxisMap) return null;
+                const xAxis = Object.values(xAxisMap)[0];
+                const yAxis = Object.values(yAxisMap).find((a: any) => a.yAxisId === "gravity" || a.axisId === "gravity") ?? Object.values(yAxisMap)[0];
+                if (!xAxis?.scale || !yAxis?.scale) return null;
+                const plotY = yAxis.scale(yAxis.domain[1]) + 4;
+                return (
+                  <g>
+                    {visibleEvents.map((ev) => {
+                      const color = EVENT_COLORS[ev.eventType];
+                      const px = xAxis.scale(new Date(ev.eventTime).getTime());
+                      if (px == null || isNaN(px)) return null;
+                      return (
+                        <polygon
+                          key={ev.id}
+                          points={`${px},${plotY} ${px + 6},${plotY + 10} ${px},${plotY + 20} ${px - 6},${plotY + 10}`}
+                          fill={color}
+                          stroke="white"
+                          strokeWidth={1}
+                          style={{ cursor: "pointer" }}
+                          onMouseEnter={(e) => {
+                            const wrapper = chartWrapperRef.current;
+                            if (!wrapper) return;
+                            const rect = wrapper.getBoundingClientRect();
+                            setHoveredEvent({
+                              event: ev,
+                              x: e.clientX - rect.left,
+                              y: e.clientY - rect.top,
+                            });
+                          }}
+                          onMouseLeave={() => setHoveredEvent(null)}
+                        />
+                      );
+                    })}
+                  </g>
+                );
+              }} />
               <Legend />
               <Line
                 yAxisId="gravity"
@@ -256,6 +307,26 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
               />
             </LineChart>
           </ResponsiveContainer>
+          {hoveredEvent && (() => {
+            const ev = hoveredEvent.event;
+            const color = EVENT_COLORS[ev.eventType];
+            const label = EVENT_LABELS[ev.eventType];
+            const left = Math.min(hoveredEvent.x + 12, (chartWrapperRef.current?.clientWidth ?? 400) - 200);
+            return (
+              <div
+                className="absolute z-50 pointer-events-none rounded-md border bg-card text-card-foreground shadow-md px-3 py-2 text-xs max-w-[190px]"
+                style={{ left, top: hoveredEvent.y - 10 }}
+              >
+                <div className="flex items-center gap-1.5 font-semibold mb-1" style={{ color }}>
+                  <span style={{ display: "inline-block", width: 8, height: 8, background: color, transform: "rotate(45deg)" }} />
+                  {label}
+                </div>
+                <div className="text-muted-foreground">{format(new Date(ev.eventTime), "MMM d, yyyy HH:mm")}</div>
+                {ev.notes && <div className="mt-1 text-foreground/80 line-clamp-3">{ev.notes}</div>}
+              </div>
+            );
+          })()}
+          </div>
         )}
       </CardContent>
     </Card>
