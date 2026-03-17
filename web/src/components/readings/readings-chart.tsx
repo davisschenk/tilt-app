@@ -24,6 +24,7 @@ import { useReadings } from "@/hooks/use-readings";
 import { useBrewEvents } from "@/hooks/use-brew-events";
 import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
 import type { BrewEventType, BrewEventResponse } from "@/types";
+import { resolveColor } from "@/lib/chart-theme";
 
 ChartJS.register(
   CategoryScale,
@@ -327,15 +328,15 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         labels: {
           boxWidth: 12,
           font: { size: 11 },
-          color: "var(--foreground)",
+          color: resolveColor("--foreground"),
         },
       },
       tooltip: {
-        backgroundColor: "var(--card)",
-        borderColor: "var(--border)",
+        backgroundColor: resolveColor("--card"),
+        borderColor: resolveColor("--border"),
         borderWidth: 1,
-        titleColor: "var(--muted-foreground)",
-        bodyColor: "var(--foreground)",
+        titleColor: resolveColor("--muted-foreground"),
+        bodyColor: resolveColor("--foreground"),
         titleFont: { size: 11 },
         bodyFont: { size: 11 },
         callbacks: {
@@ -361,7 +362,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         ticks: {
           maxTicksLimit: 8,
           font: { size: 11 },
-          color: "var(--muted-foreground)",
+          color: resolveColor("--muted-foreground"),
           maxRotation: 0,
         },
         grid: { color: "rgba(128,128,128,0.1)" },

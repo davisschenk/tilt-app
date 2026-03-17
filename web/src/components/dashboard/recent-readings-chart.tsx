@@ -1,17 +1,23 @@
 import { useMemo } from "react";
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
+  Chart as ChartJS,
+  TimeScale,
+  LinearScale,
+  PointElement,
+  LineElement,
   Tooltip,
   Legend,
-  ResponsiveContainer,
-} from "recharts";
-import { format } from "date-fns";
+  type ChartData,
+  type ChartOptions,
+} from "chart.js";
+import { Line } from "react-chartjs-2";
+import "chartjs-adapter-date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useReadings } from "@/hooks/use-readings";
+import { resolveColor } from "@/lib/chart-theme";
+
+ChartJS.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
 const BREW_COLORS: Record<string, string> = {
   Red: "#E03131",
@@ -33,32 +39,75 @@ export default function RecentReadingsChart() {
 
   const { data: readings, isLoading } = useReadings({ since });
 
-  const { chartData, colors } = useMemo(() => {
-    if (!readings || readings.length === 0) return { chartData: [], colors: [] };
+  const { datasets, colorNames } = useMemo(() => {
+    if (!readings || readings.length === 0) return { datasets: [], colorNames: [] };
 
-    const byTime = new Map<string, Record<string, number>>();
-    const colorSet = new Set<string>();
-
+    const byColor = new Map<string, { x: number; y: number }[]>();
     for (const r of readings) {
-      colorSet.add(r.color);
-      const timeKey = r.recordedAt;
-      const existing = byTime.get(timeKey) ?? {};
-      existing[r.color] = r.gravity;
-      byTime.set(timeKey, existing);
+      const pts = byColor.get(r.color) ?? [];
+      pts.push({ x: new Date(r.recordedAt).getTime(), y: r.gravity });
+      byColor.set(r.color, pts);
     }
 
-    const sortedEntries = Array.from(byTime.entries()).sort(
-      ([a], [b]) => new Date(a).getTime() - new Date(b).getTime(),
-    );
-
-    const data = sortedEntries.map(([time, values]) => ({
-      time: format(new Date(time), "HH:mm"),
-      timestamp: new Date(time).getTime(),
-      ...values,
+    const colorNames = Array.from(byColor.keys());
+    const datasets = colorNames.map((color) => ({
+      label: color,
+      data: (byColor.get(color) ?? []).sort((a, b) => a.x - b.x),
+      borderColor: BREW_COLORS[color] ?? "#868E96",
+      backgroundColor: "transparent",
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHitRadius: 6,
+      tension: 0.3,
+      parsing: false as const,
     }));
 
-    return { chartData: data, colors: Array.from(colorSet) };
+    return { datasets, colorNames };
   }, [readings]);
+
+  const chartData: ChartData<"line"> = useMemo(() => ({ datasets }), [datasets]);
+
+  const chartOptions: ChartOptions<"line"> = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: {
+        position: "bottom",
+        labels: { boxWidth: 12, font: { size: 11 }, color: resolveColor("--foreground") },
+      },
+      tooltip: {
+        backgroundColor: resolveColor("--card"),
+        borderColor: resolveColor("--border"),
+        borderWidth: 1,
+        titleColor: resolveColor("--muted-foreground"),
+        bodyColor: resolveColor("--foreground"),
+        titleFont: { size: 11 },
+        bodyFont: { size: 11 },
+        callbacks: {
+          title: (items) => `Time: ${new Date(Number(items[0]?.parsed.x)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+          label: (item) => item.parsed.y != null ? ` ${item.dataset.label}: ${item.parsed.y.toFixed(3)} SG` : "",
+        },
+      },
+    },
+    scales: {
+      x: {
+        type: "time",
+        time: { unit: "hour", displayFormats: { hour: "HH:mm" } },
+        ticks: { maxTicksLimit: 8, font: { size: 11 }, color: resolveColor("--muted-foreground"), maxRotation: 0 },
+        grid: { color: "rgba(128,128,128,0.1)" },
+      },
+      y: {
+        ticks: {
+          font: { size: 11 },
+          color: resolveColor("--muted-foreground"),
+          callback: (v) => Number(v).toFixed(3),
+        },
+        grid: { color: "rgba(128,128,128,0.1)" },
+      },
+    },
+  }), [colorNames]);
 
   return (
     <Card className="mt-8">
@@ -68,49 +117,14 @@ export default function RecentReadingsChart() {
       <CardContent>
         {isLoading ? (
           <Skeleton className="h-64 w-full" />
-        ) : chartData.length === 0 ? (
+        ) : datasets.length === 0 ? (
           <div className="flex items-center justify-center h-64 text-muted-foreground">
             No readings in the last 24 hours
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
-              <XAxis
-                dataKey="time"
-                tick={{ fontSize: 12 }}
-                stroke="var(--muted-foreground)"
-                interval="preserveStartEnd"
-                minTickGap={60}
-              />
-              <YAxis
-                domain={["auto", "auto"]}
-                tick={{ fontSize: 12 }}
-                stroke="var(--muted-foreground)"
-                tickFormatter={(v: number) => v.toFixed(3)}
-              />
-              <Tooltip
-                contentStyle={{ backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
-                formatter={(value: unknown) => [
-                  typeof value === "number" ? value.toFixed(3) : String(value),
-                  "SG",
-                ]}
-                labelFormatter={(label) => `Time: ${String(label)}`}
-              />
-              <Legend />
-              {colors.map((color) => (
-                <Line
-                  key={color}
-                  type="monotone"
-                  dataKey={color}
-                  stroke={BREW_COLORS[color] ?? "#868E96"}
-                  dot={false}
-                  strokeWidth={2}
-                  connectNulls
-                  name={color}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+          <div style={{ height: 300 }}>
+            <Line data={chartData} options={chartOptions} />
+          </div>
         )}
       </CardContent>
     </Card>
