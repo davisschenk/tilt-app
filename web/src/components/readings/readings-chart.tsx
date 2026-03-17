@@ -114,8 +114,9 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
   }, [events, chartData]);
 
   const chartDataWithEvents = useMemo(() => {
-    if (visibleEvents.length === 0) return chartData.map((p) => ({ ...p, eventDot: undefined as number | undefined, eventId: undefined as string | undefined }));
-    const maxGravity = Math.max(...chartData.map((p) => p.gravity));
+    const maxGravity = chartData.length > 0 ? Math.max(...chartData.map((p) => p.gravity)) : 1.1;
+    const base = chartData.map((p) => ({ ...p, eventDot: maxGravity, eventId: undefined as string | undefined }));
+    if (visibleEvents.length === 0) return base;
     const extra = visibleEvents.map((ev) => ({
       timestamp: new Date(ev.eventTime).getTime(),
       gravity: undefined as number | undefined,
@@ -123,7 +124,6 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       eventDot: maxGravity,
       eventId: ev.id,
     }));
-    const base = chartData.map((p) => ({ ...p, eventDot: undefined as number | undefined, eventId: undefined as string | undefined }));
     return [...base, ...extra].sort((a, b) => a.timestamp - b.timestamp);
   }, [chartData, visibleEvents]);
 
@@ -265,6 +265,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
                 type="monotone"
                 dataKey="eventDot"
                 stroke="none"
+                connectNulls
                 dot={(dotProps) => {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const d = (dotProps as any).payload;
