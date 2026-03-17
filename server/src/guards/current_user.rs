@@ -23,6 +23,19 @@ impl<'r> FromRequest<'r> for CurrentUser {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        // When auth is not configured, allow all requests through as an anonymous user.
+        if std::env::var("AUTHENTIK_ISSUER_URL")
+            .unwrap_or_default()
+            .is_empty()
+        {
+            return Outcome::Success(CurrentUser {
+                session_id: Uuid::nil(),
+                user_sub: "anonymous".to_string(),
+                email: "anonymous@local".to_string(),
+                name: "Anonymous".to_string(),
+            });
+        }
+
         let cookie = req.cookies().get_private(SESSION_COOKIE);
         let session_id_str = match cookie {
             Some(c) => c.value().to_string(),

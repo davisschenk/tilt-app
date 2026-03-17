@@ -21,6 +21,14 @@ impl<'r> FromRequest<'r> for AuthOrApiKey {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        // When auth is not configured, allow all requests through.
+        if std::env::var("AUTHENTIK_ISSUER_URL")
+            .unwrap_or_default()
+            .is_empty()
+        {
+            return Outcome::Success(AuthOrApiKey);
+        }
+
         let db = match req.guard::<&rocket::State<DatabaseConnection>>().await {
             Outcome::Success(db) => db,
             _ => return Outcome::Error((Status::InternalServerError, ())),
