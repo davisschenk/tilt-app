@@ -1,20 +1,106 @@
 import { useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Beer, Thermometer, Activity, BarChart3, Plus, RefreshCw } from "lucide-react";
-import { format } from "date-fns";
+import { Beer, Thermometer, Activity, BarChart3, Plus, RefreshCw, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import PageHeader from "@/components/layout/page-header";
 import { useBrews } from "@/hooks/use-brews";
 import { useHydrometers } from "@/hooks/use-hydrometers";
 import { useReadings } from "@/hooks/use-readings";
+import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
 import type { BrewResponse } from "@/types";
 import RecentReadingsChart from "@/components/dashboard/recent-readings-chart";
 import ColorDot from "@/components/ui/color-dot";
 
 const REFRESH_INTERVAL = 30_000;
+
+function ActiveBrewCard({ brew }: { brew: BrewResponse }) {
+  const { data: analytics, isLoading: analyticsLoading } = useBrewAnalytics(brew.id);
+  const { data: recentReadings } = useReadings({ brewId: brew.id, limit: 3 });
+
+  const trend = useMemo(() => {
+    if (!recentReadings || recentReadings.length < 2) return "flat";
+    const sorted = recentReadings
+      .slice()
+      .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
+    const diff = sorted[sorted.length - 1].gravity - sorted[0].gravity;
+    if (diff > 0.001) return "up";
+    if (diff < -0.001) return "down";
+    return "flat";
+  }, [recentReadings]);
+
+  const color = brew.latestReading?.color;
+  const lastReadingAt = brew.latestReading ? new Date(brew.latestReading.recordedAt) : null;
+
+  return (
+    <Link to={`/brews/${brew.id}`}>
+      <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+        <CardContent className="pt-5 pb-4">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-2">
+              {color && <ColorDot color={color} />}
+              <span className="font-semibold">{brew.name}</span>
+              {brew.style && (
+                <Badge variant="outline" className="text-xs">{brew.style}</Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-1 text-muted-foreground">
+              {trend === "up" && <TrendingUp className="h-4 w-4 text-red-500" />}
+              {trend === "down" && <TrendingDown className="h-4 w-4 text-green-500" />}
+              {trend === "flat" && <Minus className="h-4 w-4" />}
+            </div>
+          </div>
+
+          {analyticsLoading ? (
+            <div className="grid grid-cols-2 gap-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Gravity</p>
+                <p className="text-sm font-semibold">
+                  {analytics?.currentGravity?.toFixed(3) ?? brew.latestReading?.gravity.toFixed(3) ?? "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Temp</p>
+                <p className="text-sm font-semibold">
+                  {analytics?.currentTempF?.toFixed(1) ?? brew.latestReading?.temperatureF.toFixed(1) ?? "—"}°F
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Live ABV</p>
+                <p className="text-sm font-semibold">
+                  {analytics?.liveAbv != null ? `${analytics.liveAbv.toFixed(1)}%` : "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Attenuation</p>
+                <p className="text-sm font-semibold">
+                  {analytics?.apparentAttenuation != null ? `${analytics.apparentAttenuation.toFixed(0)}%` : "—"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {lastReadingAt && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Last reading {formatDistanceToNow(lastReadingAt, { addSuffix: true })}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}
 
 function StatCard({
   title,
@@ -131,41 +217,22 @@ export default function Dashboard() {
       <div className="mt-8">
         <h2 className="text-lg font-semibold mb-4">Active Brews</h2>
         {brewsLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Skeleton className="h-36 w-full" />
+            <Skeleton className="h-36 w-full" />
           </div>
         ) : activeBrews && activeBrews.length > 0 ? (
-          <div className="space-y-2">
-            {activeBrews.map((brew: BrewResponse) => {
-              const daysActive = brew.startDate
-                ? Math.floor(
-                    (Date.now() - new Date(brew.startDate).getTime()) /
-                      (1000 * 60 * 60 * 24),
-                  )
-                : 0;
-              const currentGravity = brew.latestReading?.gravity;
-              const color = brew.latestReading?.color;
-
-              return (
-                <Link
-                  key={brew.id}
-                  to={`/brews/${brew.id}`}
-                  className="flex items-center justify-between rounded-md border p-3 hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    {color && <ColorDot color={color} />}
-                    <span className="font-medium">{brew.name}</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    {currentGravity !== undefined && (
-                      <span>{currentGravity.toFixed(3)} SG</span>
-                    )}
-                    <span>{daysActive}d</span>
-                  </div>
-                </Link>
-              );
-            })}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {activeBrews
+              .slice()
+              .sort((a, b) => {
+                const aTime = a.latestReading ? new Date(a.latestReading.recordedAt).getTime() : 0;
+                const bTime = b.latestReading ? new Date(b.latestReading.recordedAt).getTime() : 0;
+                return bTime - aTime;
+              })
+              .map((brew: BrewResponse) => (
+                <ActiveBrewCard key={brew.id} brew={brew} />
+              ))}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center rounded-md border border-dashed p-8 text-center">
