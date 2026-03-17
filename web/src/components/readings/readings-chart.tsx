@@ -7,6 +7,7 @@ import {
   Tooltip,
   Legend,
   ReferenceLine,
+  ReferenceArea,
   ResponsiveContainer,
 } from "recharts";
 import { format } from "date-fns";
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useReadings } from "@/hooks/use-readings";
 import { useBrewEvents } from "@/hooks/use-brew-events";
+import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
 import type { BrewEventType } from "@/types";
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
@@ -74,6 +76,7 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
 
   const { data: readings, isLoading } = useReadings({ brewId, since });
   const { data: events } = useBrewEvents(brewId);
+  const { data: analytics } = useBrewAnalytics(brewId);
 
   const chartData = useMemo(() => {
     if (!readings || readings.length === 0) return [];
@@ -97,6 +100,25 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
       return ts >= minTs && ts <= maxTs;
     });
   }, [events, chartData]);
+
+  const visibleGaps = useMemo(() => {
+    if (!analytics?.gaps || chartData.length === 0) return [];
+    const minTs = chartData[0].timestamp;
+    const maxTs = chartData[chartData.length - 1].timestamp;
+    const fmt = (iso: string) =>
+      format(new Date(iso), range === "24h" ? "HH:mm" : "MMM d HH:mm");
+    return analytics.gaps
+      .filter((g) => {
+        const startTs = new Date(g.startAt).getTime();
+        const endTs = new Date(g.endAt).getTime();
+        return endTs >= minTs && startTs <= maxTs;
+      })
+      .map((g) => ({
+        x1: fmt(g.startAt),
+        x2: fmt(g.endAt),
+        durationMinutes: g.durationMinutes,
+      }));
+  }, [analytics, chartData, range]);
 
   return (
     <Card>
@@ -168,6 +190,22 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
                   label={{ value: `Target FG: ${targetFg.toFixed(3)}`, position: "insideTopRight", fontSize: 11, fill: "#2F9E44" }}
                 />
               )}
+              {visibleGaps.map((gap, i) => (
+                <ReferenceArea
+                  key={`gap-${i}`}
+                  yAxisId="gravity"
+                  x1={gap.x1}
+                  x2={gap.x2}
+                  fill="#ef4444"
+                  fillOpacity={0.15}
+                  label={{
+                    value: `No data (${Math.floor(gap.durationMinutes / 60)}h ${Math.round(gap.durationMinutes % 60)}m)`,
+                    position: "insideTop",
+                    fontSize: 9,
+                    fill: "#ef4444",
+                  }}
+                />
+              ))}
               {visibleEvents.map((ev) => {
                 const color = EVENT_COLORS[ev.eventType];
                 const shortLabel = EVENT_LABELS[ev.eventType];
