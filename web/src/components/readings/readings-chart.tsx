@@ -203,6 +203,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
               <Tooltip
                 contentStyle={{ backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
                 formatter={(value: unknown, name?: string) => {
+                  if (name === "eventDot") return null;
                   const v = typeof value === "number" ? value : 0;
                   if (name === "gravity") return [v.toFixed(3), "Gravity (SG)"];
                   return [`${v.toFixed(1)}°F`, "Temperature"];
