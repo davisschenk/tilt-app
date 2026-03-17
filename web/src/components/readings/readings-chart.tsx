@@ -9,7 +9,6 @@ import {
   ReferenceLine,
   ReferenceArea,
   ResponsiveContainer,
-  Customized,
 } from "recharts";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -92,14 +91,16 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
 
   const chartData = useMemo(() => {
     if (!readings || readings.length === 0) return [];
-    return readings
+    const points = readings
       .slice()
       .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
       .map((r) => ({
         timestamp: new Date(r.recordedAt).getTime(),
         gravity: r.gravity,
         temperature: r.temperatureF,
+        eventId: undefined as string | undefined,
       }));
+    return points;
   }, [readings]);
 
   const visibleEvents = useMemo(() => {
@@ -111,6 +112,20 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       return ts >= minTs && ts <= maxTs;
     });
   }, [events, chartData]);
+
+  const chartDataWithEvents = useMemo(() => {
+    if (visibleEvents.length === 0) return chartData.map((p) => ({ ...p, eventDot: undefined as number | undefined, eventId: undefined as string | undefined }));
+    const maxGravity = Math.max(...chartData.map((p) => p.gravity));
+    const extra = visibleEvents.map((ev) => ({
+      timestamp: new Date(ev.eventTime).getTime(),
+      gravity: undefined as number | undefined,
+      temperature: undefined as number | undefined,
+      eventDot: maxGravity,
+      eventId: ev.id,
+    }));
+    const base = chartData.map((p) => ({ ...p, eventDot: undefined as number | undefined, eventId: undefined as string | undefined }));
+    return [...base, ...extra].sort((a, b) => a.timestamp - b.timestamp);
+  }, [chartData, visibleEvents]);
 
   const visibleGaps = useMemo(() => {
     if (!analytics?.gaps || chartData.length === 0) return [];
@@ -156,7 +171,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         ) : (
           <div ref={chartWrapperRef} className="relative">
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData} onMouseLeave={() => setHoveredEvent(null)}>
+            <LineChart data={chartDataWithEvents} onMouseLeave={() => setHoveredEvent(null)}>
               <XAxis
                 dataKey="timestamp"
                 type="number"
@@ -245,47 +260,47 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
                   />
                 );
               })}
-              <Customized component={(props: Record<string, unknown>) => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const xAxisMap = props.xAxisMap as Record<string, any>;
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const yAxisMap = props.yAxisMap as Record<string, any>;
-                if (!xAxisMap || !yAxisMap) return null;
-                const xAxis = Object.values(xAxisMap)[0];
-                const yAxis = Object.values(yAxisMap).find((a: any) => a.yAxisId === "gravity" || a.axisId === "gravity") ?? Object.values(yAxisMap)[0];
-                if (!xAxis?.scale || !yAxis?.scale) return null;
-                const plotY = yAxis.scale(yAxis.domain[1]) + 4;
-                return (
-                  <g>
-                    {visibleEvents.map((ev) => {
-                      const color = EVENT_COLORS[ev.eventType];
-                      const px = xAxis.scale(new Date(ev.eventTime).getTime());
-                      if (px == null || isNaN(px)) return null;
-                      return (
-                        <polygon
-                          key={ev.id}
-                          points={`${px},${plotY} ${px + 6},${plotY + 10} ${px},${plotY + 20} ${px - 6},${plotY + 10}`}
-                          fill={color}
-                          stroke="white"
-                          strokeWidth={1}
-                          style={{ cursor: "pointer" }}
-                          onMouseEnter={(e) => {
-                            const wrapper = chartWrapperRef.current;
-                            if (!wrapper) return;
-                            const rect = wrapper.getBoundingClientRect();
-                            setHoveredEvent({
-                              event: ev,
-                              x: e.clientX - rect.left,
-                              y: e.clientY - rect.top,
-                            });
-                          }}
-                          onMouseLeave={() => setHoveredEvent(null)}
-                        />
-                      );
-                    })}
-                  </g>
-                );
-              }} />
+              <Line
+                yAxisId="gravity"
+                type="monotone"
+                dataKey="eventDot"
+                stroke="none"
+                dot={(dotProps) => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const d = (dotProps as any).payload;
+                  if (!d?.eventId) return <g key={dotProps.key} />;
+                  const ev = visibleEvents.find((e) => e.id === d.eventId);
+                  if (!ev) return <g key={dotProps.key} />;
+                  const color = EVENT_COLORS[ev.eventType];
+                  const cx = dotProps.cx ?? 0;
+                  const cy = dotProps.cy ?? 0;
+                  const size = 7;
+                  return (
+                    <polygon
+                      key={dotProps.key}
+                      points={`${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`}
+                      fill={color}
+                      stroke="white"
+                      strokeWidth={1.5}
+                      style={{ cursor: "pointer" }}
+                      onMouseEnter={(e) => {
+                        const wrapper = chartWrapperRef.current;
+                        if (!wrapper) return;
+                        const rect = wrapper.getBoundingClientRect();
+                        setHoveredEvent({
+                          event: ev,
+                          x: e.clientX - rect.left,
+                          y: e.clientY - rect.top,
+                        });
+                      }}
+                      onMouseLeave={() => setHoveredEvent(null)}
+                    />
+                  );
+                }}
+                activeDot={false}
+                legendType="none"
+                isAnimationActive={false}
+              />
               <Legend />
               <Line
                 yAxisId="gravity"
