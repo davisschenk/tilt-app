@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBrew, useUpdateBrew } from "@/hooks/use-brews";
 import { useHydrometer } from "@/hooks/use-hydrometers";
+import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
 import { useAlertRules } from "@/hooks/use-alert-rules";
 import { useAlertTargets } from "@/hooks/use-alert-targets";
 import EditBrewDialog from "@/components/brew/edit-brew-dialog";
@@ -66,6 +67,7 @@ export default function BrewDetail() {
   const [addAlertOpen, setAddAlertOpen] = useState(false);
   const { data: alertRules } = useAlertRules(id);
   const { data: alertTargets } = useAlertTargets();
+  const { data: analytics } = useBrewAnalytics(id!);
 
   function handleStatusChange(status: "Completed" | "Archived") {
     updateBrew.mutate(
@@ -212,6 +214,40 @@ export default function BrewDetail() {
         </Card>
       </div>
 
+      {brew.targetFg != null && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Predicted Completion</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {analytics == null ? (
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            ) : analytics.predictedFgDate != null ? (
+              <div className="grid grid-cols-2 gap-4">
+                <StatItem
+                  label="Predicted Date"
+                  value={format(new Date(analytics.predictedFgDate), "MMM d 'at' HH:mm")}
+                />
+                <StatItem
+                  label="Time Remaining"
+                  value={
+                    analytics.hoursRemaining != null
+                      ? analytics.hoursRemaining >= 24
+                        ? `${Math.floor(analytics.hoursRemaining / 24)}d ${Math.round(analytics.hoursRemaining % 24)}h`
+                        : `${Math.round(analytics.hoursRemaining)}h`
+                      : "—"
+                  }
+                />
+              </div>
+            ) : analytics.currentGravity != null && analytics.currentGravity <= brew.targetFg ? (
+              <p className="text-sm text-green-600 font-medium">Fermentation complete</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">Insufficient data for prediction</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <BrewNotes brewId={brew.id} notes={brew.notes ?? null} />
 
       <EditBrewDialog brew={brew} open={editOpen} onOpenChange={setEditOpen} />
@@ -246,7 +282,7 @@ export default function BrewDetail() {
               </Button>
             </div>
           )}
-        <ReadingsChart brewId={brew.id} targetFg={brew.targetFg} />
+        <ReadingsChart brewId={brew.id} targetFg={brew.targetFg} predictedFgDate={analytics?.predictedFgDate} />
         <ReadingsTable brewId={brew.id} />
       </div>
 

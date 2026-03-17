@@ -61,9 +61,10 @@ const EVENT_LABELS: Record<BrewEventType, string> = {
 interface ReadingsChartProps {
   brewId: string;
   targetFg?: number | null;
+  predictedFgDate?: string | null;
 }
 
-export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) {
+export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: ReadingsChartProps) {
   const [range, setRange] = useState<TimeRange>("7d");
 
   const since = useMemo(() => {
@@ -190,6 +191,19 @@ export default function ReadingsChart({ brewId, targetFg }: ReadingsChartProps) 
                   label={{ value: `Target FG: ${targetFg.toFixed(3)}`, position: "insideTopRight", fontSize: 11, fill: "#2F9E44" }}
                 />
               )}
+              {predictedFgDate != null && (() => {
+                const predTime = format(new Date(predictedFgDate), range === "24h" ? "HH:mm" : "MMM d HH:mm");
+                return (
+                  <ReferenceLine
+                    yAxisId="gravity"
+                    x={predTime}
+                    stroke="#9c36b5"
+                    strokeDasharray="5 3"
+                    strokeWidth={2}
+                    label={{ value: "Predicted FG", position: "insideTopRight", fontSize: 10, fill: "#9c36b5" }}
+                  />
+                );
+              })()}
               {visibleGaps.map((gap, i) => (
                 <ReferenceArea
                   key={`gap-${i}`}
