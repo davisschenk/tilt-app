@@ -48,8 +48,11 @@ export default function EditAlertRuleDialog({
   const [brewId, setBrewId] = useState(rule.brewId ?? "");
   const [hydrometerId, setHydrometerId] = useState(rule.hydrometerId ?? "");
   const [cooldownMinutes, setCooldownMinutes] = useState(String(rule.cooldownMinutes));
+  const [windowHours, setWindowHours] = useState(String(rule.windowHours ?? 24));
   const [enabled, setEnabled] = useState(rule.enabled);
   const [error, setError] = useState("");
+
+  const isPlateau = metric === "gravity_plateau";
 
   useEffect(() => {
     setName(rule.name);
@@ -60,6 +63,7 @@ export default function EditAlertRuleDialog({
     setBrewId(rule.brewId ?? "");
     setHydrometerId(rule.hydrometerId ?? "");
     setCooldownMinutes(String(rule.cooldownMinutes));
+    setWindowHours(String(rule.windowHours ?? 24));
     setEnabled(rule.enabled);
     setError("");
   }, [rule]);
@@ -75,8 +79,9 @@ export default function EditAlertRuleDialog({
       {
         name: name.trim(),
         metric,
-        operator,
-        threshold: parseFloat(threshold),
+        operator: isPlateau ? "plateau" : operator,
+        threshold: parseFloat(threshold) || (isPlateau ? 0.002 : 0),
+        windowHours: isPlateau ? parseInt(windowHours) || 24 : undefined,
         alertTargetId,
         brewId: brewId || null,
         hydrometerId: hydrometerId || null,
@@ -95,7 +100,7 @@ export default function EditAlertRuleDialog({
     );
   }
 
-  const thresholdStep = metric === "gravity" ? "0.001" : "0.5";
+  const thresholdStep = isPlateau ? "0.0001" : metric === "gravity" ? "0.001" : "0.5";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -117,34 +122,69 @@ export default function EditAlertRuleDialog({
                 <SelectContent>
                   <SelectItem value="gravity">Gravity</SelectItem>
                   <SelectItem value="temperature_f">Temperature (°F)</SelectItem>
+                  <SelectItem value="gravity_plateau">Gravity Plateau</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-rule-operator">Operator *</Label>
-              <Select value={operator} onValueChange={(v) => setOperator(v as AlertOperator)}>
-                <SelectTrigger id="edit-rule-operator"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="lte">≤ (less or equal)</SelectItem>
-                  <SelectItem value="gte">≥ (greater or equal)</SelectItem>
-                  <SelectItem value="lt">&lt; (less than)</SelectItem>
-                  <SelectItem value="gt">&gt; (greater than)</SelectItem>
-                  <SelectItem value="eq">= (equal)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!isPlateau && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-rule-operator">Operator *</Label>
+                <Select value={operator} onValueChange={(v) => setOperator(v as AlertOperator)}>
+                  <SelectTrigger id="edit-rule-operator"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lte">≤ (less or equal)</SelectItem>
+                    <SelectItem value="gte">≥ (greater or equal)</SelectItem>
+                    <SelectItem value="lt">&lt; (less than)</SelectItem>
+                    <SelectItem value="gt">&gt; (greater than)</SelectItem>
+                    <SelectItem value="eq">= (equal)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-rule-threshold">Threshold *</Label>
-            <Input
-              id="edit-rule-threshold"
-              type="number"
-              step={thresholdStep}
-              value={threshold}
-              onChange={(e) => setThreshold(e.target.value)}
-            />
-          </div>
+          {isPlateau ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="edit-rule-threshold">Plateau Threshold (SG) *</Label>
+                <Input
+                  id="edit-rule-threshold"
+                  type="number"
+                  step="0.0001"
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  placeholder="0.002"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-rule-window">Window (hours)</Label>
+                <Input
+                  id="edit-rule-window"
+                  type="number"
+                  min="1"
+                  value={windowHours}
+                  onChange={(e) => setWindowHours(e.target.value)}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="edit-rule-threshold">Threshold *</Label>
+              <Input
+                id="edit-rule-threshold"
+                type="number"
+                step={thresholdStep}
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+              />
+            </div>
+          )}
+
+          {isPlateau && (
+            <p className="text-xs text-muted-foreground">
+              Alert fires when gravity has not moved more than {threshold} SG over the last {windowHours} hours.
+            </p>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="edit-rule-target">Webhook Target *</Label>

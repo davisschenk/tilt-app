@@ -36,7 +36,10 @@ const OPERATOR_SYMBOLS: Record<AlertOperator, string> = {
   plateau: "plateau",
 };
 
-function formatCondition(metric: AlertMetric, operator: AlertOperator, threshold: number): string {
+function formatCondition(metric: AlertMetric, operator: AlertOperator, threshold: number, windowHours?: number): string {
+  if (metric === "gravity_plateau") {
+    return `Gravity flat ±${threshold.toFixed(4)} over ${windowHours ?? 24}h`;
+  }
   const metricLabel = METRIC_LABELS[metric] ?? metric;
   const opSymbol = OPERATOR_SYMBOLS[operator] ?? operator;
   const value = metric === "gravity" ? threshold.toFixed(3) : threshold.toFixed(1);
@@ -92,7 +95,7 @@ export default function AlertRules() {
                   <TableCell className="font-medium">{r.name}</TableCell>
                   <TableCell>
                     <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                      {formatCondition(r.metric, r.operator, r.threshold)}
+                      {formatCondition(r.metric, r.operator, r.threshold, r.windowHours)}
                     </code>
                   </TableCell>
                   <TableCell className="text-sm">

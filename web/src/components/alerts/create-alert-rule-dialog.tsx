@@ -44,6 +44,7 @@ export default function CreateAlertRuleDialog({
   const [metric, setMetric] = useState<AlertMetric>("gravity");
   const [operator, setOperator] = useState<AlertOperator>("lte");
   const [threshold, setThreshold] = useState("");
+  const [windowHours, setWindowHours] = useState("24");
   const [alertTargetId, setAlertTargetId] = useState("");
   const [brewId, setBrewId] = useState(defaultBrewId ?? "");
   const [hydrometerId, setHydrometerId] = useState("");
@@ -51,11 +52,14 @@ export default function CreateAlertRuleDialog({
   const [enabled, setEnabled] = useState(true);
   const [error, setError] = useState("");
 
+  const isPlateau = metric === "gravity_plateau";
+
   function resetForm() {
     setName("");
     setMetric("gravity");
     setOperator("lte");
     setThreshold("");
+    setWindowHours("24");
     setAlertTargetId("");
     setBrewId(defaultBrewId ?? "");
     setHydrometerId("");
@@ -75,8 +79,9 @@ export default function CreateAlertRuleDialog({
       {
         name: name.trim(),
         metric,
-        operator,
-        threshold: parseFloat(threshold),
+        operator: isPlateau ? "plateau" : operator,
+        threshold: parseFloat(threshold) || (isPlateau ? 0.002 : 0),
+        windowHours: isPlateau ? parseInt(windowHours) || 24 : undefined,
         alertTargetId,
         brewId: brewId || null,
         hydrometerId: hydrometerId || null,
@@ -96,7 +101,7 @@ export default function CreateAlertRuleDialog({
     );
   }
 
-  const thresholdStep = metric === "gravity" ? "0.001" : "0.5";
+  const thresholdStep = isPlateau ? "0.0001" : metric === "gravity" ? "0.001" : "0.5";
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); onOpenChange(o); }}>
@@ -118,35 +123,71 @@ export default function CreateAlertRuleDialog({
                 <SelectContent>
                   <SelectItem value="gravity">Gravity</SelectItem>
                   <SelectItem value="temperature_f">Temperature (°F)</SelectItem>
+                  <SelectItem value="gravity_plateau">Gravity Plateau</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="rule-operator">Operator *</Label>
-              <Select value={operator} onValueChange={(v) => setOperator(v as AlertOperator)}>
-                <SelectTrigger id="rule-operator"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="lte">≤ (less or equal)</SelectItem>
-                  <SelectItem value="gte">≥ (greater or equal)</SelectItem>
-                  <SelectItem value="lt">&lt; (less than)</SelectItem>
-                  <SelectItem value="gt">&gt; (greater than)</SelectItem>
-                  <SelectItem value="eq">= (equal)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!isPlateau && (
+              <div className="space-y-2">
+                <Label htmlFor="rule-operator">Operator *</Label>
+                <Select value={operator} onValueChange={(v) => setOperator(v as AlertOperator)}>
+                  <SelectTrigger id="rule-operator"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lte">≤ (less or equal)</SelectItem>
+                    <SelectItem value="gte">≥ (greater or equal)</SelectItem>
+                    <SelectItem value="lt">&lt; (less than)</SelectItem>
+                    <SelectItem value="gt">&gt; (greater than)</SelectItem>
+                    <SelectItem value="eq">= (equal)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="rule-threshold">Threshold *</Label>
-            <Input
-              id="rule-threshold"
-              type="number"
-              step={thresholdStep}
-              value={threshold}
-              onChange={(e) => setThreshold(e.target.value)}
-              placeholder={metric === "gravity" ? "1.010" : "72.0"}
-            />
-          </div>
+          {isPlateau ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="rule-threshold">Plateau Threshold (SG) *</Label>
+                <Input
+                  id="rule-threshold"
+                  type="number"
+                  step="0.0001"
+                  value={threshold || "0.002"}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  placeholder="0.002"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rule-window">Window (hours)</Label>
+                <Input
+                  id="rule-window"
+                  type="number"
+                  min="1"
+                  value={windowHours}
+                  onChange={(e) => setWindowHours(e.target.value)}
+                  placeholder="24"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="rule-threshold">Threshold *</Label>
+              <Input
+                id="rule-threshold"
+                type="number"
+                step={thresholdStep}
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+                placeholder={metric === "gravity" ? "1.010" : "72.0"}
+              />
+            </div>
+          )}
+
+          {isPlateau && (
+            <p className="text-xs text-muted-foreground">
+              Alert fires when gravity has not moved more than {threshold || "0.002"} SG over the last {windowHours} hours.
+            </p>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="rule-target">Webhook Target *</Label>
