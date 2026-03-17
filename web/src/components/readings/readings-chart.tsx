@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -12,6 +12,7 @@ import {
   type ChartOptions,
   type ChartData,
   type Plugin,
+  type Chart,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import annotationPlugin from "chartjs-plugin-annotation";
@@ -85,14 +86,17 @@ interface ReadingsChartProps {
 
 interface EventTooltipState {
   event: BrewEventResponse;
-  x: number;
-  y: number;
+  anchorX: number;
+  anchorY: number;
 }
 
 export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: ReadingsChartProps) {
   const [range, setRange] = useState<TimeRange>("7d");
   const [hoveredEvent, setHoveredEvent] = useState<EventTooltipState | null>(null);
   const chartWrapperRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<Chart<"line"> | null>(null);
+  const DIAMOND_SIZE = 8;
+  const DIAMOND_TOP_PADDING = 36;
 
   const since = useMemo(() => {
     const hours = RANGE_HOURS[range];
@@ -217,50 +221,47 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
 
   const eventDiamondPlugin = useCallback((): Plugin<"line"> => ({
     id: "eventDiamonds",
-    afterDraw(chart) {
+    afterDraw(chart: Chart<"line">) {
       if (visibleEvents.length === 0) return;
       const ctx = chart.ctx;
       const xScale = chart.scales["x"];
-      const yScale = chart.scales["yGravity"];
-      if (!xScale || !yScale) return;
-      const topY = yScale.top + 14;
+      if (!xScale) return;
+      const centerY = DIAMOND_TOP_PADDING / 2;
 
       visibleEvents.forEach((ev) => {
         const px = xScale.getPixelForValue(new Date(ev.eventTime).getTime());
+        if (px < xScale.left || px > xScale.right) return;
         const color = EVENT_COLORS[ev.eventType];
-        const size = 7;
+        const s = DIAMOND_SIZE;
         ctx.save();
         ctx.beginPath();
-        ctx.moveTo(px, topY - size);
-        ctx.lineTo(px + size, topY);
-        ctx.lineTo(px, topY + size);
-        ctx.lineTo(px - size, topY);
+        ctx.moveTo(px, centerY - s);
+        ctx.lineTo(px + s, centerY);
+        ctx.lineTo(px, centerY + s);
+        ctx.lineTo(px - s, centerY);
         ctx.closePath();
         ctx.fillStyle = color;
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = resolveColor("--background");
+        ctx.lineWidth = 2;
         ctx.fill();
         ctx.stroke();
         ctx.restore();
       });
     },
-  }), [visibleEvents]);
+  }), [visibleEvents, DIAMOND_TOP_PADDING, DIAMOND_SIZE]);
 
   const handleChartMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (visibleEvents.length === 0) { setHoveredEvent(null); return; }
+    const chart = chartRef.current;
+    if (!chart) { setHoveredEvent(null); return; }
     const canvas = e.currentTarget;
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const chartInstance = (canvas as any)._chartjs?.chart ?? (canvas as any).__chartjs_chart__;
-
-    if (!chartInstance) { setHoveredEvent(null); return; }
-    const xScale = chartInstance.scales["x"];
-    const yScale = chartInstance.scales["yGravity"];
-    if (!xScale || !yScale) { setHoveredEvent(null); return; }
-    const topY = yScale.top + 14;
-    const size = 7;
+    const xScale = chart.scales["x"];
+    if (!xScale) { setHoveredEvent(null); return; }
+    const centerY = DIAMOND_TOP_PADDING / 2;
+    const hitRadius = DIAMOND_SIZE + 4;
 
     const wrapper = chartWrapperRef.current;
     if (!wrapper) return;
@@ -268,17 +269,18 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
 
     for (const ev of visibleEvents) {
       const px = xScale.getPixelForValue(new Date(ev.eventTime).getTime());
-      if (Math.abs(mx - px) <= size + 2 && Math.abs(my - topY) <= size + 2) {
+      if (px < xScale.left || px > xScale.right) continue;
+      if (Math.abs(mx - px) <= hitRadius && Math.abs(my - centerY) <= hitRadius) {
         setHoveredEvent({
           event: ev,
-          x: e.clientX - wrapperRect.left,
-          y: e.clientY - wrapperRect.top,
+          anchorX: px + (wrapper.getBoundingClientRect().left - wrapperRect.left),
+          anchorY: centerY,
         });
         return;
       }
     }
     setHoveredEvent(null);
-  }, [visibleEvents]);
+  }, [visibleEvents, DIAMOND_TOP_PADDING, DIAMOND_SIZE]);
 
   const chartData: ChartData<"line"> = useMemo(() => ({
     datasets: [
@@ -318,6 +320,9 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
+    layout: {
+      padding: { top: DIAMOND_TOP_PADDING },
+    },
     interaction: {
       mode: "index",
       intersect: false,
@@ -327,24 +332,31 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         position: "bottom",
         labels: {
           boxWidth: 12,
-          font: { size: 11 },
+          usePointStyle: true,
+          pointStyleWidth: 16,
+          font: { size: 12, family: "inherit" },
           color: resolveColor("--foreground"),
+          padding: 16,
         },
       },
       tooltip: {
-        backgroundColor: resolveColor("--card"),
+        enabled: !hoveredEvent,
+        backgroundColor: resolveColor("--popover"),
         borderColor: resolveColor("--border"),
         borderWidth: 1,
         titleColor: resolveColor("--muted-foreground"),
-        bodyColor: resolveColor("--foreground"),
-        titleFont: { size: 11 },
-        bodyFont: { size: 11 },
+        bodyColor: resolveColor("--popover-foreground"),
+        padding: 10,
+        caretSize: 5,
+        cornerRadius: 8,
+        titleFont: { size: 11, family: "inherit", weight: "normal" },
+        bodyFont: { size: 12, family: "inherit" },
         callbacks: {
-          title: (items) => `Time: ${format(new Date(Number(items[0]?.parsed.x)), "MMM d HH:mm")}`,
+          title: (items) => format(new Date(Number(items[0]?.parsed.x)), "MMM d, yyyy · HH:mm"),
           label: (item) => {
             if (item.parsed.y == null) return;
-            if (item.datasetIndex === 0) return ` Gravity: ${item.parsed.y.toFixed(3)} SG`;
-            return ` Temp: ${item.parsed.y.toFixed(1)}°F`;
+            if (item.datasetIndex === 0) return `  Gravity  ${item.parsed.y.toFixed(3)} SG`;
+            return `  Temp       ${item.parsed.y.toFixed(1)}°F`;
           },
         },
       },
@@ -390,9 +402,13 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         grid: { drawOnChartArea: false },
       },
     },
-  }), [annotations, tickUnit, gravityMin, gravityMax, tempMin, tempMax]);
+  }), [annotations, tickUnit, gravityMin, gravityMax, tempMin, tempMax, hoveredEvent, DIAMOND_TOP_PADDING]);
 
   const diamondPlugin = useMemo(() => eventDiamondPlugin(), [eventDiamondPlugin]);
+
+  useEffect(() => {
+    if (chartRef.current) chartRef.current.update("none");
+  }, [hoveredEvent]);
 
   return (
     <Card>
@@ -421,6 +437,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         ) : (
           <div ref={chartWrapperRef} className="relative" style={{ height: 300 }}>
             <Line
+              ref={chartRef}
               data={chartData}
               options={chartOptions}
               plugins={[diamondPlugin]}
@@ -431,18 +448,48 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
               const ev = hoveredEvent.event;
               const color = EVENT_COLORS[ev.eventType];
               const label = EVENT_LABELS[ev.eventType];
-              const left = Math.min(hoveredEvent.x + 12, (chartWrapperRef.current?.clientWidth ?? 400) - 200);
+              const wrapperW = chartWrapperRef.current?.clientWidth ?? 400;
+              const tipW = 210;
+              const raw = hoveredEvent.anchorX - tipW / 2;
+              const left = Math.max(4, Math.min(raw, wrapperW - tipW - 4));
+              const top = hoveredEvent.anchorY + DIAMOND_SIZE + 6;
               return (
                 <div
-                  className="absolute z-50 pointer-events-none rounded-md border bg-card text-card-foreground shadow-md px-3 py-2 text-xs max-w-[190px]"
-                  style={{ left, top: hoveredEvent.y - 10 }}
+                  className="absolute z-50 pointer-events-none rounded-lg border bg-popover text-popover-foreground shadow-lg"
+                  style={{ left, top, width: tipW }}
                 >
-                  <div className="flex items-center gap-1.5 font-semibold mb-1" style={{ color }}>
-                    <span style={{ display: "inline-block", width: 8, height: 8, background: color, transform: "rotate(45deg)" }} />
-                    {label}
+                  <div
+                    className="flex items-center gap-2 px-3 pt-3 pb-2 border-b"
+                    style={{ borderColor: `${color}40` }}
+                  >
+                    <span
+                      className="shrink-0"
+                      style={{
+                        display: "inline-block",
+                        width: 10,
+                        height: 10,
+                        background: color,
+                        transform: "rotate(45deg)",
+                        borderRadius: 1,
+                      }}
+                    />
+                    <span className="text-sm font-semibold leading-none" style={{ color }}>
+                      {label}
+                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+                      {format(new Date(ev.eventTime), "MMM d")}
+                    </span>
                   </div>
-                  <div className="text-muted-foreground">{format(new Date(ev.eventTime), "MMM d, yyyy HH:mm")}</div>
-                  {ev.notes && <div className="mt-1 text-foreground/80 line-clamp-3">{ev.notes}</div>}
+                  <div className="px-3 py-2 space-y-1">
+                    <div className="text-xs text-muted-foreground">
+                      {format(new Date(ev.eventTime), "HH:mm")}
+                    </div>
+                    {ev.notes && (
+                      <div className="text-xs text-foreground leading-relaxed line-clamp-4">
+                        {ev.notes}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })()}
