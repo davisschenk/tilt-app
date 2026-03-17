@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Beer, Thermometer, Activity, BarChart3, Plus, RefreshCw, TrendingUp, TrendingDown, Minus, WifiOff } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
@@ -12,6 +12,7 @@ import { useBrews } from "@/hooks/use-brews";
 import { useHydrometers } from "@/hooks/use-hydrometers";
 import { useReadings } from "@/hooks/use-readings";
 import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
+import { useAlertRules } from "@/hooks/use-alert-rules";
 import type { BrewResponse } from "@/types";
 import RecentReadingsChart from "@/components/dashboard/recent-readings-chart";
 import ColorDot from "@/components/ui/color-dot";
@@ -153,6 +154,7 @@ function StatCard({
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(() => new Date());
@@ -162,6 +164,7 @@ export default function Dashboard() {
   });
   const { data: hydrometers, isLoading: hydrometersLoading } = useHydrometers();
   const { data: readings, isLoading: readingsLoading } = useReadings({ limit: 1 });
+  const { data: allAlertRules } = useAlertRules();
 
   const todayStart = useMemo(() => {
     const d = new Date();
@@ -179,8 +182,23 @@ export default function Dashboard() {
 
   const latestReading = readings?.[0];
 
+  const offlineCount = useMemo(() => {
+    if (!activeBrews) return 0;
+    return activeBrews.filter(
+      (b) => b.latestReading && isStale(b.latestReading.recordedAt)
+    ).length;
+  }, [activeBrews]);
+
+  const recentAlertsCount = useMemo(() => {
+    if (!allAlertRules) return 0;
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    return allAlertRules.filter(
+      (r) => r.lastTriggeredAt && new Date(r.lastTriggeredAt).getTime() > cutoff
+    ).length;
+  }, [allAlertRules]);
+
   return (
-    <div>
+    <div className="relative">
       <PageHeader
         title="Dashboard"
         description="Overview of your brewing activity."
@@ -198,6 +216,42 @@ export default function Dashboard() {
           </div>
         }
       />
+
+      {/* Quick-stats summary chips */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        <button
+          onClick={() => navigate("/brews?status=Active")}
+          className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium hover:bg-muted transition-colors"
+        >
+          <Beer className="h-3 w-3" />
+          {activeBrews?.length ?? 0} active brew{activeBrews?.length !== 1 ? "s" : ""}
+        </button>
+        <button
+          onClick={() => navigate("/hydrometers")}
+          className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium hover:bg-muted transition-colors"
+        >
+          <Thermometer className="h-3 w-3" />
+          {hydrometers?.length ?? 0} hydrometer{hydrometers?.length !== 1 ? "s" : ""}
+        </button>
+        {offlineCount > 0 && (
+          <button
+            onClick={() => navigate("/hydrometers?filter=offline")}
+            className="flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors dark:border-red-800 dark:bg-red-950 dark:text-red-400"
+          >
+            <WifiOff className="h-3 w-3" />
+            {offlineCount} offline
+          </button>
+        )}
+        {recentAlertsCount > 0 && (
+          <button
+            onClick={() => navigate("/alert-rules?filter=recent")}
+            className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400"
+          >
+            <Activity className="h-3 w-3" />
+            {recentAlertsCount} alert{recentAlertsCount !== 1 ? "s" : ""} (24h)
+          </button>
+        )}
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <StatCard
           title="Active Brews"
@@ -265,6 +319,19 @@ export default function Dashboard() {
       </div>
 
       <RecentReadingsChart />
+
+      {/* New Brew FAB — hidden on mobile */}
+      <div className="hidden md:block fixed bottom-8 right-8 z-50">
+        <Button
+          size="lg"
+          className="rounded-full shadow-lg h-14 w-14 p-0"
+          onClick={() => navigate("/brews/new")}
+          title="New Brew"
+        >
+          <Plus className="h-6 w-6" />
+          <span className="sr-only">New Brew</span>
+        </Button>
+      </div>
     </div>
   );
 }
