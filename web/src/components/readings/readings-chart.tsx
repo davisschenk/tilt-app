@@ -39,6 +39,12 @@ ChartJS.register(
   annotationPlugin,
 );
 
+function applyChartDefaults() {
+  const font = resolveFont();
+  ChartJS.defaults.font.family = font;
+  ChartJS.defaults.font.size = 12;
+}
+
 type TimeRange = "24h" | "7d" | "30d" | "all";
 
 const RANGE_HOURS: Record<TimeRange, number | null> = {
@@ -97,6 +103,8 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
   const chartRef = useRef<Chart<"line"> | null>(null);
   const DIAMOND_SIZE = 8;
   const DIAMOND_TOP_PADDING = 36;
+
+  useEffect(() => { applyChartDefaults(); }, []);
 
   const since = useMemo(() => {
     const hours = RANGE_HOURS[range];
@@ -341,7 +349,10 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       },
       tooltip: {
         enabled: !hoveredEvent,
-        displayColors: false,
+        displayColors: true,
+        usePointStyle: true,
+        boxWidth: 8,
+        boxHeight: 8,
         backgroundColor: resolveColor("--popover"),
         borderColor: resolveColor("--border"),
         borderWidth: 1,

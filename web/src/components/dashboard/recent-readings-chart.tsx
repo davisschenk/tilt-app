@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import {
   Chart as ChartJS,
   TimeScale,
@@ -19,6 +19,12 @@ import { resolveColor, resolveFont } from "@/lib/chart-theme";
 
 ChartJS.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
+function applyChartDefaults() {
+  const font = resolveFont();
+  ChartJS.defaults.font.family = font;
+  ChartJS.defaults.font.size = 12;
+}
+
 const BREW_COLORS: Record<string, string> = {
   Red: "#E03131",
   Green: "#2F9E44",
@@ -31,6 +37,8 @@ const BREW_COLORS: Record<string, string> = {
 };
 
 export default function RecentReadingsChart() {
+  useEffect(() => { applyChartDefaults(); }, []);
+
   const since = useMemo(() => {
     const d = new Date();
     d.setHours(d.getHours() - 24);
@@ -85,7 +93,10 @@ export default function RecentReadingsChart() {
         },
       },
       tooltip: {
-        displayColors: false,
+        displayColors: true,
+        usePointStyle: true,
+        boxWidth: 8,
+        boxHeight: 8,
         backgroundColor: resolveColor("--popover"),
         borderColor: resolveColor("--border"),
         borderWidth: 1,
