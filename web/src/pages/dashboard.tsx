@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Beer, Thermometer, Activity, BarChart3, Plus, RefreshCw, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Beer, Thermometer, Activity, BarChart3, Plus, RefreshCw, TrendingUp, TrendingDown, Minus, WifiOff } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,11 @@ import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
 import type { BrewResponse } from "@/types";
 import RecentReadingsChart from "@/components/dashboard/recent-readings-chart";
 import ColorDot from "@/components/ui/color-dot";
+import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
+
+function isStale(recordedAt: string): boolean {
+  return Date.now() - new Date(recordedAt).getTime() > OFFLINE_THRESHOLD_MINUTES * 60 * 1000;
+}
 
 const REFRESH_INTERVAL = 30_000;
 
@@ -41,11 +46,23 @@ function ActiveBrewCard({ brew }: { brew: BrewResponse }) {
       <Card className="hover:border-primary/50 transition-colors cursor-pointer">
         <CardContent className="pt-5 pb-4">
           <div className="flex items-start justify-between mb-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {color && <ColorDot color={color} />}
               <span className="font-semibold">{brew.name}</span>
               {brew.style && (
                 <Badge variant="outline" className="text-xs">{brew.style}</Badge>
+              )}
+              {lastReadingAt && isStale(brew.latestReading!.recordedAt) && (
+                <span
+                  className="flex items-center gap-1 text-xs text-red-500"
+                  title={`Last seen ${formatDistanceToNow(lastReadingAt, { addSuffix: true })} — may be offline`}
+                >
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                  </span>
+                  <WifiOff className="h-3 w-3" />
+                </span>
               )}
             </div>
             <div className="flex items-center gap-1 text-muted-foreground">

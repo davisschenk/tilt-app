@@ -23,6 +23,7 @@ import FermentationStats from "@/components/readings/fermentation-stats";
 import BrewNotes from "@/components/brew/brew-notes";
 import BrewEventLog from "@/components/brew/brew-event-log";
 import * as toast from "@/lib/toast";
+import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
 import type { AlertMetric, AlertOperator } from "@/types";
 
 const METRIC_LABELS: Record<AlertMetric, string> = {
@@ -166,6 +167,23 @@ export default function BrewDetail() {
         <Badge variant={STATUS_VARIANT[brew.status] ?? "default"}>
           {brew.status}
         </Badge>
+        {brew.latestReading && (() => {
+          const stale = Date.now() - new Date(brew.latestReading.recordedAt).getTime() > OFFLINE_THRESHOLD_MINUTES * 60 * 1000;
+          return stale ? (
+            <span className="flex items-center gap-1.5 text-xs text-red-500">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+              </span>
+              May be offline
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-xs text-green-600">
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              Live
+            </span>
+          );
+        })()}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

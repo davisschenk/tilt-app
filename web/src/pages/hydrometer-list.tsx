@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,13 @@ import { TILT_COLOR_MAP } from "@/lib/tilt-colors";
 import RegisterHydrometerDialog from "@/components/hydrometer/register-hydrometer-dialog";
 import EditHydrometerDialog from "@/components/hydrometer/edit-hydrometer-dialog";
 import DeleteHydrometerDialog from "@/components/hydrometer/delete-hydrometer-dialog";
+import { Badge } from "@/components/ui/badge";
 import type { HydrometerResponse } from "@/types";
+
+function isStale(recordedAt: string): boolean {
+  const ageMs = Date.now() - new Date(recordedAt).getTime();
+  return ageMs > OFFLINE_THRESHOLD_MINUTES * 60 * 1000;
+}
 
 export default function HydrometerList() {
   const { data: hydrometers, isLoading } = useHydrometers();
@@ -57,8 +64,15 @@ export default function HydrometerList() {
                 <CardContent className="pt-5 space-y-3">
                   <div className="flex items-center gap-3">
                     <ColorDot color={h.color} size="lg" />
-                    <div>
-                      <p className="font-semibold text-lg">{h.color}</p>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-lg">{h.color}</p>
+                        {h.latestReading && isStale(h.latestReading.recordedAt) ? (
+                          <Badge className="bg-red-500 text-white text-xs px-1.5 py-0.5">Offline</Badge>
+                        ) : h.latestReading ? (
+                          <Badge className="bg-green-500 text-white text-xs px-1.5 py-0.5">Live</Badge>
+                        ) : null}
+                      </div>
                       {h.name && (
                         <p className="text-sm text-muted-foreground">{h.name}</p>
                       )}
