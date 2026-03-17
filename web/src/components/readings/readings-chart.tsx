@@ -79,18 +79,19 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
   const { data: events } = useBrewEvents(brewId);
   const { data: analytics } = useBrewAnalytics(brewId);
 
+  const tickFormat = range === "24h" ? "HH:mm" : "MMM d HH:mm";
+
   const chartData = useMemo(() => {
     if (!readings || readings.length === 0) return [];
     return readings
       .slice()
       .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
       .map((r) => ({
-        time: format(new Date(r.recordedAt), range === "24h" ? "HH:mm" : "MMM d HH:mm"),
         timestamp: new Date(r.recordedAt).getTime(),
         gravity: r.gravity,
         temperature: r.temperatureF,
       }));
-  }, [readings, range]);
+  }, [readings]);
 
   const visibleEvents = useMemo(() => {
     if (!events || chartData.length === 0) return [];
@@ -106,8 +107,6 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
     if (!analytics?.gaps || chartData.length === 0) return [];
     const minTs = chartData[0].timestamp;
     const maxTs = chartData[chartData.length - 1].timestamp;
-    const fmt = (iso: string) =>
-      format(new Date(iso), range === "24h" ? "HH:mm" : "MMM d HH:mm");
     return analytics.gaps
       .filter((g) => {
         const startTs = new Date(g.startAt).getTime();
@@ -115,11 +114,11 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         return endTs >= minTs && startTs <= maxTs;
       })
       .map((g) => ({
-        x1: fmt(g.startAt),
-        x2: fmt(g.endAt),
+        x1: new Date(g.startAt).getTime(),
+        x2: new Date(g.endAt).getTime(),
         durationMinutes: g.durationMinutes,
       }));
-  }, [analytics, chartData, range]);
+  }, [analytics, chartData]);
 
   return (
     <Card>
@@ -149,11 +148,15 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData}>
               <XAxis
-                dataKey="time"
+                dataKey="timestamp"
+                type="number"
+                scale="time"
+                domain={["dataMin", "dataMax"]}
                 tick={{ fontSize: 11 }}
                 stroke="var(--muted-foreground)"
                 interval="preserveStartEnd"
                 minTickGap={60}
+                tickFormatter={(ts: number) => format(new Date(ts), tickFormat)}
               />
               <YAxis
                 yAxisId="gravity"
@@ -179,7 +182,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
                   if (name === "gravity") return [v.toFixed(3), "Gravity (SG)"];
                   return [`${v.toFixed(1)}°F`, "Temperature"];
                 }}
-                labelFormatter={(label) => `Time: ${String(label)}`}
+                labelFormatter={(label) => `Time: ${format(new Date(Number(label)), "MMM d HH:mm")}`}
               />
               {targetFg != null && (
                 <ReferenceLine
@@ -191,19 +194,16 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
                   label={{ value: `Target FG: ${targetFg.toFixed(3)}`, position: "insideTopRight", fontSize: 11, fill: "#2F9E44" }}
                 />
               )}
-              {predictedFgDate != null && (() => {
-                const predTime = format(new Date(predictedFgDate), range === "24h" ? "HH:mm" : "MMM d HH:mm");
-                return (
-                  <ReferenceLine
-                    yAxisId="gravity"
-                    x={predTime}
-                    stroke="#9c36b5"
-                    strokeDasharray="5 3"
-                    strokeWidth={2}
-                    label={{ value: "Predicted FG", position: "insideTopRight", fontSize: 10, fill: "#9c36b5" }}
-                  />
-                );
-              })()}
+              {predictedFgDate != null && (
+                <ReferenceLine
+                  yAxisId="gravity"
+                  x={new Date(predictedFgDate).getTime()}
+                  stroke="#9c36b5"
+                  strokeDasharray="5 3"
+                  strokeWidth={2}
+                  label={{ value: "Predicted FG", position: "insideTopRight", fontSize: 10, fill: "#9c36b5" }}
+                />
+              )}
               {visibleGaps.map((gap, i) => (
                 <ReferenceArea
                   key={`gap-${i}`}
@@ -223,12 +223,11 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
               {visibleEvents.map((ev) => {
                 const color = EVENT_COLORS[ev.eventType];
                 const shortLabel = EVENT_LABELS[ev.eventType];
-                const evTime = format(new Date(ev.eventTime), range === "24h" ? "HH:mm" : "MMM d HH:mm");
                 return (
                   <ReferenceLine
                     key={ev.id}
                     yAxisId="gravity"
-                    x={evTime}
+                    x={new Date(ev.eventTime).getTime()}
                     stroke={color}
                     strokeDasharray="4 3"
                     strokeWidth={1.5}
