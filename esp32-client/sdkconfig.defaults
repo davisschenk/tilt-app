@@ -8,8 +8,13 @@ CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=4096
 # Default pthread stack size
 CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=4096
 
-# Flash size: 4MB (required for custom partition table totaling ~3.1MB)
+# Flash size: 4MB (required for custom partition table totaling ~3.2MB)
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Custom partition table for dual OTA slots
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
 
 # Enable Bluetooth
 CONFIG_BT_ENABLED=y
