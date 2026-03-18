@@ -97,6 +97,7 @@ export default function RecentReadingsChart() {
         usePointStyle: true,
         boxWidth: 8,
         boxHeight: 8,
+        multiKeyBackground: resolveColor("--popover"),
         backgroundColor: resolveColor("--popover"),
         borderColor: resolveColor("--border"),
         borderWidth: 1,
