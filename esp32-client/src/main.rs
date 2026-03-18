@@ -2,6 +2,7 @@ mod ble;
 mod buffer;
 mod config;
 mod http;
+mod ota;
 mod tilt;
 mod wifi;
 
