@@ -55,6 +55,8 @@ Edit `cfg.toml` with your settings:
 | `buffer_capacity` | Max buffered readings | `50` |
 | `watchdog_timeout_secs` | Watchdog reboot timeout | `120` |
 | `health_report_interval_cycles` | Health log frequency | `60` |
+| `ota_check_interval_cycles` | OTA check frequency (cycles) | `60` |
+| `firmware_version` | Current firmware version string | `0.1.0` |
 
 **WARNING:** `cfg.toml` contains WiFi credentials. It is gitignored and must never be committed.
 
@@ -107,6 +109,54 @@ src/
   buffer.rs  — Bounded reading buffer + exponential backoff
   config.rs  — Compile-time config (toml-cfg) + NVS runtime overrides
 ```
+
+## OTA Firmware Updates
+
+The ESP32 client supports over-the-air firmware updates. The device periodically polls the server for a newer firmware version and flashes it automatically.
+
+### How It Works
+
+1. Every `ota_check_interval_cycles` scan cycles (default: every 60 cycles ≈ 15 minutes), the device calls `GET /api/v1/ota/firmware` on the server.
+2. The server returns `{ "version": "x.y.z", "url": "http://..." }`.
+3. If the server version differs from the device's compiled `firmware_version`, the device downloads the `.bin` from `url`, flashes it to the inactive OTA slot, and reboots.
+4. On failure the device logs the error and continues normal operation — no reboot.
+
+### Server Setup
+
+Set these environment variables on the server (in `.env` or Docker):
+
+| Variable | Description |
+|---|---|
+| `OTA_FIRMWARE_VERSION` | Firmware version string to serve to devices (e.g. `0.2.0`) |
+| `OTA_FIRMWARE_URL` | Full URL to the firmware `.bin` file |
+
+Leave `OTA_FIRMWARE_URL` empty to disable OTA (the endpoint returns 404).
+
+### Building and Hosting a Firmware Update
+
+```bash
+# 1. Bump firmware_version in cfg.toml before building
+# 2. Build and copy the binary to build/esp32-client.bin
+. $HOME/export-esp.sh
+make release
+
+# 3. Host the .bin file — options:
+#    a) Copy to the server's web/dist/firmware/ directory (served as static files)
+#    b) Use any HTTP server accessible to the ESP32
+
+# 4. Update the server environment and restart
+OTA_FIRMWARE_VERSION=0.2.0
+OTA_FIRMWARE_URL=http://your-server:8000/firmware/esp32-client.bin
+```
+
+### Device Configuration
+
+| cfg.toml field | NVS key | Default | Description |
+|---|---|---|---|
+| `ota_check_interval_cycles` | `ota_check_interval` | `60` | Check every N scan cycles (0 = disabled) |
+| `firmware_version` | *(compile-time only)* | `0.1.0` | Current firmware version |
+
+To disable OTA checks at runtime, set NVS key `ota_check_interval` to `0`.
 
 ## Troubleshooting
 
