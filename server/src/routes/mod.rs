@@ -6,4 +6,5 @@ pub mod auth;
 pub mod brew_events;
 pub mod brews;
 pub mod hydrometers;
+pub mod ota;
 pub mod readings;
