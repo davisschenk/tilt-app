@@ -113,6 +113,8 @@ fn run() -> Result<()> {
     let mut successful_uploads: u64 = 0;
     let mut failed_uploads: u64 = 0;
     let health_interval = cfg.health_report_interval_cycles as u64;
+    let ota_interval = cfg.ota_check_interval_cycles as u64;
+    let firmware_version = cfg.firmware_version;
 
     log::info!("Entering main scan-upload loop");
 
@@ -211,10 +213,46 @@ fn run() -> Result<()> {
             );
         }
 
-        // Phase 4: Feed watchdog — always, regardless of success/failure
+        // Phase 4: Periodic OTA version check
+        if ota_interval > 0 && total_scans % ota_interval == 0 {
+            let _ = feed_watchdog();
+            let ota_url = format!("{}/api/v1/ota/firmware", cfg.server_url);
+            match uploader.get_json(&ota_url) {
+                Err(e) => log::warn!("OTA check failed: {:?}", e),
+                Ok(body) => {
+                    let server_version = body.get("version")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let firmware_url = body.get("url")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if !server_version.is_empty()
+                        && !firmware_url.is_empty()
+                        && server_version != firmware_version
+                    {
+                        log::info!(
+                            "OTA: server version='{}' current='{}', starting update",
+                            server_version, firmware_version
+                        );
+                        match ota::OtaUpdater::perform_update(firmware_url) {
+                            Ok(()) => {
+                                log::info!("OTA complete, rebooting");
+                                esp_idf_svc::hal::reset::restart();
+                            }
+                            Err(e) => log::error!("OTA update failed: {:?}", e),
+                        }
+                    } else {
+                        log::debug!("OTA: firmware up to date ({})", firmware_version);
+                    }
+                }
+            }
+            let _ = feed_watchdog();
+        }
+
+        // Phase 5: Feed watchdog — always, regardless of success/failure
         let _ = feed_watchdog();
 
-        // Phase 5: Sleep until next scan cycle
+        // Phase 6: Sleep until next scan cycle
         std::thread::sleep(scan_interval);
     }
 }

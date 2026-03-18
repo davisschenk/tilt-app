@@ -29,3 +29,9 @@ watchdog_timeout_secs = 120
 
 # Log a health report every N scan cycles (default: 60)
 health_report_interval_cycles = 60
+
+# Check for OTA firmware update every N scan cycles (default: 60, 0 = disabled)
+ota_check_interval_cycles = 60
+
+# Current firmware version string (used to detect when server has a newer version)
+firmware_version = "0.1.0"

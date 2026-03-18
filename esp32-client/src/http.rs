@@ -6,6 +6,7 @@
 
 use anyhow::{Context, Result};
 use esp_idf_svc::http::client::{Configuration as HttpConfig, EspHttpConnection};
+use esp_idf_svc::io::Read;
 
 use crate::tilt::TiltReading;
 
@@ -75,5 +76,48 @@ impl HttpUploader {
                 body_str
             ))
         }
+    }
+
+    pub fn get_json(&self, url: &str) -> Result<serde_json::Value> {
+        let config = HttpConfig {
+            crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
+            timeout: Some(std::time::Duration::from_secs(10)),
+            ..Default::default()
+        };
+
+        let mut conn =
+            EspHttpConnection::new(&config).context("Failed to create HTTP connection")?;
+
+        let mut headers: Vec<(&str, &str)> = vec![("Accept", "application/json")];
+        if !self.api_key.is_empty() {
+            headers.push(("X-API-Key", self.api_key));
+        }
+
+        conn.initiate_request(esp_idf_svc::http::Method::Get, url, &headers)
+            .context("Failed to initiate GET request")?;
+
+        conn.initiate_response()
+            .context("Failed to initiate GET response")?;
+
+        let status = conn.status();
+
+        let mut body = [0u8; 512];
+        let bytes_read = conn.read(&mut body).unwrap_or(0);
+
+        if status == 404 {
+            return Err(anyhow::anyhow!("GET {} returned 404", url));
+        }
+
+        if !(200..300).contains(&(status as u32)) {
+            let body_str = core::str::from_utf8(&body[..bytes_read]).unwrap_or("<non-utf8>");
+            return Err(anyhow::anyhow!(
+                "GET {} failed: status={}, body={}",
+                url,
+                status,
+                body_str
+            ));
+        }
+
+        serde_json::from_slice(&body[..bytes_read]).context("Failed to parse JSON response")
     }
 }

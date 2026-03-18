@@ -23,6 +23,10 @@ pub struct Config {
     watchdog_timeout_secs: u32,
     #[default(60)]
     health_report_interval_cycles: u32,
+    #[default(60)]
+    ota_check_interval_cycles: u32,
+    #[default("0.1.0")]
+    firmware_version: &'static str,
 }
 
 const NVS_NAMESPACE: &str = "tilt_cfg";
@@ -94,6 +98,10 @@ pub fn apply_nvs_overrides(
         log::info!("NVS override: upload_interval_secs = {}", val);
         cfg.upload_interval_secs = val;
     }
+    if let Some(val) = nvs_get_u32(&nvs, "ota_check_interval") {
+        log::info!("NVS override: ota_check_interval_cycles = {}", val);
+        cfg.ota_check_interval_cycles = val;
+    }
 }
 
 pub fn validate_config(cfg: &Config) -> anyhow::Result<()> {
@@ -150,4 +158,6 @@ pub fn log_config(cfg: &Config) {
     log::info!("  buffer_capacity    = {}", cfg.buffer_capacity);
     log::info!("  watchdog_timeout   = {}s", cfg.watchdog_timeout_secs);
     log::info!("  health_interval    = {} cycles", cfg.health_report_interval_cycles);
+    log::info!("  ota_check_interval = {} cycles", cfg.ota_check_interval_cycles);
+    log::info!("  firmware_version   = '{}'", cfg.firmware_version);
 }
