@@ -78,6 +78,7 @@ export default function RecentReadingsChart() {
     },
     legend: {
       bottom: 5,
+      icon: "circle",
       textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: 12 },
     },
     grid: { left: 72, right: 20, top: 10, bottom: 80 },

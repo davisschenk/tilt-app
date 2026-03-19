@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
 import { format } from "date-fns";
@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useReadings } from "@/hooks/use-readings";
 import { useBrewEvents } from "@/hooks/use-brew-events";
 import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
-import type { BrewEventType } from "@/types";
+import type { BrewEventType, BrewEventResponse } from "@/types";
 import { useEChartsTheme } from "@/lib/echarts-theme";
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
@@ -56,8 +56,17 @@ interface ReadingsChartProps {
   predictedFgDate?: string | null;
 }
 
+interface EventTooltipState {
+  event: BrewEventResponse;
+  x: number;
+  y: number;
+}
+
 export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: ReadingsChartProps) {
   const [range, setRange] = useState<TimeRange>("7d");
+  const [eventTooltip, setEventTooltip] = useState<EventTooltipState | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const echartsRef = useRef<ReactECharts>(null);
   const theme = useEChartsTheme();
 
   const { xMin, xMax, since } = useMemo(() => {
@@ -113,6 +122,29 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
     });
   }, [analytics, gravityData]);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const onEvents = useMemo<Record<string, (params: any) => void>>(() => ({
+    mouseover: (params) => {
+      if (params?.seriesName === "Events" && params.event) {
+        const ev = visibleEvents[params.dataIndex as number];
+        if (ev) {
+          setEventTooltip({
+            event: ev,
+            x: params.event.offsetX as number,
+            y: params.event.offsetY as number,
+          });
+          echartsRef.current?.getEchartsInstance().setOption({ tooltip: { show: false } }, false);
+        }
+      }
+    },
+    mouseout: (params) => {
+      if (params?.seriesName === "Events") {
+        setEventTooltip(null);
+        echartsRef.current?.getEchartsInstance().setOption({ tooltip: { show: true } }, false);
+      }
+    },
+  }), [visibleEvents]);
+
   const option = useMemo((): EChartsOption => {
     const gravityValues = gravityData.map(([, v]) => v);
     const tempValues = tempData.map(([, v]) => v);
@@ -125,24 +157,6 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       const d = new Date(val);
       return range === "24h" ? format(d, "HH:mm") : format(d, "MMM d");
     };
-
-    // Build event markLine items
-    const eventMarkLines = visibleEvents.map((ev) => ({
-      name: EVENT_LABELS[ev.eventType],
-      xAxis: new Date(ev.eventTime).getTime(),
-      lineStyle: {
-        color: EVENT_COLORS[ev.eventType],
-        type: "dashed" as const,
-        width: 1.5,
-      },
-      label: {
-        show: true,
-        position: "insideStartTop" as const,
-        formatter: EVENT_LABELS[ev.eventType],
-        color: EVENT_COLORS[ev.eventType],
-        fontSize: 10,
-      },
-    }));
 
     const staticMarkLines: unknown[] = [];
     if (targetFg != null) {
@@ -174,19 +188,37 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       });
     }
 
-    const allMarkLineData = [...eventMarkLines, ...staticMarkLines];
-
     const gapMarkAreaData = visibleGaps.map((g) => [
       { xAxis: new Date(g.startAt).getTime() },
       { xAxis: new Date(g.endAt).getTime() },
     ]);
+
+    const eventScatterData = visibleEvents.map((ev) => ({
+      value: [new Date(ev.eventTime).getTime(), 0.5] as [number, number],
+      itemStyle: { color: EVENT_COLORS[ev.eventType] },
+    }));
+
+    // When range === "all", xMin/xMax are undefined and each axis would auto-fit
+    // to its own series' data extent. Derive explicit bounds from gravity data so
+    // both axes share the same range and the event diamonds align with the lines.
+    const effectiveXMin = xMin ?? (gravityData.length > 0 ? gravityData[0][0] : undefined);
+    const effectiveXMax = xMax ?? (gravityData.length > 0 ? gravityData[gravityData.length - 1][0] : undefined);
+
+    const sharedXAxisConfig = {
+      type: "time" as const,
+      min: effectiveXMin,
+      max: effectiveXMax,
+      splitLine: { lineStyle: { color: theme.gridColor } },
+      axisLine: { lineStyle: { color: theme.borderColor } },
+      axisTick: { lineStyle: { color: theme.borderColor } },
+    };
 
     return {
       backgroundColor: "transparent",
       animation: false,
       tooltip: {
         trigger: "axis",
-        axisPointer: { type: "cross" },
+        axisPointer: { type: "none" },
         backgroundColor: theme.popoverBg,
         borderColor: theme.borderColor,
         borderWidth: 1,
@@ -194,11 +226,14 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         textStyle: { color: theme.popoverFg, fontFamily: theme.fontFamily, fontSize: 13 },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formatter: (params: any) => {
-          if (!params || !Array.isArray(params) || params.length === 0) return "";
-          const ts: number = params[0].axisValue;
+          if (!Array.isArray(params) || params.length === 0) return "";
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const dataItems = (params as any[]).filter((p) => p.seriesName !== "Events");
+          if (dataItems.length === 0) return "";
+          const ts: number = dataItems[0].axisValue;
           const title = format(new Date(ts), "MMM d, yyyy · HH:mm");
           let html = `<div style="font-size:12px;color:${theme.mutedColor};margin-bottom:6px">${title}</div>`;
-          for (const item of params as Array<{ seriesName: string; value: [number, number]; color: string }>) {
+          for (const item of dataItems as Array<{ seriesName: string; value: [number, number]; color: string }>) {
             if (item.value == null || item.value[1] == null) continue;
             const val = item.value[1];
             const isGravity = item.seriesName === "Gravity";
@@ -212,38 +247,28 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
           return html;
         },
       },
-      axisPointer: {
-        link: [{ xAxisIndex: "all" }],
-      },
       legend: {
         data: ["Gravity", "Temperature"],
-        bottom: 0,
+        bottom: 8,
+        icon: "circle",
         textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: 12 },
       },
+      // Two grids: thin event strip at top / main chart below
       grid: [
-        { left: 72, right: 64, top: 12, bottom: "54%" },
-        { left: 72, right: 64, top: "50%", bottom: 32 },
+        { left: 72, right: 64, top: 52, bottom: 52 },
+        { left: 72, right: 64, top: 28, height: 14 },
       ],
       xAxis: [
         {
           gridIndex: 0,
-          type: "time",
-          min: xMin,
-          max: xMax,
+          ...sharedXAxisConfig,
           axisLabel: { color: theme.mutedColor, fontFamily: theme.fontFamily, fontSize: 11, formatter: axisLabelFormatter },
-          splitLine: { lineStyle: { color: theme.gridColor } },
-          axisLine: { lineStyle: { color: theme.borderColor } },
-          axisTick: { lineStyle: { color: theme.borderColor } },
         },
         {
+          // Event strip x-axis — hidden, just for positioning
           gridIndex: 1,
-          type: "time",
-          min: xMin,
-          max: xMax,
-          axisLabel: { color: theme.mutedColor, fontFamily: theme.fontFamily, fontSize: 11, formatter: axisLabelFormatter },
-          splitLine: { lineStyle: { color: theme.gridColor } },
-          axisLine: { lineStyle: { color: theme.borderColor } },
-          axisTick: { lineStyle: { color: theme.borderColor } },
+          ...sharedXAxisConfig,
+          show: false,
         },
       ],
       yAxis: [
@@ -253,6 +278,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
           nameTextStyle: { color: "#1971C2", fontFamily: theme.fontFamily, fontSize: 11 },
           min: Math.floor(gMin * 1000 - 1) / 1000,
           max: Math.ceil(gMax * 1000 + 1) / 1000,
+          splitNumber: 5,
           axisLabel: {
             color: "#1971C2",
             fontFamily: theme.fontFamily,
@@ -263,11 +289,13 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
           axisLine: { lineStyle: { color: theme.borderColor } },
         },
         {
-          gridIndex: 1,
+          gridIndex: 0,
           name: "°F",
+          position: "right" as const,
           nameTextStyle: { color: "#E8590C", fontFamily: theme.fontFamily, fontSize: 11 },
           min: Math.floor(tMin - 2),
           max: Math.ceil(tMax + 2),
+          splitNumber: 5,
           axisLabel: {
             color: "#E8590C",
             fontFamily: theme.fontFamily,
@@ -276,6 +304,13 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
           },
           splitLine: { show: false },
           axisLine: { lineStyle: { color: theme.borderColor } },
+        },
+        {
+          // Event strip y-axis — hidden, fixed 0–1 range
+          gridIndex: 1,
+          min: 0,
+          max: 1,
+          show: false,
         },
       ],
       dataZoom: [
@@ -293,36 +328,21 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
           showSymbol: false,
           smooth: true,
           markLine: {
-            silent: false,
+            silent: true,
             symbol: ["none", "none"],
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            data: allMarkLineData as any,
-            tooltip: {
-              show: true,
-              backgroundColor: theme.popoverBg,
-              borderColor: theme.borderColor,
-              borderWidth: 1,
-              padding: 10,
-              textStyle: { color: theme.popoverFg, fontFamily: theme.fontFamily, fontSize: 12 },
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              formatter: (params: any) => {
-                const xVal: number | undefined = params?.data?.xAxis;
-                if (xVal == null) return "";
-                const ev = visibleEvents.find(
-                  (e) => new Date(e.eventTime).getTime() === xVal,
-                );
-                if (!ev) return "";
-                const color = EVENT_COLORS[ev.eventType];
-                const label = EVENT_LABELS[ev.eventType];
-                const time = format(new Date(ev.eventTime), "MMM d, yyyy · HH:mm");
-                let html = `<div style="font-weight:600;color:${color};margin-bottom:4px">${label}</div>`;
-                html += `<div style="font-size:11px;color:${theme.mutedColor}">${time}</div>`;
-                if (ev.notes) {
-                  html += `<div style="font-size:12px;margin-top:4px;max-width:200px">${ev.notes}</div>`;
-                }
-                return html;
-              },
-            },
+            data: [
+              ...visibleEvents.map((ev) => ({
+                xAxis: new Date(ev.eventTime).getTime(),
+                lineStyle: {
+                  color: EVENT_COLORS[ev.eventType],
+                  type: "dashed" as const,
+                  width: 2,
+                },
+                label: { show: false },
+              })),
+              ...staticMarkLines,
+            ] as any,
           },
           markArea: gapMarkAreaData.length > 0
             ? {
@@ -336,13 +356,30 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         {
           name: "Temperature",
           type: "line",
-          xAxisIndex: 1,
+          xAxisIndex: 0,
           yAxisIndex: 1,
           data: tempData,
           lineStyle: { color: "#E8590C", width: 2 },
           itemStyle: { color: "#E8590C" },
           showSymbol: false,
           smooth: true,
+        },
+        {
+          // Colored diamond markers in the thin event strip above the chart
+          name: "Events",
+          type: "scatter",
+          xAxisIndex: 1,
+          yAxisIndex: 2,
+          data: eventScatterData,
+          symbol: "diamond",
+          symbolSize: 14,
+          emphasis: {
+            scale: true,
+            itemStyle: { borderColor: theme.bgColor, borderWidth: 2 },
+          },
+          // Excluded from axis tooltip; hover handled via onEvents
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          tooltip: { show: false } as any,
         },
       ],
     };
@@ -384,7 +421,68 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
             No readings for this time range
           </div>
         ) : (
-          <ReactECharts option={option} style={{ height: 420 }} notMerge />
+          <div ref={containerRef} className="relative">
+            <ReactECharts
+              ref={echartsRef}
+              option={option}
+              style={{ height: 420 }}
+              notMerge
+              onEvents={onEvents}
+            />
+            {eventTooltip && (() => {
+              const ev = eventTooltip.event;
+              const color = EVENT_COLORS[ev.eventType];
+              const label = EVENT_LABELS[ev.eventType];
+              const containerWidth = containerRef.current?.clientWidth ?? 400;
+              const tipWidth = 220;
+              const rawLeft = eventTooltip.x + 14;
+              const left = Math.min(rawLeft, containerWidth - tipWidth - 8);
+              return (
+                <div
+                  className="absolute z-50 pointer-events-none rounded-lg border bg-popover text-popover-foreground shadow-lg"
+                  style={{ left, top: eventTooltip.y - 10, width: tipWidth }}
+                >
+                  <div
+                    className="flex items-center gap-2 px-3 pt-3 pb-2 border-b"
+                    style={{ borderColor: `${color}40` }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: 10,
+                        height: 10,
+                        background: color,
+                        transform: "rotate(45deg)",
+                        borderRadius: 1,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span className="text-sm font-semibold leading-none" style={{ color }}>
+                      {label}
+                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+                      {format(new Date(ev.eventTime), "MMM d")}
+                    </span>
+                  </div>
+                  <div className="px-3 py-2 space-y-1">
+                    <div className="text-xs text-muted-foreground">
+                      {format(new Date(ev.eventTime), "HH:mm")}
+                    </div>
+                    {ev.label && (
+                      <div className="text-xs font-medium text-foreground">
+                        {ev.label}
+                      </div>
+                    )}
+                    {ev.notes && (
+                      <div className="text-xs text-muted-foreground leading-relaxed line-clamp-4">
+                        {ev.notes}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         )}
       </CardContent>
     </Card>
