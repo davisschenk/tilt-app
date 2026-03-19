@@ -6,16 +6,24 @@
 
 use anyhow::{Context, Result};
 use esp_idf_svc::http::client::{Configuration as HttpConfig, EspHttpConnection};
-use esp_idf_svc::io::Read;
 
 use crate::tilt::TiltReading;
 
+/// Maximum response body bytes read from the server in a single request.
+/// Embedded systems have limited RAM; 1 KiB is sufficient for API error messages
+/// and OTA JSON responses while preventing unbounded allocation.
+const HTTP_RESPONSE_MAX_BYTES: usize = 1024;
+
+/// HTTP client for uploading Tilt readings and querying the server API.
 pub struct HttpUploader {
     server_url: &'static str,
     api_key: &'static str,
 }
 
 impl HttpUploader {
+    /// Create a new uploader targeting `server_url`.
+    ///
+    /// If `api_key` is non-empty it is sent as the `X-API-Key` request header.
     pub fn new(server_url: &'static str, api_key: &'static str) -> Self {
         Self {
             server_url,
@@ -23,6 +31,10 @@ impl HttpUploader {
         }
     }
 
+    /// POST a batch of readings as JSON to `/api/v1/readings`.
+    ///
+    /// Returns `Ok(())` on any 2xx response. On non-2xx responses the server's
+    /// error body (up to `HTTP_RESPONSE_MAX_BYTES`) is included in the error.
     pub fn upload_batch(&self, readings: &[TiltReading]) -> Result<()> {
         let url = format!("{}/api/v1/readings", self.server_url.trim_end_matches('/'));
         let payload =
@@ -61,15 +73,12 @@ impl HttpUploader {
 
         let status = conn.status();
 
-        // Read response body for error messages
-        let mut body = [0u8; 256];
-        let bytes_read = conn.read(&mut body).unwrap_or(0);
-
         if (200..300).contains(&(status as u32)) {
             log::debug!("Upload successful: {} readings, status={}", readings.len(), status);
             Ok(())
         } else {
-            let body_str = core::str::from_utf8(&body[..bytes_read]).unwrap_or("<non-utf8>");
+            let body = read_response_body(&mut conn);
+            let body_str = core::str::from_utf8(&body).unwrap_or("<non-utf8>");
             Err(anyhow::anyhow!(
                 "HTTP upload failed: status={}, body={}",
                 status,
@@ -78,6 +87,10 @@ impl HttpUploader {
         }
     }
 
+    /// GET `url` and parse the response body as JSON.
+    ///
+    /// Returns an error on non-2xx status codes or JSON parse failures.
+    /// Response bodies are capped at `HTTP_RESPONSE_MAX_BYTES`.
     pub fn get_json(&self, url: &str) -> Result<serde_json::Value> {
         let config = HttpConfig {
             crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
@@ -100,16 +113,14 @@ impl HttpUploader {
             .context("Failed to initiate GET response")?;
 
         let status = conn.status();
-
-        let mut body = [0u8; 512];
-        let bytes_read = conn.read(&mut body).unwrap_or(0);
+        let body = read_response_body(&mut conn);
 
         if status == 404 {
             return Err(anyhow::anyhow!("GET {} returned 404", url));
         }
 
         if !(200..300).contains(&(status as u32)) {
-            let body_str = core::str::from_utf8(&body[..bytes_read]).unwrap_or("<non-utf8>");
+            let body_str = core::str::from_utf8(&body).unwrap_or("<non-utf8>");
             return Err(anyhow::anyhow!(
                 "GET {} failed: status={}, body={}",
                 url,
@@ -118,6 +129,28 @@ impl HttpUploader {
             ));
         }
 
-        serde_json::from_slice(&body[..bytes_read]).context("Failed to parse JSON response")
+        serde_json::from_slice(&body).context("Failed to parse JSON response")
     }
+}
+
+/// Read the HTTP response body into a `Vec<u8>`, capped at `HTTP_RESPONSE_MAX_BYTES`.
+///
+/// Reads in 256-byte chunks to keep stack usage low. Stops early if the cap is
+/// reached rather than allocating unbounded memory.
+fn read_response_body(conn: &mut EspHttpConnection) -> Vec<u8> {
+    let mut body = Vec::with_capacity(HTTP_RESPONSE_MAX_BYTES);
+    let mut chunk = [0u8; 256];
+    loop {
+        match conn.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                let space = HTTP_RESPONSE_MAX_BYTES.saturating_sub(body.len());
+                if space == 0 {
+                    break;
+                }
+                body.extend_from_slice(&chunk[..n.min(space)]);
+            }
+        }
+    }
+    body
 }

@@ -7,9 +7,14 @@ use anyhow::{Context, Result};
 use esp_idf_svc::http::client::{Configuration as HttpConfig, EspHttpConnection};
 use esp_idf_svc::ota::EspOta;
 
+/// Firmware download chunk size in bytes. Matches the HTTP receive buffer to
+/// avoid double-buffering and keep heap usage predictable.
 const CHUNK_SIZE: usize = 8192;
+
+/// Log a progress message every N chunks (~80 KiB per message at 8 KiB chunks).
 const LOG_EVERY_N_CHUNKS: usize = 10;
 
+/// Performs OTA firmware updates by downloading and flashing to the inactive slot.
 pub struct OtaUpdater;
 
 impl OtaUpdater {
@@ -18,6 +23,8 @@ impl OtaUpdater {
     /// On success the new slot is marked valid and set as the next boot target.
     /// On any error the update is aborted and the current firmware is left intact.
     /// Does NOT reboot — the caller must trigger a reboot when ready.
+    ///
+    /// `url` must be a validated HTTP/HTTPS URL (validated at call site in main).
     pub fn perform_update(url: &str) -> Result<()> {
         log::info!("OTA: starting firmware update from {}", url);
 
@@ -27,7 +34,7 @@ impl OtaUpdater {
             .get_update_slot()
             .context("OTA: failed to get update slot info")?;
         log::info!(
-            "OTA: writing to slot label={} state={:?}",
+            "OTA: writing to slot label='{}' state={:?}",
             update_slot.label,
             update_slot.state
         );
@@ -60,6 +67,9 @@ impl OtaUpdater {
         }
     }
 
+    /// Stream firmware from `url` directly into `ota_update` in `CHUNK_SIZE` chunks.
+    ///
+    /// Returns the total number of bytes written on success.
     fn download_and_write(
         url: &str,
         ota_update: &mut esp_idf_svc::ota::EspOtaUpdate<'_>,
@@ -112,6 +122,9 @@ impl OtaUpdater {
 
             if chunk_count % LOG_EVERY_N_CHUNKS == 0 {
                 log::info!("OTA: written {} KB so far...", total_bytes / 1024);
+                // Feed watchdog during the download — a 1 MB firmware is ~125
+                // chunks at 8 KB each and can take tens of seconds on a slow link.
+                crate::feed_watchdog_or_warn();
             }
         }
 

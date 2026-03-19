@@ -14,15 +14,25 @@ use crate::tilt::{self, TiltColor, TiltReading};
 
 const MAX_RECOVERY_FAILURES: u32 = 3;
 
+/// Manages the NimBLE BLE stack and scans for Tilt hydrometer advertisements.
 pub struct BleScanner {
     ble_device: &'static BLEDevice,
+    /// BLE scan interval in units of 0.625 ms (100 = 62.5 ms).
     scan_interval: u16,
+    /// BLE scan window in units of 0.625 ms. Must be ≤ scan_interval.
     scan_window: u16,
     consecutive_recovery_failures: u32,
+    /// Maximum duration of a single scan chunk in seconds.
+    /// Long scans are broken into chunks so the watchdog can be fed between them.
+    max_scan_chunk_secs: u32,
 }
 
 impl BleScanner {
-    pub fn new() -> Result<Self> {
+    /// Initialize the NimBLE BLE stack and return a ready-to-use scanner.
+    ///
+    /// `max_scan_chunk_secs` controls how long each internal scan chunk runs
+    /// before the watchdog is fed. Set from `config.max_scan_chunk_secs`.
+    pub fn new(max_scan_chunk_secs: u32) -> Result<Self> {
         let ble_device = BLEDevice::take();
         log::info!("NimBLE BLE stack initialized");
         Ok(Self {
@@ -30,12 +40,15 @@ impl BleScanner {
             scan_interval: 100,
             scan_window: 99,
             consecutive_recovery_failures: 0,
+            max_scan_chunk_secs,
         })
     }
 
     /// Attempt to recover the BLE stack after a scan failure.
-    /// Deinits and reinits the NimBLE host stack. After 3 consecutive
-    /// recovery failures, triggers a full device reboot via esp_restart().
+    ///
+    /// Deinits and reinits the NimBLE host stack. After `MAX_RECOVERY_FAILURES`
+    /// (3) consecutive recovery failures — indicating the BLE hardware is in an
+    /// unrecoverable state — triggers a full device reboot via `esp_restart()`.
     pub fn attempt_recovery(&mut self, original_error: &anyhow::Error) {
         log::warn!(
             "Attempting BLE stack recovery (failure #{}) due to: {:?}",
@@ -70,55 +83,71 @@ impl BleScanner {
         self.consecutive_recovery_failures = 0;
     }
 
+    /// Scan for Tilt hydrometer BLE advertisements for `duration_secs` seconds.
+    ///
+    /// Long scans are split into chunks of `max_scan_chunk_secs` with watchdog
+    /// feeds between each chunk. Returns one reading per Tilt color detected;
+    /// if a color is seen multiple times the last advertisement wins.
     pub fn scan_for_tilts(&mut self, duration_secs: u32) -> Result<Vec<TiltReading>> {
         let readings: Arc<Mutex<HashMap<TiltColor, TiltReading>>> =
             Arc::new(Mutex::new(HashMap::new()));
-        let readings_clone = readings.clone();
 
         log::debug!("Starting BLE scan for {}s", duration_secs);
 
-        block_on(async {
-            let mut ble_scan = BLEScan::new();
-            ble_scan
-                .active_scan(false)
-                .interval(self.scan_interval)
-                .window(self.scan_window)
-                .filter_duplicates(false);
+        // Break long scans into chunks of max_scan_chunk_secs, feeding the
+        // watchdog between each chunk so the TWDT doesn't fire.
+        let mut remaining = duration_secs;
+        while remaining > 0 {
+            let chunk = remaining.min(self.max_scan_chunk_secs);
+            remaining -= chunk;
 
-            ble_scan
-                .start(
-                    self.ble_device,
-                    (duration_secs * 1000) as i32,
-                    |device, data| {
-                        let rssi = device.rssi();
-                        if let Some(mfg_data) = data.manufacture_data() {
-                            // Apple company ID is 0x004C
-                            if mfg_data.company_identifier == 0x004C {
-                                if let Some(mut reading) =
-                                    tilt::parse_ibeacon(mfg_data.payload)
-                                {
-                                    reading.rssi = Some(rssi as i16);
-                                    log::info!(
-                                        "Tilt {:?}: temp={:.1}°F gravity={:.4} rssi={}",
-                                        reading.color,
-                                        reading.temperature_f,
-                                        reading.gravity,
-                                        rssi
-                                    );
-                                    if let Ok(mut map) = readings_clone.lock() {
-                                        map.insert(reading.color, reading);
+            let readings_clone = readings.clone();
+            block_on(async {
+                let mut ble_scan = BLEScan::new();
+                ble_scan
+                    .active_scan(false)
+                    .interval(self.scan_interval)
+                    .window(self.scan_window)
+                    .filter_duplicates(false);
+
+                ble_scan
+                    .start(
+                        self.ble_device,
+                        (chunk * 1000) as i32,
+                        |device, data| {
+                            let rssi = device.rssi();
+                            if let Some(mfg_data) = data.manufacture_data() {
+                                // Apple company ID is 0x004C
+                                if mfg_data.company_identifier == 0x004C {
+                                    if let Some(mut reading) =
+                                        tilt::parse_ibeacon(mfg_data.payload)
+                                    {
+                                        reading.rssi = Some(rssi as i16);
+                                        log::info!(
+                                            "Tilt {:?}: temp={:.1}°F gravity={:.4} rssi={}",
+                                            reading.color,
+                                            reading.temperature_f,
+                                            reading.gravity,
+                                            rssi
+                                        );
+                                        if let Ok(mut map) = readings_clone.lock() {
+                                            map.insert(reading.color, reading);
+                                        }
                                     }
                                 }
                             }
-                        }
-                        None::<()>
-                    },
-                )
-                .await
-                .context("BLE scan failed")?;
+                            None::<()>
+                        },
+                    )
+                    .await
+                    .context("BLE scan failed")?;
 
-            Ok::<(), anyhow::Error>(())
-        })?;
+                Ok::<(), anyhow::Error>(())
+            })?;
+
+            // Feed the watchdog between scan chunks
+            crate::feed_watchdog_or_warn();
+        }
 
         let result: Vec<TiltReading> = readings
             .lock()

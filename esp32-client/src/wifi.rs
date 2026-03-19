@@ -13,6 +13,7 @@ use esp_idf_svc::wifi::{
     AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi,
 };
 
+/// Manages the ESP32 WiFi peripheral in station (STA) mode.
 pub struct WifiManager {
     wifi: BlockingWifi<EspWifi<'static>>,
     ssid: &'static str,
@@ -20,6 +21,9 @@ pub struct WifiManager {
 }
 
 impl WifiManager {
+    /// Create a new `WifiManager` using the given modem peripheral and credentials.
+    ///
+    /// Does not connect — call `connect()` to establish the initial association.
     pub fn new(
         modem: impl WifiModemPeripheral + 'static,
         sys_loop: EspSystemEventLoop,
@@ -39,6 +43,10 @@ impl WifiManager {
         })
     }
 
+    /// Configure and connect to the access point, then wait for an IP address.
+    ///
+    /// Suspends the Task Watchdog Timer around blocking WiFi operations since
+    /// `connect()` and `wait_netif_up()` cannot yield control to feed the TWDT.
     pub fn connect(&mut self) -> Result<()> {
         let ssid_heapless: heapless::String<32> = self
             .ssid
@@ -63,12 +71,19 @@ impl WifiManager {
         self.wifi.start().context("Failed to start WiFi")?;
         log::info!("WiFi started, connecting to '{}'...", self.ssid);
 
-        self.wifi.connect().context("Failed to connect to WiFi")?;
+        // Suspend TWDT during blocking WiFi operations — connect() and
+        // wait_netif_up() block internally and we cannot feed the watchdog.
+        crate::suspend_watchdog();
+        let connect_result = self.wifi.connect().context("Failed to connect to WiFi");
+        if let Err(e) = connect_result {
+            crate::resume_watchdog();
+            return Err(e);
+        }
         log::info!("WiFi connected, waiting for IP...");
 
-        self.wifi
-            .wait_netif_up()
-            .context("Failed to get IP address")?;
+        let netif_result = self.wifi.wait_netif_up().context("Failed to get IP address");
+        crate::resume_watchdog();
+        netif_result?;
 
         let ip_info = self
             .wifi
@@ -81,10 +96,15 @@ impl WifiManager {
         Ok(())
     }
 
+    /// Return `true` if the station is currently associated to an access point.
     pub fn is_connected(&self) -> bool {
         self.wifi.is_connected().unwrap_or(false)
     }
 
+    /// Reconnect if the link is down. Returns `Ok(())` once an IP is obtained.
+    ///
+    /// First attempts a lightweight reconnect; falls back to a full stop/start
+    /// cycle if that fails. Suspends the TWDT for the duration of blocking calls.
     pub fn ensure_connected(&mut self) -> Result<()> {
         if self.is_connected() {
             return Ok(());
@@ -92,20 +112,29 @@ impl WifiManager {
 
         log::warn!("WiFi disconnected, attempting reconnect...");
 
+        // Suspend TWDT during blocking WiFi reconnect operations
+        crate::suspend_watchdog();
+
         // Try to reconnect without full reconfiguration
         if let Err(e) = self.wifi.connect() {
             log::warn!("WiFi reconnect failed: {:?}, retrying with full restart...", e);
             // Full restart on reconnect failure
             let _ = self.wifi.stop();
-            self.wifi.start().context("Failed to restart WiFi")?;
-            self.wifi
-                .connect()
-                .context("Failed to reconnect WiFi after restart")?;
+            if let Err(e) = self.wifi.start().context("Failed to restart WiFi") {
+                crate::resume_watchdog();
+                return Err(e);
+            }
+            if let Err(e) = self.wifi.connect().context("Failed to reconnect WiFi after restart") {
+                crate::resume_watchdog();
+                return Err(e);
+            }
         }
 
-        self.wifi
+        let netif_result = self.wifi
             .wait_netif_up()
-            .context("Failed to get IP after reconnect")?;
+            .context("Failed to get IP after reconnect");
+        crate::resume_watchdog();
+        netif_result?;
 
         let ip_info = self
             .wifi

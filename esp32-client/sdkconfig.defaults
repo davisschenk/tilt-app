@@ -11,6 +11,14 @@ CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=4096
 # Flash size: 4MB (required for custom partition table totaling ~3.2MB)
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 
+# Enable Boya flash chip driver — board uses Boya (BY25Q) flash; without this
+# esp-idf falls back to the generic driver and logs a warning at every boot.
+CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
+
+# Suppress old I2C driver deprecation warning — a NimBLE internal component
+# initializes the legacy i2c driver; we don't use I2C directly.
+CONFIG_I2C_SUPPRESS_DEPRECATE_WARN=y
+
 # Custom partition table for dual OTA slots
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
@@ -24,7 +32,16 @@ CONFIG_BT_NIMBLE_ENABLED=y
 # Enable WiFi
 CONFIG_ESP_WIFI_ENABLED=y
 
+# Reduce log verbosity — suppresses some noisy driver output
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_MAXIMUM_LEVEL_INFO=y
+
 # Task Watchdog Timer (TWDT) — auto-reboot if main loop hangs
 CONFIG_ESP_TASK_WDT_EN=y
 CONFIG_ESP_TASK_WDT_PANIC=y
-CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=120
+# Disable TWDT on idle tasks — block_on() in the BLE scan starves the idle
+# task scheduler, triggering a false WDT. We manually subscribe the main task
+# via esp_task_wdt_add() and feed it between scan chunks instead.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n

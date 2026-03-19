@@ -6,27 +6,39 @@ mod ota;
 mod tilt;
 mod wifi;
 
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
 use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 
-/// Subscribe the current task to the Task Watchdog Timer (TWDT).
-/// The TWDT is configured in sdkconfig.defaults with a 120s timeout.
-/// If `feed_watchdog()` is not called within the timeout, the ESP32 reboots.
-fn init_watchdog() -> Result<()> {
+/// Reconfigure and subscribe the current task to the Task Watchdog Timer (TWDT).
+///
+/// `timeout_ms` is taken from `config.watchdog_timeout_secs` so it stays in
+/// sync with the rest of the cycle timing. sdkconfig.defaults values are not
+/// reliably picked up by the ESP-IDF build system, hence the programmatic set.
+pub(crate) fn init_watchdog(timeout_ms: u32) -> Result<()> {
     unsafe {
+        let config = esp_idf_svc::sys::esp_task_wdt_config_t {
+            timeout_ms,
+            idle_core_mask: 0, // don't monitor any idle tasks
+            trigger_panic: true,
+        };
+        let ret = esp_idf_svc::sys::esp_task_wdt_reconfigure(&config);
+        if ret != esp_idf_svc::sys::ESP_OK {
+            anyhow::bail!("Failed to reconfigure TWDT: error code {}", ret);
+        }
+
         let ret = esp_idf_svc::sys::esp_task_wdt_add(core::ptr::null_mut());
         if ret != esp_idf_svc::sys::ESP_OK {
             anyhow::bail!("Failed to subscribe to TWDT: error code {}", ret);
         }
     }
-    log::info!("Watchdog timer initialized (timeout configured in sdkconfig.defaults)");
+    log::info!("Watchdog timer initialized ({}s timeout, panic enabled)", timeout_ms / 1000);
     Ok(())
 }
 
 /// Feed (reset) the Task Watchdog Timer. Must be called every scan cycle.
-fn feed_watchdog() -> Result<()> {
+pub(crate) fn feed_watchdog() -> Result<()> {
     unsafe {
         let ret = esp_idf_svc::sys::esp_task_wdt_reset();
         if ret != esp_idf_svc::sys::ESP_OK {
@@ -34,6 +46,71 @@ fn feed_watchdog() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Feed the watchdog, logging a warning if the feed fails rather than silently
+/// ignoring the error. Use this at all non-critical call sites in the main loop.
+pub(crate) fn feed_watchdog_or_warn() {
+    if let Err(e) = feed_watchdog() {
+        log::warn!("Failed to feed watchdog: {:?}", e);
+    }
+}
+
+/// Sleep for `duration`, feeding the watchdog every `chunk_secs` seconds.
+///
+/// A plain `thread::sleep(scan_interval)` would block for the full interval
+/// without any watchdog feed — guaranteed to fire the TWDT when the timeout
+/// equals the scan interval. This helper breaks the sleep into chunks so the
+/// watchdog is fed throughout.
+fn sleep_feeding_watchdog(duration: Duration, chunk_secs: u32) {
+    let chunk = Duration::from_secs(chunk_secs as u64);
+    let mut remaining = duration;
+    while remaining > Duration::ZERO {
+        let nap = remaining.min(chunk);
+        std::thread::sleep(nap);
+        remaining = remaining.saturating_sub(nap);
+        feed_watchdog_or_warn();
+    }
+}
+
+/// Temporarily unsubscribe the current task from the TWDT.
+/// Use before long-running blocking calls (e.g. WiFi connect) where the
+/// watchdog cannot be fed. Call `resume_watchdog()` afterwards.
+pub(crate) fn suspend_watchdog() {
+    unsafe {
+        let ret = esp_idf_svc::sys::esp_task_wdt_delete(core::ptr::null_mut());
+        if ret != esp_idf_svc::sys::ESP_OK {
+            log::warn!("Failed to unsubscribe from TWDT: error code {}", ret);
+        }
+    }
+}
+
+/// Re-subscribe the current task to the TWDT after a `suspend_watchdog()` call.
+pub(crate) fn resume_watchdog() {
+    unsafe {
+        let ret = esp_idf_svc::sys::esp_task_wdt_add(core::ptr::null_mut());
+        if ret != esp_idf_svc::sys::ESP_OK {
+            log::warn!("Failed to re-subscribe to TWDT: error code {}", ret);
+        }
+        // Immediately feed so the full timeout window starts fresh
+        let _ = esp_idf_svc::sys::esp_task_wdt_reset();
+    }
+}
+
+/// Shared mutable state threaded through the main scan-upload loop.
+struct LoopState {
+    /// Total scan cycles completed (wraps at u32::MAX).
+    scan_count: u32,
+    /// Number of successful upload batches.
+    upload_ok_count: u32,
+    /// Number of failed upload attempts.
+    upload_fail_count: u32,
+    /// Consecutive cycles that ended in an error (reset on any success).
+    consecutive_errors: u32,
+    /// Readings buffered while the server is unreachable.
+    reading_buffer: buffer::ReadingBuffer,
+    /// Exponential backoff state for upload retries.
+    backoff: buffer::Backoff,
 }
 
 fn main() {
@@ -50,7 +127,7 @@ fn main() {
         log::error!("Fatal error: {:?}", e);
         // Allow the watchdog to reboot us
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            std::thread::sleep(Duration::from_secs(1));
         }
     }
 }
@@ -66,8 +143,8 @@ fn run() -> Result<()> {
     config::log_config(&cfg);
     config::validate_config(&cfg).context("Configuration validation failed")?;
 
-    // Initialize watchdog
-    init_watchdog().context("Watchdog initialization failed")?;
+    // Initialize watchdog — use the config value so NVS overrides are respected
+    init_watchdog(cfg.watchdog_timeout_secs * 1000).context("Watchdog initialization failed")?;
 
     // Initialize WiFi
     let peripherals =
@@ -79,16 +156,21 @@ fn run() -> Result<()> {
         wifi::WifiManager::new(peripherals.modem, sys_loop, nvs, cfg.wifi_ssid, cfg.wifi_password)
             .context("Failed to create WiFi manager")?;
     wifi_manager.connect().context("Initial WiFi connection failed")?;
+    feed_watchdog_or_warn();
 
     // Initialize SNTP time sync
     let _sntp = EspSntp::new_default().context("Failed to initialize SNTP")?;
     log::info!("SNTP initialized, waiting for time sync...");
     // Wait up to 15 seconds for initial time sync
-    for _ in 0..30 {
+    for i in 0..30 {
         if _sntp.get_sync_status() == SyncStatus::Completed {
             break;
         }
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(500));
+        // Feed watchdog every 5 iterations (~2.5s) during SNTP wait
+        if i % 5 == 4 {
+            feed_watchdog_or_warn();
+        }
     }
     if _sntp.get_sync_status() == SyncStatus::Completed {
         log::info!("Time synced: {}", tilt::format_timestamp(SystemTime::now()));
@@ -96,163 +178,254 @@ fn run() -> Result<()> {
         log::warn!("SNTP sync not yet complete, timestamps may be inaccurate");
     }
 
+    feed_watchdog_or_warn();
+
     // Initialize BLE scanner
-    let mut ble_scanner = ble::BleScanner::new().context("Failed to initialize BLE scanner")?;
+    let mut ble_scanner =
+        ble::BleScanner::new(cfg.max_scan_chunk_secs).context("Failed to initialize BLE scanner")?;
+
+    feed_watchdog_or_warn();
 
     // Initialize HTTP uploader
     let uploader = http::HttpUploader::new(cfg.server_url, cfg.api_key);
 
-    // Initialize reading buffer and backoff
-    let mut reading_buffer = buffer::ReadingBuffer::new(cfg.buffer_capacity as usize);
-    let mut backoff = buffer::Backoff::new(1000, 60_000, 2);
+    let mut state = LoopState {
+        scan_count: 0,
+        upload_ok_count: 0,
+        upload_fail_count: 0,
+        consecutive_errors: 0,
+        reading_buffer: buffer::ReadingBuffer::new(cfg.buffer_capacity as usize),
+        backoff: buffer::Backoff::new(1000, 60_000, 2),
+    };
 
-    let mut consecutive_errors: u32 = 0;
-    let scan_interval = std::time::Duration::from_secs(cfg.scan_interval_secs as u64);
+    let scan_interval = Duration::from_secs(cfg.scan_interval_secs as u64);
     let start_time = Instant::now();
-    let mut total_scans: u64 = 0;
-    let mut successful_uploads: u64 = 0;
-    let mut failed_uploads: u64 = 0;
-    let health_interval = cfg.health_report_interval_cycles as u64;
-    let ota_interval = cfg.ota_check_interval_cycles as u64;
-    let firmware_version = cfg.firmware_version;
 
     log::info!("Entering main scan-upload loop");
 
     loop {
-        total_scans = total_scans.wrapping_add(1);
+        state.scan_count = state.scan_count.wrapping_add(1);
 
         // Phase 1: Scan for Tilt hydrometers
-        let readings = match ble_scanner.scan_for_tilts(cfg.scan_interval_secs) {
-            Ok(r) => {
-                ble_scanner.reset_recovery_counter();
-                r
-            }
+        let readings = match run_ble_phase(&mut ble_scanner, &cfg) {
+            Ok(r) => r,
             Err(e) => {
                 log::warn!("BLE scan error: {:?}", e);
                 ble_scanner.attempt_recovery(&e);
-                consecutive_errors += 1;
-                if consecutive_errors >= 10 {
+                state.consecutive_errors += 1;
+                if state.consecutive_errors >= config::CONSECUTIVE_ERROR_WARN_THRESHOLD {
                     log::error!(
-                        "10+ consecutive errors! wifi={}, buffer={}, errors={}",
+                        "{}+ consecutive errors! wifi={}, buffer={}, errors={}",
+                        config::CONSECUTIVE_ERROR_WARN_THRESHOLD,
                         wifi_manager.is_connected(),
-                        reading_buffer.len(),
-                        consecutive_errors,
+                        state.reading_buffer.len(),
+                        state.consecutive_errors,
                     );
                 }
-                // Feed watchdog and continue to next cycle
-                let _ = feed_watchdog();
+                feed_watchdog_or_warn();
                 std::thread::sleep(scan_interval);
                 continue;
             }
         };
 
-        // Phase 2: Upload readings if any
-        if !readings.is_empty() || !reading_buffer.is_empty() {
-            // Ensure WiFi is connected before uploading
-            if let Err(e) = wifi_manager.ensure_connected() {
-                log::warn!("WiFi reconnect failed: {:?}", e);
-                reading_buffer.push_batch(&readings);
-                consecutive_errors += 1;
-            } else {
-                // Prepend buffered readings to current batch
-                let mut all_readings = reading_buffer.drain_all();
-                all_readings.extend_from_slice(&readings);
-
-                // Stamp readings with current time
-                let now_ts = tilt::format_timestamp(SystemTime::now());
-                for r in &mut all_readings {
-                    if r.recorded_at.is_empty() {
-                        r.recorded_at = now_ts.clone();
-                    }
-                }
-
-                match uploader.upload_batch(&all_readings) {
-                    Ok(()) => {
-                        log::info!("Uploaded {} readings", all_readings.len());
-                        backoff.reset();
-                        consecutive_errors = 0;
-                        successful_uploads = successful_uploads.wrapping_add(1);
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "Upload failed (backoff={}ms, buffer={}): {:?}",
-                            backoff.current_delay_ms(),
-                            reading_buffer.len() + all_readings.len(),
-                            e,
-                        );
-                        // Re-buffer all readings that failed to upload
-                        reading_buffer.push_batch(&all_readings);
-                        let delay = backoff.next_delay();
-                        std::thread::sleep(delay);
-                        consecutive_errors += 1;
-                        failed_uploads = failed_uploads.wrapping_add(1);
-                    }
-                }
-            }
-
-            if consecutive_errors >= 10 {
-                log::error!(
-                    "10+ consecutive errors! wifi={}, buffer={}, errors={}",
-                    wifi_manager.is_connected(),
-                    reading_buffer.len(),
-                    consecutive_errors,
-                );
-            }
-        }
+        // Phase 2: Upload readings
+        run_upload_phase(&mut state, &uploader, &mut wifi_manager, &readings);
 
         // Phase 3: Periodic health report
-        if health_interval > 0 && total_scans % health_interval == 0 {
-            let uptime = start_time.elapsed();
-            let hours = uptime.as_secs() / 3600;
-            let minutes = (uptime.as_secs() % 3600) / 60;
-            let free_heap = unsafe { esp_idf_svc::sys::esp_get_free_heap_size() };
-            log::info!(
-                "HEALTH: uptime={}h{}m scans={} uploads_ok={} uploads_fail={} buffer={} wifi={} heap={} errors={}",
-                hours, minutes, total_scans, successful_uploads, failed_uploads,
-                reading_buffer.len(), wifi_manager.is_connected(), free_heap, consecutive_errors,
-            );
-        }
+        run_health_phase(&state, &start_time, &wifi_manager, &cfg);
 
         // Phase 4: Periodic OTA version check
-        if ota_interval > 0 && total_scans % ota_interval == 0 {
-            let _ = feed_watchdog();
-            let ota_url = format!("{}/api/v1/ota/firmware", cfg.server_url);
-            match uploader.get_json(&ota_url) {
-                Err(e) => log::warn!("OTA check failed: {:?}", e),
-                Ok(body) => {
-                    let server_version = body.get("version")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    let firmware_url = body.get("url")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    if !server_version.is_empty()
-                        && !firmware_url.is_empty()
-                        && server_version != firmware_version
-                    {
-                        log::info!(
-                            "OTA: server version='{}' current='{}', starting update",
-                            server_version, firmware_version
-                        );
-                        match ota::OtaUpdater::perform_update(firmware_url) {
-                            Ok(()) => {
-                                log::info!("OTA complete, rebooting");
-                                esp_idf_svc::hal::reset::restart();
-                            }
-                            Err(e) => log::error!("OTA update failed: {:?}", e),
-                        }
-                    } else {
-                        log::debug!("OTA: firmware up to date ({})", firmware_version);
-                    }
-                }
-            }
-            let _ = feed_watchdog();
+        if let Err(e) = run_ota_phase(&uploader, &cfg, state.scan_count) {
+            log::warn!("OTA phase error: {:?}", e);
         }
 
         // Phase 5: Feed watchdog — always, regardless of success/failure
-        let _ = feed_watchdog();
+        feed_watchdog_or_warn();
 
-        // Phase 6: Sleep until next scan cycle
-        std::thread::sleep(scan_interval);
+        // Phase 6: Sleep until next scan cycle, feeding the watchdog throughout.
+        // A plain sleep(scan_interval) would block without any feed — with a
+        // timeout equal to scan_interval this fires the TWDT every single cycle.
+        sleep_feeding_watchdog(scan_interval, cfg.max_scan_chunk_secs);
     }
+}
+
+/// Phase 1: Run a BLE scan and return all Tilt readings found.
+///
+/// Resets the recovery counter on success so that the next failure starts
+/// counting from zero rather than carrying over stale state.
+fn run_ble_phase(
+    scanner: &mut ble::BleScanner,
+    cfg: &config::Config,
+) -> Result<Vec<tilt::TiltReading>> {
+    let readings = scanner.scan_for_tilts(cfg.scan_interval_secs)?;
+    scanner.reset_recovery_counter();
+    Ok(readings)
+}
+
+/// Phase 2: Drain the buffer and upload all readings (buffered + current) to the server.
+///
+/// On WiFi failure, current readings are buffered for the next cycle.
+/// On upload failure, all readings are re-buffered and the backoff timer advances.
+/// On success, the backoff resets and the consecutive error counter clears.
+fn run_upload_phase(
+    state: &mut LoopState,
+    uploader: &http::HttpUploader,
+    wifi: &mut wifi::WifiManager,
+    readings: &[tilt::TiltReading],
+) {
+    if readings.is_empty() && state.reading_buffer.is_empty() {
+        return;
+    }
+
+    if let Err(e) = wifi.ensure_connected() {
+        log::warn!("WiFi reconnect failed: {:?}", e);
+        state.reading_buffer.push_batch(&readings);
+        state.consecutive_errors += 1;
+        if state.consecutive_errors >= config::CONSECUTIVE_ERROR_WARN_THRESHOLD {
+            log::error!(
+                "{}+ consecutive errors! wifi={}, buffer={}, errors={}",
+                config::CONSECUTIVE_ERROR_WARN_THRESHOLD,
+                wifi.is_connected(),
+                state.reading_buffer.len(),
+                state.consecutive_errors,
+            );
+        }
+        return;
+    }
+
+    // Prepend buffered readings to current batch
+    let mut all_readings = state.reading_buffer.drain_all();
+    all_readings.extend_from_slice(&readings);
+
+    // Stamp readings with current time
+    let now_ts = tilt::format_timestamp(SystemTime::now());
+    for r in &mut all_readings {
+        if r.recorded_at.is_empty() {
+            r.recorded_at = now_ts.clone();
+        }
+    }
+
+    match uploader.upload_batch(&all_readings) {
+        Ok(()) => {
+            log::info!("Uploaded {} readings", all_readings.len());
+            state.backoff.reset();
+            state.consecutive_errors = 0;
+            state.upload_ok_count = state.upload_ok_count.wrapping_add(1);
+        }
+        Err(e) => {
+            log::warn!(
+                "Upload failed (backoff={}ms, buffer={}): {:?}",
+                state.backoff.current_delay_ms(),
+                all_readings.len(),
+                e,
+            );
+            // Re-buffer all readings that failed to upload
+            state.reading_buffer.push_batch(&all_readings);
+            let delay = state.backoff.next_delay();
+            std::thread::sleep(delay);
+            state.consecutive_errors += 1;
+            state.upload_fail_count = state.upload_fail_count.wrapping_add(1);
+        }
+    }
+
+    if state.consecutive_errors >= config::CONSECUTIVE_ERROR_WARN_THRESHOLD {
+        log::error!(
+            "{}+ consecutive errors! wifi={}, buffer={}, errors={}",
+            config::CONSECUTIVE_ERROR_WARN_THRESHOLD,
+            wifi.is_connected(),
+            state.reading_buffer.len(),
+            state.consecutive_errors,
+        );
+    }
+}
+
+/// Phase 3: Log a health report every `health_report_interval_cycles` scans.
+///
+/// Includes uptime, scan/upload counts, buffer depth, WiFi status, free heap,
+/// and the consecutive error count. No-ops when the interval is 0.
+fn run_health_phase(
+    state: &LoopState,
+    start_time: &Instant,
+    wifi: &wifi::WifiManager,
+    cfg: &config::Config,
+) {
+    let interval = cfg.health_report_interval_cycles;
+    if interval == 0 || state.scan_count % interval != 0 {
+        return;
+    }
+    let uptime = start_time.elapsed();
+    let hours = uptime.as_secs() / 3600;
+    let minutes = (uptime.as_secs() % 3600) / 60;
+    let free_heap = unsafe { esp_idf_svc::sys::esp_get_free_heap_size() };
+    log::info!(
+        "HEALTH: uptime={}h{}m scans={} uploads_ok={} uploads_fail={} buffer={} wifi={} heap={} errors={}",
+        hours, minutes, state.scan_count, state.upload_ok_count, state.upload_fail_count,
+        state.reading_buffer.len(), wifi.is_connected(), free_heap, state.consecutive_errors,
+    );
+}
+
+/// Phase 4: Check for an OTA firmware update every `ota_check_interval_cycles` scans.
+///
+/// Fetches the server's OTA manifest and compares the `version` field against the
+/// running firmware version. If a newer version is available and the `url` field is
+/// a valid HTTP/HTTPS URL, downloads and flashes the firmware then reboots.
+///
+/// Returns `Err` if the OTA manifest is missing required fields or the URL scheme
+/// is invalid. Network failures are logged and swallowed (return `Ok(())`).
+fn run_ota_phase(
+    uploader: &http::HttpUploader,
+    cfg: &config::Config,
+    cycle: u32,
+) -> Result<()> {
+    let interval = cfg.ota_check_interval_cycles;
+    if interval == 0 || cycle % interval != 0 {
+        return Ok(());
+    }
+
+    feed_watchdog_or_warn();
+
+    let ota_url = format!("{}/api/v1/ota/firmware", cfg.server_url);
+    let body = match uploader.get_json(&ota_url) {
+        Ok(b) => b,
+        Err(e) => {
+            log::warn!("OTA check failed: {:?}", e);
+            return Ok(());
+        }
+    };
+
+    let server_version = body
+        .get("version")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("OTA response missing 'version' field"))?;
+
+    let firmware_url = body
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("OTA response missing 'url' field"))?;
+
+    if !firmware_url.starts_with("http://") && !firmware_url.starts_with("https://") {
+        anyhow::bail!("OTA firmware URL must be HTTP/HTTPS, got: '{}'", firmware_url);
+    }
+
+    if server_version == cfg.firmware_version {
+        log::debug!("OTA: firmware up to date ({})", cfg.firmware_version);
+        feed_watchdog_or_warn();
+        return Ok(());
+    }
+
+    log::info!(
+        "OTA: server version='{}' current='{}', starting update",
+        server_version, cfg.firmware_version
+    );
+
+    match ota::OtaUpdater::perform_update(firmware_url) {
+        Ok(()) => {
+            log::info!("OTA complete, rebooting");
+            esp_idf_svc::hal::reset::restart();
+        }
+        Err(e) => log::error!("OTA update failed: {:?}", e),
+    }
+
+    feed_watchdog_or_warn();
+    Ok(())
 }
