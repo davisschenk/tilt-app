@@ -1,22 +1,6 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from "react";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  TimeScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  type ChartOptions,
-  type ChartData,
-  type Plugin,
-  type Chart,
-} from "chart.js";
-import { Line } from "react-chartjs-2";
-import annotationPlugin from "chartjs-plugin-annotation";
-import "chartjs-adapter-date-fns";
+import { useState, useMemo } from "react";
+import ReactECharts from "echarts-for-react";
+import type { EChartsOption } from "echarts";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,26 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useReadings } from "@/hooks/use-readings";
 import { useBrewEvents } from "@/hooks/use-brew-events";
 import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
-import type { BrewEventType, BrewEventResponse } from "@/types";
-import { resolveColor, resolveFont } from "@/lib/chart-theme";
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  TimeScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  annotationPlugin,
-);
-
-function applyChartDefaults() {
-  const font = resolveFont();
-  ChartJS.defaults.font.family = font;
-  ChartJS.defaults.font.size = 12;
-}
+import type { BrewEventType } from "@/types";
+import { useEChartsTheme } from "@/lib/echarts-theme";
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
 
@@ -90,338 +56,308 @@ interface ReadingsChartProps {
   predictedFgDate?: string | null;
 }
 
-interface EventTooltipState {
-  event: BrewEventResponse;
-  anchorX: number;
-  anchorY: number;
-}
-
 export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: ReadingsChartProps) {
   const [range, setRange] = useState<TimeRange>("7d");
-  const [hoveredEvent, setHoveredEvent] = useState<EventTooltipState | null>(null);
-  const chartWrapperRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<Chart<"line"> | null>(null);
-  const DIAMOND_SIZE = 8;
-  const DIAMOND_TOP_PADDING = 36;
+  const theme = useEChartsTheme();
 
-  useEffect(() => { applyChartDefaults(); }, []);
-
-  const since = useMemo(() => {
+  const { xMin, xMax, since } = useMemo(() => {
+    const now = Date.now();
     const hours = RANGE_HOURS[range];
-    if (!hours) return undefined;
-    const d = new Date();
-    d.setHours(d.getHours() - hours);
-    return d.toISOString();
+    if (!hours) return { xMin: undefined, xMax: undefined, since: undefined };
+    const start = now - hours * 60 * 60 * 1000;
+    return {
+      xMin: start,
+      xMax: now,
+      since: new Date(start).toISOString(),
+    };
   }, [range]);
 
   const { data: readings, isLoading } = useReadings({ brewId, since });
   const { data: events } = useBrewEvents(brewId);
   const { data: analytics } = useBrewAnalytics(brewId);
 
-  const gravityPoints = useMemo(() => {
+  const gravityData = useMemo(() => {
     if (!readings) return [];
     return readings
       .slice()
       .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
-      .map((r) => ({ x: new Date(r.recordedAt).getTime(), y: r.gravity }));
+      .map((r): [number, number] => [new Date(r.recordedAt).getTime(), r.gravity]);
   }, [readings]);
 
-  const tempPoints = useMemo(() => {
+  const tempData = useMemo(() => {
     if (!readings) return [];
     return readings
       .slice()
       .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
-      .map((r) => ({ x: new Date(r.recordedAt).getTime(), y: r.temperatureF }));
+      .map((r): [number, number] => [new Date(r.recordedAt).getTime(), r.temperatureF]);
   }, [readings]);
 
   const visibleEvents = useMemo(() => {
-    if (!events || gravityPoints.length === 0) return [];
-    const minTs = gravityPoints[0].x;
-    const maxTs = gravityPoints[gravityPoints.length - 1].x;
+    if (!events || gravityData.length === 0) return [];
+    const minTs = gravityData[0][0];
+    const maxTs = gravityData[gravityData.length - 1][0];
     return events.filter((e) => {
       const ts = new Date(e.eventTime).getTime();
       return ts >= minTs && ts <= maxTs;
     });
-  }, [events, gravityPoints]);
+  }, [events, gravityData]);
 
   const visibleGaps = useMemo(() => {
-    if (!analytics?.gaps || gravityPoints.length === 0) return [];
-    const minTs = gravityPoints[0].x;
-    const maxTs = gravityPoints[gravityPoints.length - 1].x;
+    if (!analytics?.gaps || gravityData.length === 0) return [];
+    const minTs = gravityData[0][0];
+    const maxTs = gravityData[gravityData.length - 1][0];
     return analytics.gaps.filter((g) => {
       const startTs = new Date(g.startAt).getTime();
       const endTs = new Date(g.endAt).getTime();
       return endTs >= minTs && startTs <= maxTs;
     });
-  }, [analytics, gravityPoints]);
+  }, [analytics, gravityData]);
 
-  const tickUnit = range === "24h" ? "hour" : "day";
+  const option = useMemo((): EChartsOption => {
+    const gravityValues = gravityData.map(([, v]) => v);
+    const tempValues = tempData.map(([, v]) => v);
+    const gMin = gravityValues.length > 0 ? Math.min(...gravityValues) : 1.0;
+    const gMax = gravityValues.length > 0 ? Math.max(...gravityValues) : 1.1;
+    const tMin = tempValues.length > 0 ? Math.min(...tempValues) : 32;
+    const tMax = tempValues.length > 0 ? Math.max(...tempValues) : 100;
 
-  const annotations = useMemo(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: Record<string, any> = {};
+    const axisLabelFormatter = (val: number) => {
+      const d = new Date(val);
+      return range === "24h" ? format(d, "HH:mm") : format(d, "MMM d");
+    };
 
+    // Build event markLine items
+    const eventMarkLines = visibleEvents.map((ev) => ({
+      name: EVENT_LABELS[ev.eventType],
+      xAxis: new Date(ev.eventTime).getTime(),
+      lineStyle: {
+        color: EVENT_COLORS[ev.eventType],
+        type: "dashed" as const,
+        width: 1.5,
+      },
+      label: {
+        show: true,
+        position: "insideStartTop" as const,
+        formatter: EVENT_LABELS[ev.eventType],
+        color: EVENT_COLORS[ev.eventType],
+        fontSize: 10,
+      },
+    }));
+
+    const staticMarkLines: unknown[] = [];
     if (targetFg != null) {
-      result["targetFg"] = {
-        type: "line",
-        yScaleID: "yGravity",
-        yMin: targetFg,
-        yMax: targetFg,
-        borderColor: "#2F9E44",
-        borderWidth: 2,
-        borderDash: [6, 4],
+      staticMarkLines.push({
+        name: "targetFg",
+        yAxis: targetFg,
+        lineStyle: { color: "#2F9E44", type: "dashed", width: 2 },
         label: {
-          display: true,
-          content: `Target FG: ${targetFg.toFixed(3)}`,
-          position: "end",
+          show: true,
+          position: "insideEndTop",
+          formatter: `Target FG: ${targetFg.toFixed(3)}`,
           color: "#2F9E44",
-          backgroundColor: "transparent",
-          font: { size: 11 },
+          fontSize: 11,
         },
-      };
-    }
-
-    if (predictedFgDate != null) {
-      result["predictedFg"] = {
-        type: "line",
-        xScaleID: "x",
-        xMin: new Date(predictedFgDate).getTime(),
-        xMax: new Date(predictedFgDate).getTime(),
-        borderColor: "#9c36b5",
-        borderWidth: 2,
-        borderDash: [5, 3],
-        label: {
-          display: true,
-          content: "Predicted FG",
-          position: "start",
-          color: "#9c36b5",
-          backgroundColor: "transparent",
-          font: { size: 10 },
-        },
-      };
-    }
-
-    visibleGaps.forEach((g, i) => {
-      result[`gap-${i}`] = {
-        type: "box",
-        xScaleID: "x",
-        xMin: new Date(g.startAt).getTime(),
-        xMax: new Date(g.endAt).getTime(),
-        backgroundColor: "rgba(239,68,68,0.12)",
-        borderWidth: 0,
-      };
-    });
-
-    visibleEvents.forEach((ev) => {
-      result[`event-${ev.id}`] = {
-        type: "line",
-        xScaleID: "x",
-        xMin: new Date(ev.eventTime).getTime(),
-        xMax: new Date(ev.eventTime).getTime(),
-        borderColor: EVENT_COLORS[ev.eventType],
-        borderWidth: 1.5,
-        borderDash: [4, 3],
-      };
-    });
-
-    return result;
-  }, [targetFg, predictedFgDate, visibleGaps, visibleEvents]);
-
-  const eventDiamondPlugin = useCallback((): Plugin<"line"> => ({
-    id: "eventDiamonds",
-    afterDraw(chart: Chart<"line">) {
-      if (visibleEvents.length === 0) return;
-      const ctx = chart.ctx;
-      const xScale = chart.scales["x"];
-      if (!xScale) return;
-      const centerY = DIAMOND_TOP_PADDING / 2;
-
-      visibleEvents.forEach((ev) => {
-        const px = xScale.getPixelForValue(new Date(ev.eventTime).getTime());
-        if (px < xScale.left || px > xScale.right) return;
-        const color = EVENT_COLORS[ev.eventType];
-        const s = DIAMOND_SIZE;
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(px, centerY - s);
-        ctx.lineTo(px + s, centerY);
-        ctx.lineTo(px, centerY + s);
-        ctx.lineTo(px - s, centerY);
-        ctx.closePath();
-        ctx.fillStyle = color;
-        ctx.strokeStyle = resolveColor("--background");
-        ctx.lineWidth = 2;
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
       });
-    },
-  }), [visibleEvents, DIAMOND_TOP_PADDING, DIAMOND_SIZE]);
-
-  const handleChartMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (visibleEvents.length === 0) { setHoveredEvent(null); return; }
-    const chart = chartRef.current;
-    if (!chart) { setHoveredEvent(null); return; }
-    const canvas = e.currentTarget;
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const xScale = chart.scales["x"];
-    if (!xScale) { setHoveredEvent(null); return; }
-    const centerY = DIAMOND_TOP_PADDING / 2;
-    const hitRadius = DIAMOND_SIZE + 4;
-
-    const wrapper = chartWrapperRef.current;
-    if (!wrapper) return;
-    const wrapperRect = wrapper.getBoundingClientRect();
-
-    for (const ev of visibleEvents) {
-      const px = xScale.getPixelForValue(new Date(ev.eventTime).getTime());
-      if (px < xScale.left || px > xScale.right) continue;
-      if (Math.abs(mx - px) <= hitRadius && Math.abs(my - centerY) <= hitRadius) {
-        setHoveredEvent({
-          event: ev,
-          anchorX: px + (wrapper.getBoundingClientRect().left - wrapperRect.left),
-          anchorY: centerY,
-        });
-        return;
-      }
     }
-    setHoveredEvent(null);
-  }, [visibleEvents, DIAMOND_TOP_PADDING, DIAMOND_SIZE]);
-
-  const chartData: ChartData<"line"> = useMemo(() => ({
-    datasets: [
-      {
-        label: "Gravity (SG)",
-        data: gravityPoints,
-        borderColor: "#1971C2",
-        backgroundColor: "transparent",
-        borderWidth: 2,
-        pointRadius: 0,
-        pointHitRadius: 6,
-        tension: 0.3,
-        yAxisID: "yGravity",
-        parsing: false,
-      },
-      {
-        label: "Temperature (°F)",
-        data: tempPoints,
-        borderColor: "#E8590C",
-        backgroundColor: "transparent",
-        borderWidth: 2,
-        pointRadius: 0,
-        pointHitRadius: 6,
-        tension: 0.3,
-        yAxisID: "yTemp",
-        parsing: false,
-      },
-    ],
-  }), [gravityPoints, tempPoints]);
-
-  const gravityMin = gravityPoints.length > 0 ? Math.min(...gravityPoints.map((p) => p.y)) : 1.0;
-  const gravityMax = gravityPoints.length > 0 ? Math.max(...gravityPoints.map((p) => p.y)) : 1.1;
-  const tempMin = tempPoints.length > 0 ? Math.min(...tempPoints.map((p) => p.y)) : 32;
-  const tempMax = tempPoints.length > 0 ? Math.max(...tempPoints.map((p) => p.y)) : 100;
-
-  const chartOptions: ChartOptions<"line"> = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: false,
-    layout: {
-      padding: { top: DIAMOND_TOP_PADDING },
-    },
-    interaction: {
-      mode: "index",
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        position: "bottom",
-        labels: {
-          boxWidth: 12,
-          usePointStyle: true,
-          pointStyleWidth: 16,
-          font: { size: 12, family: resolveFont() },
-          color: resolveColor("--foreground"),
-          padding: 16,
+    if (predictedFgDate != null) {
+      staticMarkLines.push({
+        name: "predictedFg",
+        xAxis: new Date(predictedFgDate).getTime(),
+        lineStyle: { color: "#9c36b5", type: "dashed", width: 2 },
+        label: {
+          show: true,
+          position: "insideStartTop",
+          formatter: "Predicted FG",
+          color: "#9c36b5",
+          fontSize: 10,
         },
-      },
+      });
+    }
+
+    const allMarkLineData = [...eventMarkLines, ...staticMarkLines];
+
+    const gapMarkAreaData = visibleGaps.map((g) => [
+      { xAxis: new Date(g.startAt).getTime() },
+      { xAxis: new Date(g.endAt).getTime() },
+    ]);
+
+    return {
+      backgroundColor: "transparent",
+      animation: false,
       tooltip: {
-        enabled: !hoveredEvent,
-        displayColors: true,
-        usePointStyle: true,
-        boxWidth: 8,
-        boxHeight: 8,
-        multiKeyBackground: resolveColor("--popover"),
-        backgroundColor: resolveColor("--popover"),
-        borderColor: resolveColor("--border"),
+        trigger: "axis",
+        axisPointer: { type: "cross" },
+        backgroundColor: theme.popoverBg,
+        borderColor: theme.borderColor,
         borderWidth: 1,
-        titleColor: resolveColor("--muted-foreground"),
-        bodyColor: resolveColor("--popover-foreground"),
         padding: 10,
-        caretSize: 5,
-        cornerRadius: 8,
-        titleFont: { size: 12, family: resolveFont() },
-        bodyFont: { size: 13, family: resolveFont() },
-        callbacks: {
-          title: (items) => format(new Date(Number(items[0]?.parsed.x)), "MMM d, yyyy · HH:mm"),
-          label: (item) => {
-            if (item.parsed.y == null) return;
-            if (item.datasetIndex === 0) return `Gravity    ${item.parsed.y.toFixed(3)} SG`;
-            return `Temp        ${item.parsed.y.toFixed(1)}°F`;
+        textStyle: { color: theme.popoverFg, fontFamily: theme.fontFamily, fontSize: 13 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        formatter: (params: any) => {
+          if (!params || !Array.isArray(params) || params.length === 0) return "";
+          const ts: number = params[0].axisValue;
+          const title = format(new Date(ts), "MMM d, yyyy · HH:mm");
+          let html = `<div style="font-size:12px;color:${theme.mutedColor};margin-bottom:6px">${title}</div>`;
+          for (const item of params as Array<{ seriesName: string; value: [number, number]; color: string }>) {
+            if (item.value == null || item.value[1] == null) continue;
+            const val = item.value[1];
+            const isGravity = item.seriesName === "Gravity";
+            const formatted = isGravity ? `${val.toFixed(3)} SG` : `${val.toFixed(1)}°F`;
+            html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${item.color}"></span>
+              <span>${item.seriesName}</span>
+              <span style="margin-left:auto;font-weight:600">${formatted}</span>
+            </div>`;
+          }
+          return html;
+        },
+      },
+      axisPointer: {
+        link: [{ xAxisIndex: "all" }],
+      },
+      legend: {
+        data: ["Gravity", "Temperature"],
+        bottom: 0,
+        textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: 12 },
+      },
+      grid: [
+        { left: 72, right: 64, top: 12, bottom: "54%" },
+        { left: 72, right: 64, top: "50%", bottom: 32 },
+      ],
+      xAxis: [
+        {
+          gridIndex: 0,
+          type: "time",
+          min: xMin,
+          max: xMax,
+          axisLabel: { color: theme.mutedColor, fontFamily: theme.fontFamily, fontSize: 11, formatter: axisLabelFormatter },
+          splitLine: { lineStyle: { color: theme.gridColor } },
+          axisLine: { lineStyle: { color: theme.borderColor } },
+          axisTick: { lineStyle: { color: theme.borderColor } },
+        },
+        {
+          gridIndex: 1,
+          type: "time",
+          min: xMin,
+          max: xMax,
+          axisLabel: { color: theme.mutedColor, fontFamily: theme.fontFamily, fontSize: 11, formatter: axisLabelFormatter },
+          splitLine: { lineStyle: { color: theme.gridColor } },
+          axisLine: { lineStyle: { color: theme.borderColor } },
+          axisTick: { lineStyle: { color: theme.borderColor } },
+        },
+      ],
+      yAxis: [
+        {
+          gridIndex: 0,
+          name: "SG",
+          nameTextStyle: { color: "#1971C2", fontFamily: theme.fontFamily, fontSize: 11 },
+          min: Math.floor(gMin * 1000 - 1) / 1000,
+          max: Math.ceil(gMax * 1000 + 1) / 1000,
+          axisLabel: {
+            color: "#1971C2",
+            fontFamily: theme.fontFamily,
+            fontSize: 11,
+            formatter: (val: number) => val.toFixed(3),
           },
+          splitLine: { lineStyle: { color: theme.gridColor } },
+          axisLine: { lineStyle: { color: theme.borderColor } },
         },
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      annotation: { annotations } as any,
-    },
-    scales: {
-      x: {
-        type: "time",
-        time: {
-          unit: tickUnit,
-          displayFormats: { hour: "HH:mm", day: "MMM d", month: "MMM d" },
-          tooltipFormat: "MMM d HH:mm",
+        {
+          gridIndex: 1,
+          name: "°F",
+          nameTextStyle: { color: "#E8590C", fontFamily: theme.fontFamily, fontSize: 11 },
+          min: Math.floor(tMin - 2),
+          max: Math.ceil(tMax + 2),
+          axisLabel: {
+            color: "#E8590C",
+            fontFamily: theme.fontFamily,
+            fontSize: 11,
+            formatter: (val: number) => `${val.toFixed(1)}°F`,
+          },
+          splitLine: { show: false },
+          axisLine: { lineStyle: { color: theme.borderColor } },
         },
-        ticks: {
-          maxTicksLimit: 8,
-          font: { size: 11, family: resolveFont() },
-          color: resolveColor("--muted-foreground"),
-          maxRotation: 0,
+      ],
+      dataZoom: [
+        { type: "inside", xAxisIndex: [0, 1] },
+      ],
+      series: [
+        {
+          name: "Gravity",
+          type: "line",
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          data: gravityData,
+          lineStyle: { color: "#1971C2", width: 2 },
+          itemStyle: { color: "#1971C2" },
+          showSymbol: false,
+          smooth: true,
+          markLine: {
+            silent: false,
+            symbol: ["none", "none"],
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            data: allMarkLineData as any,
+            tooltip: {
+              show: true,
+              backgroundColor: theme.popoverBg,
+              borderColor: theme.borderColor,
+              borderWidth: 1,
+              padding: 10,
+              textStyle: { color: theme.popoverFg, fontFamily: theme.fontFamily, fontSize: 12 },
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              formatter: (params: any) => {
+                const xVal: number | undefined = params?.data?.xAxis;
+                if (xVal == null) return "";
+                const ev = visibleEvents.find(
+                  (e) => new Date(e.eventTime).getTime() === xVal,
+                );
+                if (!ev) return "";
+                const color = EVENT_COLORS[ev.eventType];
+                const label = EVENT_LABELS[ev.eventType];
+                const time = format(new Date(ev.eventTime), "MMM d, yyyy · HH:mm");
+                let html = `<div style="font-weight:600;color:${color};margin-bottom:4px">${label}</div>`;
+                html += `<div style="font-size:11px;color:${theme.mutedColor}">${time}</div>`;
+                if (ev.notes) {
+                  html += `<div style="font-size:12px;margin-top:4px;max-width:200px">${ev.notes}</div>`;
+                }
+                return html;
+              },
+            },
+          },
+          markArea: gapMarkAreaData.length > 0
+            ? {
+                silent: true,
+                itemStyle: { color: "rgba(239,68,68,0.12)", borderWidth: 0 },
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                data: gapMarkAreaData as any,
+              }
+            : undefined,
         },
-        grid: { color: "rgba(128,128,128,0.1)" },
-      },
-      yGravity: {
-        position: "left",
-        min: Math.floor(gravityMin * 1000 - 1) / 1000,
-        max: Math.ceil(gravityMax * 1000 + 1) / 1000,
-        ticks: {
-          font: { size: 11, family: resolveFont() },
-          color: "#1971C2",
-          callback: (v) => Number(v).toFixed(3),
+        {
+          name: "Temperature",
+          type: "line",
+          xAxisIndex: 1,
+          yAxisIndex: 1,
+          data: tempData,
+          lineStyle: { color: "#E8590C", width: 2 },
+          itemStyle: { color: "#E8590C" },
+          showSymbol: false,
+          smooth: true,
         },
-        grid: { color: "rgba(128,128,128,0.1)" },
-      },
-      yTemp: {
-        position: "right",
-        min: Math.floor(tempMin - 2),
-        max: Math.ceil(tempMax + 2),
-        ticks: {
-          font: { size: 11, family: resolveFont() },
-          color: "#E8590C",
-          callback: (v) => `${Number(v).toFixed(1)}°F`,
-        },
-        grid: { drawOnChartArea: false },
-      },
-    },
-  }), [annotations, tickUnit, gravityMin, gravityMax, tempMin, tempMax, hoveredEvent, DIAMOND_TOP_PADDING]);
-
-  const diamondPlugin = useMemo(() => eventDiamondPlugin(), [eventDiamondPlugin]);
-
-  useEffect(() => {
-    if (chartRef.current) chartRef.current.update("none");
-  }, [hoveredEvent]);
+      ],
+    };
+  }, [
+    theme,
+    gravityData,
+    tempData,
+    visibleEvents,
+    visibleGaps,
+    targetFg,
+    predictedFgDate,
+    xMin,
+    xMax,
+    range,
+  ]);
 
   return (
     <Card>
@@ -442,71 +378,13 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <Skeleton className="h-72 w-full" />
-        ) : gravityPoints.length === 0 ? (
-          <div className="flex items-center justify-center h-72 text-muted-foreground">
+          <Skeleton className="h-[420px] w-full" />
+        ) : gravityData.length === 0 ? (
+          <div className="flex items-center justify-center h-[420px] text-muted-foreground">
             No readings for this time range
           </div>
         ) : (
-          <div ref={chartWrapperRef} className="relative" style={{ height: 300 }}>
-            <Line
-              ref={chartRef}
-              data={chartData}
-              options={chartOptions}
-              plugins={[diamondPlugin]}
-              onMouseMove={handleChartMouseMove}
-              onMouseLeave={() => setHoveredEvent(null)}
-            />
-            {hoveredEvent && (() => {
-              const ev = hoveredEvent.event;
-              const color = EVENT_COLORS[ev.eventType];
-              const label = EVENT_LABELS[ev.eventType];
-              const wrapperW = chartWrapperRef.current?.clientWidth ?? 400;
-              const tipW = 210;
-              const raw = hoveredEvent.anchorX - tipW / 2;
-              const left = Math.max(4, Math.min(raw, wrapperW - tipW - 4));
-              const top = hoveredEvent.anchorY + DIAMOND_SIZE + 6;
-              return (
-                <div
-                  className="absolute z-50 pointer-events-none rounded-lg border bg-popover text-popover-foreground shadow-lg"
-                  style={{ left, top, width: tipW }}
-                >
-                  <div
-                    className="flex items-center gap-2 px-3 pt-3 pb-2 border-b"
-                    style={{ borderColor: `${color}40` }}
-                  >
-                    <span
-                      className="shrink-0"
-                      style={{
-                        display: "inline-block",
-                        width: 10,
-                        height: 10,
-                        background: color,
-                        transform: "rotate(45deg)",
-                        borderRadius: 1,
-                      }}
-                    />
-                    <span className="text-sm font-semibold leading-none" style={{ color }}>
-                      {label}
-                    </span>
-                    <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
-                      {format(new Date(ev.eventTime), "MMM d")}
-                    </span>
-                  </div>
-                  <div className="px-3 py-2 space-y-1">
-                    <div className="text-xs text-muted-foreground">
-                      {format(new Date(ev.eventTime), "HH:mm")}
-                    </div>
-                    {ev.notes && (
-                      <div className="text-xs text-foreground leading-relaxed line-clamp-4">
-                        {ev.notes}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
+          <ReactECharts option={option} style={{ height: 420 }} notMerge />
         )}
       </CardContent>
     </Card>

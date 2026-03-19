@@ -1,29 +1,10 @@
-import { useMemo, useEffect } from "react";
-import {
-  Chart as ChartJS,
-  TimeScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Tooltip,
-  Legend,
-  type ChartData,
-  type ChartOptions,
-} from "chart.js";
-import { Line } from "react-chartjs-2";
-import "chartjs-adapter-date-fns";
+import { useMemo } from "react";
+import ReactECharts from "echarts-for-react";
+import type { EChartsOption } from "echarts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useReadings } from "@/hooks/use-readings";
-import { resolveColor, resolveFont } from "@/lib/chart-theme";
-
-ChartJS.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
-
-function applyChartDefaults() {
-  const font = resolveFont();
-  ChartJS.defaults.font.family = font;
-  ChartJS.defaults.font.size = 12;
-}
+import { useEChartsTheme } from "@/lib/echarts-theme";
 
 const BREW_COLORS: Record<string, string> = {
   Red: "#E03131",
@@ -37,103 +18,116 @@ const BREW_COLORS: Record<string, string> = {
 };
 
 export default function RecentReadingsChart() {
-  useEffect(() => { applyChartDefaults(); }, []);
+  const theme = useEChartsTheme();
 
-  const since = useMemo(() => {
-    const d = new Date();
-    d.setHours(d.getHours() - 24);
-    return d.toISOString();
+  const { since, xMin, xMax } = useMemo(() => {
+    const now = Date.now();
+    const start = now - 24 * 60 * 60 * 1000;
+    return {
+      since: new Date(start).toISOString(),
+      xMin: start,
+      xMax: now,
+    };
   }, []);
 
   const { data: readings, isLoading } = useReadings({ since });
 
-  const { datasets, colorNames } = useMemo(() => {
-    if (!readings || readings.length === 0) return { datasets: [], colorNames: [] };
-
-    const byColor = new Map<string, { x: number; y: number }[]>();
+  const seriesData = useMemo(() => {
+    if (!readings || readings.length === 0) return [];
+    const byColor = new Map<string, [number, number][]>();
     for (const r of readings) {
       const pts = byColor.get(r.color) ?? [];
-      pts.push({ x: new Date(r.recordedAt).getTime(), y: r.gravity });
+      pts.push([new Date(r.recordedAt).getTime(), r.gravity]);
       byColor.set(r.color, pts);
     }
-
-    const colorNames = Array.from(byColor.keys());
-    const datasets = colorNames.map((color) => ({
-      label: color,
-      data: (byColor.get(color) ?? []).sort((a, b) => a.x - b.x),
-      borderColor: BREW_COLORS[color] ?? "#868E96",
-      backgroundColor: "transparent",
-      borderWidth: 2,
-      pointRadius: 0,
-      pointHitRadius: 6,
-      tension: 0.3,
-      parsing: false as const,
+    return Array.from(byColor.entries()).map(([color, data]) => ({
+      color,
+      data: data.slice().sort((a, b) => a[0] - b[0]),
     }));
-
-    return { datasets, colorNames };
   }, [readings]);
 
-  const chartData: ChartData<"line"> = useMemo(() => ({ datasets }), [datasets]);
-
-  const chartOptions: ChartOptions<"line"> = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
+  const option = useMemo((): EChartsOption => ({
+    backgroundColor: "transparent",
     animation: false,
-    interaction: { mode: "index", intersect: false },
-    plugins: {
-      legend: {
-        position: "bottom",
-        labels: {
-          boxWidth: 12,
-          usePointStyle: true,
-          pointStyleWidth: 16,
-          font: { size: 12, family: resolveFont() },
-          color: resolveColor("--foreground"),
-          padding: 16,
-        },
-      },
-      tooltip: {
-        displayColors: true,
-        usePointStyle: true,
-        boxWidth: 8,
-        boxHeight: 8,
-        multiKeyBackground: resolveColor("--popover"),
-        backgroundColor: resolveColor("--popover"),
-        borderColor: resolveColor("--border"),
-        borderWidth: 1,
-        titleColor: resolveColor("--muted-foreground"),
-        bodyColor: resolveColor("--popover-foreground"),
-        padding: 10,
-        caretSize: 5,
-        cornerRadius: 8,
-        titleFont: { size: 12, family: resolveFont() },
-        bodyFont: { size: 13, family: resolveFont() },
-        callbacks: {
-          title: (items) => {
-            const d = new Date(Number(items[0]?.parsed.x));
-            return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} · ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-          },
-          label: (item) => item.parsed.y != null ? `${item.dataset.label}    ${item.parsed.y.toFixed(3)} SG` : "",
-        },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "cross" },
+      backgroundColor: theme.popoverBg,
+      borderColor: theme.borderColor,
+      borderWidth: 1,
+      padding: 10,
+      textStyle: { color: theme.popoverFg, fontFamily: theme.fontFamily, fontSize: 13 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      formatter: (params: any) => {
+        if (!params || !Array.isArray(params) || params.length === 0) return "";
+        const ts: number = params[0].axisValue;
+        const d = new Date(ts);
+        const title = `${d.toLocaleDateString([], { month: "short", day: "numeric" })} · ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+        let html = `<div style="font-size:12px;color:${theme.mutedColor};margin-bottom:6px">${title}</div>`;
+        for (const item of params as Array<{ seriesName: string; value: [number, number]; color: string }>) {
+          if (item.value == null || item.value[1] == null) continue;
+          const val = item.value[1];
+          html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${item.color}"></span>
+            <span>${item.seriesName}</span>
+            <span style="margin-left:auto;font-weight:600">${val.toFixed(3)} SG</span>
+          </div>`;
+        }
+        return html;
       },
     },
-    scales: {
-      x: {
-        type: "time",
-        time: { unit: "hour", displayFormats: { hour: "HH:mm" } },
-        ticks: { maxTicksLimit: 8, font: { size: 11, family: resolveFont() }, color: resolveColor("--muted-foreground"), maxRotation: 0 },
-        grid: { color: "rgba(128,128,128,0.1)" },
-      },
-      y: {
-        ticks: {
-          font: { size: 11, family: resolveFont() },
-          color: resolveColor("--muted-foreground"),
-          callback: (v) => Number(v).toFixed(3),
-        },
-        grid: { color: "rgba(128,128,128,0.1)" },
-      },
+    legend: {
+      bottom: 5,
+      textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: 12 },
     },
-  }), [colorNames]);
+    grid: { left: 72, right: 20, top: 10, bottom: 80 },
+    xAxis: {
+      type: "time",
+      min: xMin,
+      max: xMax,
+      axisLabel: {
+        color: theme.mutedColor,
+        fontFamily: theme.fontFamily,
+        fontSize: 11,
+        formatter: (val: number) => {
+          const d = new Date(val);
+          return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        },
+      },
+      splitLine: { lineStyle: { color: theme.gridColor } },
+      axisLine: { lineStyle: { color: theme.borderColor } },
+      axisTick: { lineStyle: { color: theme.borderColor } },
+    },
+    yAxis: {
+      axisLabel: {
+        color: theme.mutedColor,
+        fontFamily: theme.fontFamily,
+        fontSize: 11,
+        formatter: (val: number) => val.toFixed(3),
+      },
+      splitLine: { lineStyle: { color: theme.gridColor } },
+      axisLine: { lineStyle: { color: theme.borderColor } },
+    },
+    dataZoom: [
+      { type: "inside" },
+      {
+        type: "slider",
+        bottom: 32,
+        height: 18,
+        borderColor: theme.borderColor,
+        textStyle: { color: theme.mutedColor, fontSize: 10 },
+      },
+    ],
+    series: seriesData.map(({ color, data }) => ({
+      name: color,
+      type: "line",
+      data,
+      lineStyle: { color: BREW_COLORS[color] ?? "#868E96", width: 2 },
+      itemStyle: { color: BREW_COLORS[color] ?? "#868E96" },
+      showSymbol: false,
+      smooth: true,
+    })),
+  }), [theme, seriesData, xMin, xMax]);
 
   return (
     <Card className="mt-8">
@@ -142,15 +136,13 @@ export default function RecentReadingsChart() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <Skeleton className="h-64 w-full" />
-        ) : datasets.length === 0 ? (
-          <div className="flex items-center justify-center h-64 text-muted-foreground">
+          <Skeleton className="h-[300px] w-full" />
+        ) : seriesData.length === 0 ? (
+          <div className="flex items-center justify-center h-[300px] text-muted-foreground">
             No readings in the last 24 hours
           </div>
         ) : (
-          <div style={{ height: 300 }}>
-            <Line data={chartData} options={chartOptions} />
-          </div>
+          <ReactECharts option={option} style={{ height: 300 }} notMerge />
         )}
       </CardContent>
     </Card>
