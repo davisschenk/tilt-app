@@ -46,6 +46,17 @@ export default function RecentReadingsChart() {
     }));
   }, [readings]);
 
+  const { gMin, gMax } = useMemo(() => {
+    const allValues = seriesData.flatMap(({ data }) => data.map(([, v]) => v));
+    if (allValues.length === 0) return { gMin: 1.0, gMax: 1.1 };
+    const min = Math.min(...allValues);
+    const max = Math.max(...allValues);
+    return {
+      gMin: Math.floor(min * 1000 - 2) / 1000,
+      gMax: Math.ceil(max * 1000 + 2) / 1000,
+    };
+  }, [seriesData]);
+
   const option = useMemo((): EChartsOption => ({
     backgroundColor: "transparent",
     animation: false,
@@ -81,7 +92,7 @@ export default function RecentReadingsChart() {
       icon: "circle",
       textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: 12 },
     },
-    grid: { left: 72, right: 20, top: 10, bottom: 80 },
+    grid: { left: 72, right: 20, top: 10, bottom: 40 },
     xAxis: {
       type: "time",
       min: xMin,
@@ -100,6 +111,8 @@ export default function RecentReadingsChart() {
       axisTick: { lineStyle: { color: theme.borderColor } },
     },
     yAxis: {
+      min: gMin,
+      max: gMax,
       axisLabel: {
         color: theme.mutedColor,
         fontFamily: theme.fontFamily,
@@ -109,16 +122,7 @@ export default function RecentReadingsChart() {
       splitLine: { lineStyle: { color: theme.gridColor } },
       axisLine: { lineStyle: { color: theme.borderColor } },
     },
-    dataZoom: [
-      { type: "inside" },
-      {
-        type: "slider",
-        bottom: 32,
-        height: 18,
-        borderColor: theme.borderColor,
-        textStyle: { color: theme.mutedColor, fontSize: 10 },
-      },
-    ],
+    dataZoom: [{ type: "inside" }],
     series: seriesData.map(({ color, data }) => ({
       name: color,
       type: "line",
@@ -128,7 +132,7 @@ export default function RecentReadingsChart() {
       showSymbol: false,
       smooth: true,
     })),
-  }), [theme, seriesData, xMin, xMax]);
+  }), [theme, seriesData, xMin, xMax, gMin, gMax]);
 
   return (
     <Card className="mt-8">

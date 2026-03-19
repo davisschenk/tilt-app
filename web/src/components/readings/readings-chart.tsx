@@ -1,7 +1,8 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
 import { format } from "date-fns";
+import { CalendarPlus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,6 +11,7 @@ import { useBrewEvents } from "@/hooks/use-brew-events";
 import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
 import type { BrewEventType, BrewEventResponse } from "@/types";
 import { useEChartsTheme } from "@/lib/echarts-theme";
+import { CreateEventDialog } from "@/components/brew/brew-event-log";
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
 
@@ -65,9 +67,41 @@ interface EventTooltipState {
 export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: ReadingsChartProps) {
   const [range, setRange] = useState<TimeRange>("7d");
   const [eventTooltip, setEventTooltip] = useState<EventTooltipState | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; isoTime: string } | null>(null);
+  const [addEventOpen, setAddEventOpen] = useState(false);
+  const [addEventTime, setAddEventTime] = useState<string | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
   const echartsRef = useRef<ReactECharts>(null);
   const theme = useEChartsTheme();
+
+  const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const chart = echartsRef.current?.getEchartsInstance();
+    if (!chart) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    const coords = chart.convertFromPixel({ gridIndex: 0 }, [offsetX, offsetY]);
+    if (!coords) return;
+    const ts = (coords as [number, number])[0];
+    if (!ts || isNaN(ts)) return;
+    chart.setOption({ tooltip: { show: false } }, false);
+    setContextMenu({ x: offsetX, y: offsetY, isoTime: new Date(ts).toISOString() });
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => {
+      setContextMenu(null);
+      echartsRef.current?.getEchartsInstance().setOption({ tooltip: { show: true } }, false);
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [contextMenu]);
 
   const { xMin, xMax, since } = useMemo(() => {
     const now = Date.now();
@@ -421,7 +455,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
             No readings for this time range
           </div>
         ) : (
-          <div ref={containerRef} className="relative">
+          <div ref={containerRef} className="relative" onContextMenu={handleContextMenu}>
             <ReactECharts
               ref={echartsRef}
               option={option}
@@ -429,6 +463,25 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
               notMerge
               onEvents={onEvents}
             />
+            {contextMenu && (
+              <div
+                className="absolute z-50 min-w-[160px] rounded-md border bg-popover text-popover-foreground shadow-md py-1"
+                style={{ left: contextMenu.x, top: contextMenu.y }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    setAddEventTime(contextMenu.isoTime);
+                    setAddEventOpen(true);
+                    setContextMenu(null);
+                  }}
+                >
+                  <CalendarPlus className="h-4 w-4" />
+                  Add event at {format(new Date(contextMenu.isoTime), "MMM d, HH:mm")}
+                </button>
+              </div>
+            )}
             {eventTooltip && (() => {
               const ev = eventTooltip.event;
               const color = EVENT_COLORS[ev.eventType];
@@ -485,6 +538,12 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
           </div>
         )}
       </CardContent>
+      <CreateEventDialog
+        brewId={brewId}
+        open={addEventOpen}
+        onOpenChange={setAddEventOpen}
+        initialEventTime={addEventTime}
+      />
     </Card>
   );
 }

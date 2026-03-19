@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import {
   Beaker,
@@ -113,13 +113,14 @@ function nowDatetimeLocal(): string {
   return toDatetimeLocal(new Date().toISOString());
 }
 
-interface CreateEventDialogProps {
+export interface CreateEventDialogProps {
   brewId: string;
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  initialEventTime?: string;
 }
 
-function CreateEventDialog({ brewId, open, onOpenChange }: CreateEventDialogProps) {
+export function CreateEventDialog({ brewId, open, onOpenChange, initialEventTime }: CreateEventDialogProps) {
   const create = useCreateBrewEvent(brewId);
   const [eventType, setEventType] = useState<BrewEventType>("note");
   const [label, setLabel] = useState("");
@@ -127,6 +128,12 @@ function CreateEventDialog({ brewId, open, onOpenChange }: CreateEventDialogProp
   const [gravity, setGravity] = useState("");
   const [temp, setTemp] = useState("");
   const [eventTime, setEventTime] = useState(nowDatetimeLocal());
+
+  useEffect(() => {
+    if (open) {
+      setEventTime(initialEventTime ? toDatetimeLocal(initialEventTime) : nowDatetimeLocal());
+    }
+  }, [open, initialEventTime]);
 
   function reset() {
     setEventType("note");
