@@ -121,7 +121,7 @@ esp32-build:
 
 # Flash the ESP32 client and open serial monitor
 esp32-flash: esp32-build
-    cd esp32-client && espflash flash --monitor target/xtensa-esp32-espidf/release/esp32-client
+    cd esp32-client && espflash flash --baud 115200 --monitor target/xtensa-esp32-espidf/release/esp32-client
 
 # Open ESP32 serial monitor without reflashing
 esp32-monitor:

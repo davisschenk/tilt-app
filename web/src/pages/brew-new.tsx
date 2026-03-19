@@ -119,12 +119,23 @@ export default function BrewNew() {
                 <SelectContent>
                   {hydrometers?.map((h) => {
                     const inUse = usedHydrometerIds.has(h.id);
+                    if (inUse) {
+                      return (
+                        <div
+                          key={h.id}
+                          className="flex items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm opacity-50 cursor-not-allowed select-none"
+                        >
+                          <ColorDot color={h.color} />
+                          {h.name || h.color}
+                          <span className="text-xs text-muted-foreground">(in use)</span>
+                        </div>
+                      );
+                    }
                     return (
-                      <SelectItem key={h.id} value={h.id} disabled={inUse}>
+                      <SelectItem key={h.id} value={h.id}>
                         <span className="flex items-center gap-2">
                           <ColorDot color={h.color} />
                           {h.name || h.color}
-                          {inUse && <span className="text-xs text-muted-foreground">(in use)</span>}
                         </span>
                       </SelectItem>
                     );
