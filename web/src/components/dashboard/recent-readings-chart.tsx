@@ -51,9 +51,11 @@ export default function RecentReadingsChart() {
     if (allValues.length === 0) return { gMin: 1.0, gMax: 1.1 };
     const min = Math.min(...allValues);
     const max = Math.max(...allValues);
+    const span = max - min;
+    const pad = Math.max(span * 0.15, 0.005);
     return {
-      gMin: Math.floor(min * 1000 - 2) / 1000,
-      gMax: Math.ceil(max * 1000 + 2) / 1000,
+      gMin: Math.round((min - pad) * 1000) / 1000,
+      gMax: Math.round((max + pad) * 1000) / 1000,
     };
   }, [seriesData]);
 
@@ -122,7 +124,6 @@ export default function RecentReadingsChart() {
       splitLine: { lineStyle: { color: theme.gridColor } },
       axisLine: { lineStyle: { color: theme.borderColor } },
     },
-    dataZoom: [{ type: "inside" }],
     series: seriesData.map(({ color, data }) => ({
       name: color,
       type: "line",
