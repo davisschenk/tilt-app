@@ -92,9 +92,11 @@ export default function RecentReadingsChart() {
     legend: {
       bottom: 5,
       icon: "circle",
-      textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: 12 },
+      itemGap: 16,
+      itemHeight: 10,
+      textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: 12, lineHeight: 18 },
     },
-    grid: { left: 72, right: 20, top: 10, bottom: 40 },
+    grid: { left: 72, right: 20, top: 10, bottom: 60 },
     xAxis: {
       type: "time",
       min: xMin,
