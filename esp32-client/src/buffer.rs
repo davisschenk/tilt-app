@@ -8,12 +8,17 @@ use std::time::Duration;
 
 use crate::tilt::TiltReading;
 
+/// Bounded circular buffer for `TiltReading` values.
+///
+/// When full, the oldest reading is silently dropped to make room for the
+/// newest. Used to preserve readings across upload failures or WiFi outages.
 pub struct ReadingBuffer {
     readings: VecDeque<TiltReading>,
     capacity: usize,
 }
 
 impl ReadingBuffer {
+    /// Create a new empty buffer with the given maximum `capacity`.
     pub fn new(capacity: usize) -> Self {
         Self {
             readings: VecDeque::with_capacity(capacity),
@@ -21,6 +26,8 @@ impl ReadingBuffer {
         }
     }
 
+    /// Push all readings in `readings` into the buffer, dropping the oldest
+    /// entries first if the capacity would be exceeded.
     pub fn push_batch(&mut self, readings: &[TiltReading]) {
         for reading in readings {
             if self.readings.len() >= self.capacity {
@@ -30,19 +37,26 @@ impl ReadingBuffer {
         }
     }
 
+    /// Drain and return all buffered readings in FIFO order, leaving the buffer empty.
     pub fn drain_all(&mut self) -> Vec<TiltReading> {
         self.readings.drain(..).collect()
     }
 
+    /// Return the number of readings currently in the buffer.
     pub fn len(&self) -> usize {
         self.readings.len()
     }
 
+    /// Return `true` if the buffer contains no readings.
     pub fn is_empty(&self) -> bool {
         self.readings.is_empty()
     }
 }
 
+/// Exponential backoff timer for upload retries.
+///
+/// Each call to `next_delay()` doubles the current delay (multiplied by
+/// `factor`), capped at `max_ms`. Call `reset()` after a successful upload.
 pub struct Backoff {
     initial_ms: u64,
     max_ms: u64,
@@ -51,6 +65,8 @@ pub struct Backoff {
 }
 
 impl Backoff {
+    /// Create a new `Backoff` starting at `initial_ms`, capped at `max_ms`,
+    /// multiplying by `factor` on each call to `next_delay()`.
     pub fn new(initial_ms: u64, max_ms: u64, factor: u64) -> Self {
         Self {
             initial_ms,
@@ -60,16 +76,19 @@ impl Backoff {
         }
     }
 
+    /// Return the current delay as a `Duration` and advance to the next (longer) delay.
     pub fn next_delay(&mut self) -> Duration {
         let delay = Duration::from_millis(self.current_ms);
         self.current_ms = (self.current_ms.saturating_mul(self.factor)).min(self.max_ms);
         delay
     }
 
+    /// Reset the backoff to the initial delay. Call after a successful operation.
     pub fn reset(&mut self) {
         self.current_ms = self.initial_ms;
     }
 
+    /// Return the current delay in milliseconds without advancing.
     pub fn current_delay_ms(&self) -> u64 {
         self.current_ms
     }

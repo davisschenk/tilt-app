@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 use esp32_nimble::{BLEDevice, BLEScan};
@@ -66,6 +67,10 @@ impl BleScanner {
                     self.consecutive_recovery_failures,
                 );
                 unsafe {
+                    // Safety: esp_restart() triggers a full SoC reset. No
+                    // memory safety invariants apply — the device reboots
+                    // immediately. Called only as a last resort after
+                    // MAX_RECOVERY_FAILURES consecutive BLE stack failures.
                     esp_idf_svc::sys::esp_restart();
                 }
             }
@@ -144,6 +149,18 @@ impl BleScanner {
 
                 Ok::<(), anyhow::Error>(())
             })?;
+
+            // Stamp recorded_at for any readings that were captured in this chunk.
+            // Done here (on the main task stack) rather than inside the nimble_host
+            // callback to avoid blowing the NimBLE host task stack.
+            let chunk_ts = tilt::format_timestamp(SystemTime::now());
+            if let Ok(mut map) = readings.lock() {
+                for reading in map.values_mut() {
+                    if reading.recorded_at.is_empty() {
+                        reading.recorded_at = chunk_ts.clone();
+                    }
+                }
+            }
 
             // Feed the watchdog between scan chunks
             crate::feed_watchdog_or_warn();

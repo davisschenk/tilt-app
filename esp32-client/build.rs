@@ -34,5 +34,8 @@ fn main() {
         println!("cargo:rerun-if-changed=partitions.csv");
     }
 
+    // Rebuild whenever the user updates their credentials or configuration.
+    println!("cargo:rerun-if-changed=cfg.toml");
+
     embuild::espidf::sysenv::output();
 }

@@ -18,6 +18,9 @@ use esp_idf_svc::sntp::{EspSntp, SyncStatus};
 /// reliably picked up by the ESP-IDF build system, hence the programmatic set.
 pub(crate) fn init_watchdog(timeout_ms: u32) -> Result<()> {
     unsafe {
+        // Safety: esp_task_wdt_reconfigure() and esp_task_wdt_add() are safe to
+        // call during single-threaded init before the main loop starts. The
+        // config struct is fully initialized above with no uninitialized fields.
         let config = esp_idf_svc::sys::esp_task_wdt_config_t {
             timeout_ms,
             idle_core_mask: 0, // don't monitor any idle tasks
@@ -40,6 +43,9 @@ pub(crate) fn init_watchdog(timeout_ms: u32) -> Result<()> {
 /// Feed (reset) the Task Watchdog Timer. Must be called every scan cycle.
 pub(crate) fn feed_watchdog() -> Result<()> {
     unsafe {
+        // Safety: esp_task_wdt_reset() is safe to call from any task that has
+        // previously subscribed via esp_task_wdt_add(). The main task subscribes
+        // during init_watchdog() before this code path is reachable.
         let ret = esp_idf_svc::sys::esp_task_wdt_reset();
         if ret != esp_idf_svc::sys::ESP_OK {
             anyhow::bail!("Failed to feed TWDT: error code {}", ret);
@@ -78,6 +84,9 @@ fn sleep_feeding_watchdog(duration: Duration, chunk_secs: u32) {
 /// watchdog cannot be fed. Call `resume_watchdog()` afterwards.
 pub(crate) fn suspend_watchdog() {
     unsafe {
+        // Safety: esp_task_wdt_delete(null_mut()) unsubscribes the calling task.
+        // Safe to call whenever the task is currently subscribed. Called only
+        // before long blocking operations (WiFi connect) where we cannot feed.
         let ret = esp_idf_svc::sys::esp_task_wdt_delete(core::ptr::null_mut());
         if ret != esp_idf_svc::sys::ESP_OK {
             log::warn!("Failed to unsubscribe from TWDT: error code {}", ret);
@@ -88,6 +97,9 @@ pub(crate) fn suspend_watchdog() {
 /// Re-subscribe the current task to the TWDT after a `suspend_watchdog()` call.
 pub(crate) fn resume_watchdog() {
     unsafe {
+        // Safety: esp_task_wdt_add(null_mut()) re-subscribes the calling task.
+        // Must only be called after a matching suspend_watchdog(). The reset
+        // call that follows starts a fresh timeout window.
         let ret = esp_idf_svc::sys::esp_task_wdt_add(core::ptr::null_mut());
         if ret != esp_idf_svc::sys::ESP_OK {
             log::warn!("Failed to re-subscribe to TWDT: error code {}", ret);
@@ -205,6 +217,7 @@ fn run() -> Result<()> {
 
     loop {
         state.scan_count = state.scan_count.wrapping_add(1);
+        let cycle_start = Instant::now();
 
         // Phase 1: Scan for Tilt hydrometers
         let readings = match run_ble_phase(&mut ble_scanner, &cfg) {
@@ -223,13 +236,17 @@ fn run() -> Result<()> {
                     );
                 }
                 feed_watchdog_or_warn();
-                std::thread::sleep(scan_interval);
+                // Sleep only the time remaining in this cycle (scan already consumed some)
+                let elapsed = cycle_start.elapsed();
+                if let Some(remaining) = scan_interval.checked_sub(elapsed) {
+                    sleep_feeding_watchdog(remaining, cfg.max_scan_chunk_secs);
+                }
                 continue;
             }
         };
 
         // Phase 2: Upload readings
-        run_upload_phase(&mut state, &uploader, &mut wifi_manager, &readings);
+        run_upload_phase(&mut state, &uploader, &mut wifi_manager, &readings, &cfg);
 
         // Phase 3: Periodic health report
         run_health_phase(&state, &start_time, &wifi_manager, &cfg);
@@ -242,10 +259,14 @@ fn run() -> Result<()> {
         // Phase 5: Feed watchdog — always, regardless of success/failure
         feed_watchdog_or_warn();
 
-        // Phase 6: Sleep until next scan cycle, feeding the watchdog throughout.
-        // A plain sleep(scan_interval) would block without any feed — with a
-        // timeout equal to scan_interval this fires the TWDT every single cycle.
-        sleep_feeding_watchdog(scan_interval, cfg.max_scan_chunk_secs);
+        // Phase 6: Sleep for the remainder of the scan interval.
+        // The BLE scan phase already consumed scan_interval_secs, so we only
+        // sleep whatever time is left after upload/health/OTA phases completed.
+        // This prevents the cycle from taking 2× scan_interval.
+        let elapsed = cycle_start.elapsed();
+        if let Some(remaining) = scan_interval.checked_sub(elapsed) {
+            sleep_feeding_watchdog(remaining, cfg.max_scan_chunk_secs);
+        }
     }
 }
 
@@ -272,6 +293,7 @@ fn run_upload_phase(
     uploader: &http::HttpUploader,
     wifi: &mut wifi::WifiManager,
     readings: &[tilt::TiltReading],
+    cfg: &config::Config,
 ) {
     if readings.is_empty() && state.reading_buffer.is_empty() {
         return;
@@ -322,7 +344,9 @@ fn run_upload_phase(
             // Re-buffer all readings that failed to upload
             state.reading_buffer.push_batch(&all_readings);
             let delay = state.backoff.next_delay();
-            std::thread::sleep(delay);
+            // Use sleep_feeding_watchdog so the TWDT is fed during the
+            // backoff wait — a plain sleep() would starve it on long delays.
+            sleep_feeding_watchdog(delay, cfg.max_scan_chunk_secs);
             state.consecutive_errors += 1;
             state.upload_fail_count = state.upload_fail_count.wrapping_add(1);
         }
@@ -356,6 +380,8 @@ fn run_health_phase(
     let uptime = start_time.elapsed();
     let hours = uptime.as_secs() / 3600;
     let minutes = (uptime.as_secs() % 3600) / 60;
+    // Safety: esp_get_free_heap_size() is a pure read of an atomic counter
+    // maintained by the heap allocator. Safe to call from any context.
     let free_heap = unsafe { esp_idf_svc::sys::esp_get_free_heap_size() };
     log::info!(
         "HEALTH: uptime={}h{}m scans={} uploads_ok={} uploads_fail={} buffer={} wifi={} heap={} errors={}",

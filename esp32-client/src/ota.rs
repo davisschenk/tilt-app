@@ -77,6 +77,9 @@ impl OtaUpdater {
         let config = HttpConfig {
             buffer_size: Some(CHUNK_SIZE),
             buffer_size_tx: Some(1024),
+            // Required for HTTPS firmware URLs — attaches the ESP-IDF bundled CA
+            // certificate store to the TLS context. Harmless for plain HTTP.
+            crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
             ..Default::default()
         };
 

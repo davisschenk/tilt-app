@@ -10,7 +10,7 @@ use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal::modem::WifiModemPeripheral;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::{
-    AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi,
+    AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi, PmfConfiguration,
 };
 
 /// Manages the ESP32 WiFi peripheral in station (STA) mode.
@@ -60,7 +60,8 @@ impl WifiManager {
         let wifi_config = Configuration::Client(ClientConfiguration {
             ssid: ssid_heapless,
             password: password_heapless,
-            auth_method: AuthMethod::None,
+            auth_method: AuthMethod::WPA2Personal,
+            pmf_cfg: PmfConfiguration::Capable { required: false },
             ..Default::default()
         });
 
@@ -74,7 +75,22 @@ impl WifiManager {
         // Suspend TWDT during blocking WiFi operations — connect() and
         // wait_netif_up() block internally and we cannot feed the watchdog.
         crate::suspend_watchdog();
-        let connect_result = self.wifi.connect().context("Failed to connect to WiFi");
+
+        // Retry connect up to 3 times — WiFi 6 APs can reject the first
+        // association attempt from a legacy 802.11n client before accepting.
+        const MAX_CONNECT_ATTEMPTS: u32 = 3;
+        let mut connect_result: Result<()> = Ok(());
+        for attempt in 1..=MAX_CONNECT_ATTEMPTS {
+            connect_result = self.wifi.connect().context("Failed to connect to WiFi");
+            if connect_result.is_ok() {
+                break;
+            }
+            log::warn!(
+                "WiFi connect attempt {}/{} failed, retrying...",
+                attempt, MAX_CONNECT_ATTEMPTS
+            );
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
         if let Err(e) = connect_result {
             crate::resume_watchdog();
             return Err(e);

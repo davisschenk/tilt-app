@@ -18,13 +18,14 @@ api_key = ""
 # BLE scan interval in seconds (default: 15, range: 5-300)
 scan_interval_secs = 15
 
-# How often to upload readings in seconds (default: 60, must be >= scan_interval_secs)
-upload_interval_secs = 60
+# Maximum duration of a single BLE scan chunk in seconds (default: 30).
+# Long scans are split into chunks of this size so the watchdog can be fed between them.
+max_scan_chunk_secs = 30
 
 # Max readings to buffer when server is unreachable (default: 50, range: 10-500)
 buffer_capacity = 50
 
-# Hardware watchdog timeout in seconds (default: 120, must be >= 2 * scan_interval_secs)
+# Hardware watchdog timeout in seconds (default: 120, must be >= 3 * max_scan_chunk_secs)
 watchdog_timeout_secs = 120
 
 # Log a health report every N scan cycles (default: 60)
