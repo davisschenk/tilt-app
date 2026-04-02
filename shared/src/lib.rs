@@ -416,6 +416,7 @@ pub enum BrewEventType {
     TastingNote,
     TemperatureChange,
     Note,
+    NutrientAddition,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -452,6 +453,21 @@ pub struct UpdateBrewEvent {
     pub gravity_at_event: Option<f64>,
     pub temp_at_event: Option<f64>,
     pub event_time: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NutrientScheduleResponse {
+    pub protocol: String,
+    pub additions: Vec<NutrientAddition>,
+    pub total_yan_required_ppm: f64,
+    pub nutrient_totals: std::collections::HashMap<String, f64>,
+    pub batch_size_gallons: f64,
+    pub batch_size_liters: f64,
+    pub og: f64,
+    pub target_fg: f64,
+    pub nitrogen_requirement: String,
+    pub pitch_time: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
