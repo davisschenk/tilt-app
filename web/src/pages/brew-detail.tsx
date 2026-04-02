@@ -22,6 +22,8 @@ import ReadingsTable from "@/components/readings/readings-table";
 import FermentationStats from "@/components/readings/fermentation-stats";
 import BrewNotes from "@/components/brew/brew-notes";
 import BrewEventLog from "@/components/brew/brew-event-log";
+import NutrientSetupPanel from "@/components/brew/nutrient-setup-panel";
+import NutrientScheduleTable from "@/components/brew/nutrient-schedule-table";
 import * as toast from "@/lib/toast";
 import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
 import type { AlertMetric, AlertOperator } from "@/types";
@@ -264,6 +266,9 @@ export default function BrewDetail() {
       )}
 
       <BrewNotes brewId={brew.id} notes={brew.notes ?? null} />
+
+      <NutrientSetupPanel brew={brew} />
+      <NutrientScheduleTable brew={brew} />
 
       <EditBrewDialog brew={brew} open={editOpen} onOpenChange={setEditOpen} />
       <DeleteBrewDialog brewId={brew.id} brewName={brew.name} open={deleteOpen} onOpenChange={setDeleteOpen} />

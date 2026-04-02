@@ -26,6 +26,10 @@ pub async fn find_all(db: &DatabaseConnection) -> Result<Vec<AlertTargetResponse
     Ok(models.into_iter().map(model_to_response).collect())
 }
 
+pub async fn find_all_raw(db: &DatabaseConnection) -> Result<Vec<alert_targets::Model>, DbErr> {
+    AlertTarget::find().all(db).await
+}
+
 pub async fn find_by_id(
     db: &DatabaseConnection,
     id: Uuid,

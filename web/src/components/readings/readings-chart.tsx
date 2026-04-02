@@ -35,6 +35,7 @@ const EVENT_COLORS: Record<BrewEventType, string> = {
   tasting_note: "#f59f00",
   temperature_change: "#ae3ec9",
   note: "#868e96",
+  nutrient_addition: "#74b816",
 };
 
 const EVENT_LABELS: Record<BrewEventType, string> = {
@@ -50,6 +51,7 @@ const EVENT_LABELS: Record<BrewEventType, string> = {
   tasting_note: "Taste",
   temperature_change: "Temp ↑",
   note: "Note",
+  nutrient_addition: "Nutrient",
 };
 
 interface ReadingsChartProps {

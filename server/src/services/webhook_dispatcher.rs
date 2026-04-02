@@ -1,10 +1,30 @@
 use chrono::{DateTime, Utc};
 use serde_json::json;
+use uuid::Uuid;
 
 use crate::models::entities::{alert_rules, alert_targets};
 use shared::{AlertMetric, AlertOperator, WebhookFormat};
 
 use super::alert_rule_service::{parse_metric, parse_operator};
+
+pub const FERMAID_O_G_PER_TSP: f64 = 2.6;
+pub const FERMAID_K_G_PER_TSP: f64 = 2.8;
+pub const DAP_G_PER_TSP: f64 = 3.1;
+pub const GOFERM_G_PER_TSP: f64 = 2.0;
+
+#[derive(Debug, Clone)]
+pub struct NutrientWebhookPayload {
+    pub brew_id: Uuid,
+    pub brew_name: String,
+    pub addition_number: u8,
+    pub nutrient_product: String,
+    pub amount_grams: f64,
+    pub amount_tsp: f64,
+    pub trigger_reason: String,
+    pub current_gravity: f64,
+    pub threshold_gravity: Option<f64>,
+    pub recorded_at: DateTime<Utc>,
+}
 
 #[derive(Debug)]
 pub enum DispatchError {
@@ -203,6 +223,105 @@ pub async fn dispatch(
         rule_name = %rule.name,
         status,
         "Webhook dispatched successfully"
+    );
+
+    Ok(())
+}
+
+pub async fn dispatch_nutrient_notification(
+    client: &reqwest::Client,
+    target: &alert_targets::Model,
+    p: &NutrientWebhookPayload,
+) -> Result<(), DispatchError> {
+    let format =
+        serde_json::from_value::<WebhookFormat>(serde_json::Value::String(target.format.clone()))
+            .unwrap_or(WebhookFormat::GenericJson);
+
+    let title = format!(
+        "🧪 Nutrient Addition #{} — {}",
+        p.addition_number, p.brew_name
+    );
+
+    let trigger_detail = if p.trigger_reason == "gravity" {
+        format!(
+            "Gravity reached {:.4}",
+            p.threshold_gravity.unwrap_or(p.current_gravity)
+        )
+    } else {
+        format!("Time fallback ({})", p.trigger_reason)
+    };
+
+    let payload = match format {
+        WebhookFormat::GenericJson => json!({
+            "brew_id": p.brew_id,
+            "brew_name": p.brew_name,
+            "addition_number": p.addition_number,
+            "nutrient_product": p.nutrient_product,
+            "amount_grams": p.amount_grams,
+            "amount_tsp": p.amount_tsp,
+            "trigger_reason": p.trigger_reason,
+            "current_gravity": p.current_gravity,
+            "threshold_gravity": p.threshold_gravity,
+            "recorded_at": p.recorded_at.to_rfc3339(),
+        }),
+        WebhookFormat::Discord => json!({
+            "embeds": [{
+                "title": title,
+                "color": 0x27AE60_u32,
+                "fields": [
+                    { "name": "Product", "value": p.nutrient_product, "inline": true },
+                    {
+                        "name": "Amount",
+                        "value": format!("{:.1}g / {:.1} tsp", p.amount_grams, p.amount_tsp),
+                        "inline": true
+                    },
+                    { "name": "Trigger", "value": trigger_detail, "inline": true },
+                    {
+                        "name": "Current Gravity",
+                        "value": format!("{:.4}", p.current_gravity),
+                        "inline": true
+                    },
+                ],
+                "timestamp": p.recorded_at.to_rfc3339(),
+            }]
+        }),
+        WebhookFormat::Slack => json!({
+            "blocks": [
+                {
+                    "type": "header",
+                    "text": { "type": "plain_text", "text": title, "emoji": true }
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        { "type": "mrkdwn", "text": format!("*Product:*\n{}", p.nutrient_product) },
+                        { "type": "mrkdwn", "text": format!("*Amount:*\n{:.1}g / {:.1} tsp", p.amount_grams, p.amount_tsp) },
+                        { "type": "mrkdwn", "text": format!("*Trigger:*\n{}", trigger_detail) },
+                        { "type": "mrkdwn", "text": format!("*Current Gravity:*\n{:.4}", p.current_gravity) },
+                    ]
+                }
+            ]
+        }),
+    };
+
+    let mut request = client.post(&target.url).json(&payload);
+    if let Some(ref secret) = target.secret_header {
+        request = request.header("Authorization", secret);
+    }
+
+    let response = request.send().await.map_err(DispatchError::HttpError)?;
+    let status = response.status().as_u16();
+    if status >= 400 {
+        return Err(DispatchError::ServerError(status));
+    }
+
+    tracing::info!(
+        target_name = %target.name,
+        brew_name = %p.brew_name,
+        addition_number = p.addition_number,
+        product = %p.nutrient_product,
+        status,
+        "Nutrient notification dispatched"
     );
 
     Ok(())

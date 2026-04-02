@@ -43,6 +43,11 @@ fn model_to_response(model: brews::Model, latest: Option<TiltReading>) -> BrewRe
         live_abv,
         apparent_attenuation,
         final_abv,
+        batch_size_gallons: model.batch_size_gallons,
+        yeast_nitrogen_requirement: model.yeast_nitrogen_requirement,
+        pitch_time: model.pitch_time.map(Into::into),
+        nutrient_protocol: model.nutrient_protocol,
+        yeast_strain: model.yeast_strain,
     }
 }
 
@@ -108,6 +113,11 @@ pub async fn create(db: &DatabaseConnection, input: CreateBrew) -> Result<BrewRe
         hydrometer_id: Set(input.hydrometer_id),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
+        batch_size_gallons: Set(input.batch_size_gallons),
+        yeast_nitrogen_requirement: Set(input.yeast_nitrogen_requirement),
+        pitch_time: Set(input.pitch_time.map(Into::into)),
+        nutrient_protocol: Set(input.nutrient_protocol),
+        yeast_strain: Set(input.yeast_strain),
     };
     let result = Brew::insert(model).exec_with_returning(db).await?;
     Ok(model_to_response(result, None))
@@ -147,6 +157,21 @@ pub async fn update(
     }
     if let Some(end_date) = input.end_date {
         active.end_date = Set(Some(end_date.into()));
+    }
+    if let Some(v) = input.batch_size_gallons {
+        active.batch_size_gallons = Set(Some(v));
+    }
+    if let Some(v) = input.yeast_nitrogen_requirement {
+        active.yeast_nitrogen_requirement = Set(Some(v));
+    }
+    if let Some(v) = input.pitch_time {
+        active.pitch_time = Set(Some(v.into()));
+    }
+    if let Some(v) = input.nutrient_protocol {
+        active.nutrient_protocol = Set(Some(v));
+    }
+    if let Some(v) = input.yeast_strain {
+        active.yeast_strain = Set(Some(v));
     }
     active.updated_at = Set(chrono::Utc::now().into());
 
