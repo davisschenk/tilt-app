@@ -185,6 +185,22 @@ pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
     Ok(result.rows_affected > 0)
 }
 
+pub async fn update_pitch_time(
+    db: &DatabaseConnection,
+    brew_id: Uuid,
+    pitch_time: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<(), DbErr> {
+    let existing = Brew::find_by_id(brew_id).one(db).await?;
+    let Some(existing) = existing else {
+        return Ok(());
+    };
+    let mut active: ActiveModel = existing.into();
+    active.pitch_time = Set(pitch_time.map(|t| t.into()));
+    active.updated_at = Set(chrono::Utc::now().into());
+    active.update(db).await?;
+    Ok(())
+}
+
 pub async fn find_active_for_hydrometer(
     db: &DatabaseConnection,
     hydrometer_id: Uuid,

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { FlaskConical, ChevronDown, ChevronUp } from "lucide-react";
+import { format } from "date-fns";
+import { FlaskConical, ChevronDown, ChevronUp, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,9 +41,6 @@ export default function NutrientSetupPanel({ brew }: Props) {
     brew.yeastNitrogenRequirement ?? "medium",
   );
   const [protocol, setProtocol] = useState(brew.nutrientProtocol ?? "tosna_2");
-  const [pitchTime, setPitchTime] = useState(
-    brew.pitchTime ? brew.pitchTime.slice(0, 16) : "",
-  );
   const [yeastStrain, setYeastStrain] = useState(brew.yeastStrain ?? "");
 
   const update = useUpdateBrewNutrientSetup(brew.id);
@@ -53,14 +51,14 @@ export default function NutrientSetupPanel({ brew }: Props) {
     brew.og != null &&
     brew.targetFg != null;
 
+  const pitchTimeDisplay = brew.pitchTime
+    ? format(new Date(brew.pitchTime), "MMM d, yyyy 'at' HH:mm")
+    : null;
+
   function handleSave() {
     const batchNum = parseFloat(batchSize);
     if (isNaN(batchNum) || batchNum <= 0) {
       toast.error("Batch size must be a positive number");
-      return;
-    }
-    if (!pitchTime) {
-      toast.error("Pitch time is required");
       return;
     }
     update.mutate(
@@ -68,7 +66,6 @@ export default function NutrientSetupPanel({ brew }: Props) {
         batchSizeGallons: batchNum,
         yeastNitrogenRequirement: nitrogenReq,
         nutrientProtocol: protocol,
-        pitchTime: new Date(pitchTime).toISOString(),
         yeastStrain: yeastStrain.trim() || null,
       },
       {
@@ -162,13 +159,20 @@ export default function NutrientSetupPanel({ brew }: Props) {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="pitch-time">Pitch Time</Label>
-              <Input
-                id="pitch-time"
-                type="datetime-local"
-                value={pitchTime}
-                onChange={(e) => setPitchTime(e.target.value)}
-              />
+              <Label>Pitch Time</Label>
+              <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                <Info className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                <span className="text-muted-foreground">
+                  {pitchTimeDisplay ? (
+                    <>
+                      <span className="font-medium text-foreground">{pitchTimeDisplay}</span>
+                      {" — set from Yeast Pitch event"}
+                    </>
+                  ) : (
+                    "Set automatically when you log a Yeast Pitch event below"
+                  )}
+                </span>
+              </div>
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">

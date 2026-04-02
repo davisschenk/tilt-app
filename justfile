@@ -32,6 +32,13 @@ db-entities:
 # Reset database: stop, start, and re-run migrations
 db-reset: db-down db-up db-migrate
 
+# Hard reset: drop and recreate the database, then re-run all migrations from scratch
+db-reset-hard: db-up
+    docker compose exec db psql -U tilt -d postgres -c "DROP DATABASE IF EXISTS tilt;"
+    docker compose exec db psql -U tilt -d postgres -c "CREATE DATABASE tilt;"
+    just db-migrate
+    @echo "Database wiped and re-migrated."
+
 # Run the Rocket API server
 server:
     cargo run -p server
