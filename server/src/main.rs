@@ -178,6 +178,7 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes::analytics::routes())
         .mount("/api/v1", routes::ota::routes())
         .mount("/api/v1", routes::tosna::routes())
+        .mount("/api/v1", routes::yeast::routes())
         .mount("/", FileServer::from(PathBuf::from(&web_dist)))
         .mount("/", routes![spa_fallback])
         .register(

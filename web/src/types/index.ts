@@ -42,6 +42,7 @@ export interface UpdateBrew {
   yeastNitrogenRequirement?: string | null;
   pitchTime?: string | null;
   nutrientProtocol?: string | null;
+  yeastStrain?: string | null;
 }
 
 export interface BrewResponse {
@@ -66,6 +67,7 @@ export interface BrewResponse {
   yeastNitrogenRequirement: string | null;
   pitchTime: string | null;
   nutrientProtocol: string | null;
+  yeastStrain: string | null;
 }
 
 export interface CreateHydrometer {
@@ -276,4 +278,5 @@ export interface NutrientScheduleResponse {
   targetFg: number;
   nitrogenRequirement: string;
   pitchTime: string;
+  resolvedFromStrain: boolean;
 }

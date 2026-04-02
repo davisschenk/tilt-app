@@ -47,6 +47,7 @@ fn model_to_response(model: brews::Model, latest: Option<TiltReading>) -> BrewRe
         yeast_nitrogen_requirement: model.yeast_nitrogen_requirement,
         pitch_time: model.pitch_time.map(Into::into),
         nutrient_protocol: model.nutrient_protocol,
+        yeast_strain: model.yeast_strain,
     }
 }
 
@@ -116,6 +117,7 @@ pub async fn create(db: &DatabaseConnection, input: CreateBrew) -> Result<BrewRe
         yeast_nitrogen_requirement: Set(input.yeast_nitrogen_requirement),
         pitch_time: Set(input.pitch_time.map(Into::into)),
         nutrient_protocol: Set(input.nutrient_protocol),
+        yeast_strain: Set(input.yeast_strain),
     };
     let result = Brew::insert(model).exec_with_returning(db).await?;
     Ok(model_to_response(result, None))
@@ -167,6 +169,9 @@ pub async fn update(
     }
     if let Some(v) = input.nutrient_protocol {
         active.nutrient_protocol = Set(Some(v));
+    }
+    if let Some(v) = input.yeast_strain {
+        active.yeast_strain = Set(Some(v));
     }
     active.updated_at = Set(chrono::Utc::now().into());
 

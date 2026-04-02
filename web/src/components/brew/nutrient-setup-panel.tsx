@@ -43,6 +43,7 @@ export default function NutrientSetupPanel({ brew }: Props) {
   const [pitchTime, setPitchTime] = useState(
     brew.pitchTime ? brew.pitchTime.slice(0, 16) : "",
   );
+  const [yeastStrain, setYeastStrain] = useState(brew.yeastStrain ?? "");
 
   const update = useUpdateBrewNutrientSetup(brew.id);
 
@@ -68,6 +69,7 @@ export default function NutrientSetupPanel({ brew }: Props) {
         yeastNitrogenRequirement: nitrogenReq,
         nutrientProtocol: protocol,
         pitchTime: new Date(pitchTime).toISOString(),
+        yeastStrain: yeastStrain.trim() || null,
       },
       {
         onSuccess: () => toast.success("Nutrient schedule settings saved"),
@@ -167,6 +169,20 @@ export default function NutrientSetupPanel({ brew }: Props) {
                 value={pitchTime}
                 onChange={(e) => setPitchTime(e.target.value)}
               />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="yeast-strain">Yeast Strain (optional)</Label>
+              <Input
+                id="yeast-strain"
+                type="text"
+                placeholder="e.g. 71B, D47, EC-1118"
+                value={yeastStrain}
+                onChange={(e) => setYeastStrain(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                If set and Nitrogen Requirement is left as default, it will be auto-detected from the strain.
+              </p>
             </div>
           </div>
 

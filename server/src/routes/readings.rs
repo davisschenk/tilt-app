@@ -69,6 +69,12 @@ async fn create_batch(
             let recorded_at = latest.recorded_at;
             let hydro_id = hydrometer.id;
 
+            // Capture yeast strain for temperature safety check
+            let temp_safety_ctx = active_brew.as_ref().and_then(|b| {
+                let strain = b.yeast_strain.clone()?;
+                Some((b.id, b.name.clone(), strain))
+            });
+
             // Capture TOSNA fields if the brew has them configured
             let tosna_ctx = active_brew.as_ref().and_then(|b| {
                 Some((
@@ -114,6 +120,19 @@ async fn create_batch(
                         &protocol,
                         pitch_time,
                         gravity,
+                        recorded_at,
+                    )
+                    .await;
+                }
+
+                if let Some((bid, bname, strain)) = temp_safety_ctx {
+                    tosna_service::evaluate_temperature_safety(
+                        &db_ref,
+                        &client_ref,
+                        bid,
+                        &bname,
+                        &strain,
+                        temp_f,
                         recorded_at,
                     )
                     .await;

@@ -185,14 +185,40 @@ export default function NutrientScheduleTable({ brew }: Props) {
     completedNums.has(a.additionNumber),
   ).length;
 
+  const YAN_PER_G: Record<NutrientProduct, number> = {
+    fermaid_o: 40,
+    fermaid_k: 100,
+    dap: 210,
+    go_ferm: 0,
+  };
+  const batchLiters = schedule.batchSizeLiters;
+  const providedYan = schedule.additions.reduce((acc, a) => {
+    const yanPer = YAN_PER_G[a.product] ?? 0;
+    return acc + (a.amountGrams * yanPer) / batchLiters;
+  }, 0);
+
   return (
     <Card className="mt-6">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <CardTitle className="text-base">Nutrient Schedule — {protocolLabel}</CardTitle>
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            <span>
+              <span className="font-medium">Target YAN:</span>{" "}
+              {schedule.totalYanRequiredPpm.toFixed(0)} ppm
+            </span>
+            <span className="text-muted-foreground">|</span>
+            <span>
+              <span className="font-medium">Provided by schedule:</span>{" "}
+              {providedYan.toFixed(0)} ppm
+            </span>
+            {schedule.resolvedFromStrain && (
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900 dark:text-blue-200">
+                Auto-detected from strain
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span>YAN: {schedule.totalYanRequiredPpm.toFixed(0)} ppm</span>
-            <span>·</span>
             <span>{schedule.batchSizeGallons.toFixed(1)} gal</span>
             <span>·</span>
             <span className="capitalize">{schedule.nitrogenRequirement} N</span>

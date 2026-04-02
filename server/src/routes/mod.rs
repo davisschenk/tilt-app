@@ -9,3 +9,4 @@ pub mod hydrometers;
 pub mod ota;
 pub mod readings;
 pub mod tosna;
+pub mod yeast;

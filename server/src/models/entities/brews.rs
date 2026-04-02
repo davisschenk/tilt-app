@@ -29,6 +29,7 @@ pub struct Model {
     pub yeast_nitrogen_requirement: Option<String>,
     pub pitch_time: Option<DateTimeWithTimeZone>,
     pub nutrient_protocol: Option<String>,
+    pub yeast_strain: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

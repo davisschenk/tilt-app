@@ -169,6 +169,7 @@ pub struct CreateBrew {
     pub yeast_nitrogen_requirement: Option<String>,
     pub pitch_time: Option<DateTime<Utc>>,
     pub nutrient_protocol: Option<String>,
+    pub yeast_strain: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +187,7 @@ pub struct UpdateBrew {
     pub yeast_nitrogen_requirement: Option<String>,
     pub pitch_time: Option<DateTime<Utc>>,
     pub nutrient_protocol: Option<String>,
+    pub yeast_strain: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -212,6 +214,7 @@ pub struct BrewResponse {
     pub yeast_nitrogen_requirement: Option<String>,
     pub pitch_time: Option<DateTime<Utc>>,
     pub nutrient_protocol: Option<String>,
+    pub yeast_strain: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -468,6 +471,7 @@ pub struct NutrientScheduleResponse {
     pub target_fg: f64,
     pub nitrogen_requirement: String,
     pub pitch_time: DateTime<Utc>,
+    pub resolved_from_strain: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -700,6 +704,7 @@ mod tests {
             yeast_nitrogen_requirement: None,
             pitch_time: None,
             nutrient_protocol: None,
+            yeast_strain: None,
         };
         let json = serde_json::to_string(&brew).unwrap();
         assert!(json.contains("\"hydrometerId\""));
@@ -747,6 +752,7 @@ mod tests {
             yeast_nitrogen_requirement: None,
             pitch_time: None,
             nutrient_protocol: None,
+            yeast_strain: None,
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"latestReading\""));
@@ -801,6 +807,7 @@ mod tests {
             final_abv: None,
             batch_size_gallons: Some(1.0),
             yeast_nitrogen_requirement: Some("medium".to_string()),
+            yeast_strain: None,
             pitch_time: Some(now),
             nutrient_protocol: Some("tosna_3".to_string()),
         };

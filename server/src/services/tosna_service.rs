@@ -13,6 +13,273 @@ use super::webhook_dispatcher::{
     NutrientWebhookPayload,
 };
 
+// ---------------------------------------------------------------------------
+// Yeast strain table
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct YeastStrainInfo {
+    pub name: &'static str,
+    pub aliases: &'static [&'static str],
+    pub nitrogen_requirement: &'static str,
+    pub alcohol_tolerance_pct: f64,
+    pub temp_min_f: f64,
+    pub temp_max_f: f64,
+    pub notes: &'static str,
+}
+
+pub static YEAST_STRAIN_TABLE: &[YeastStrainInfo] = &[
+    YeastStrainInfo {
+        name: "71B",
+        aliases: &["lalvin 71b", "71-b"],
+        nitrogen_requirement: "low",
+        alcohol_tolerance_pct: 14.0,
+        temp_min_f: 59.0,
+        temp_max_f: 86.0,
+        notes: "Fruit-forward, great for meads; metabolises malic acid",
+    },
+    YeastStrainInfo {
+        name: "D47",
+        aliases: &["lalvin d47", "d-47"],
+        nitrogen_requirement: "low",
+        alcohol_tolerance_pct: 14.0,
+        temp_min_f: 50.0,
+        temp_max_f: 65.0,
+        notes: "Produces significant fusel alcohols above 65°F; keep cool",
+    },
+    YeastStrainInfo {
+        name: "EC-1118",
+        aliases: &["ec1118", "champagne yeast", "epernay", "prise de mousse"],
+        nitrogen_requirement: "medium",
+        alcohol_tolerance_pct: 18.0,
+        temp_min_f: 50.0,
+        temp_max_f: 86.0,
+        notes: "Champagne yeast; very dry, neutral; reliable at high gravity",
+    },
+    YeastStrainInfo {
+        name: "K1-V1116",
+        aliases: &["k1v1116", "k1 v1116", "lalvin k1"],
+        nitrogen_requirement: "low",
+        alcohol_tolerance_pct: 18.0,
+        temp_min_f: 50.0,
+        temp_max_f: 95.0,
+        notes: "Very robust; wide temp range; good for light melomels",
+    },
+    YeastStrainInfo {
+        name: "RC-212",
+        aliases: &["rc212", "bourgovin rc212"],
+        nitrogen_requirement: "medium",
+        alcohol_tolerance_pct: 16.0,
+        temp_min_f: 59.0,
+        temp_max_f: 86.0,
+        notes: "Burgundy style; full-bodied; good for fruit meads",
+    },
+    YeastStrainInfo {
+        name: "D21",
+        aliases: &["lalvin d21"],
+        nitrogen_requirement: "low",
+        alcohol_tolerance_pct: 16.0,
+        temp_min_f: 50.0,
+        temp_max_f: 81.0,
+        notes: "Floral and fruity; low nutrient demand",
+    },
+    YeastStrainInfo {
+        name: "DV10",
+        aliases: &["lalvin dv10"],
+        nitrogen_requirement: "low",
+        alcohol_tolerance_pct: 18.0,
+        temp_min_f: 50.0,
+        temp_max_f: 86.0,
+        notes: "Very high alcohol tolerance; neutral profile",
+    },
+    YeastStrainInfo {
+        name: "QA23",
+        aliases: &["lalvin qa23"],
+        nitrogen_requirement: "medium",
+        alcohol_tolerance_pct: 16.0,
+        temp_min_f: 54.0,
+        temp_max_f: 86.0,
+        notes: "Thiol-enhancing; good for white wine style meads",
+    },
+    YeastStrainInfo {
+        name: "Voss Kveik",
+        aliases: &["kveik", "omega voss", "voss"],
+        nitrogen_requirement: "low",
+        alcohol_tolerance_pct: 15.0,
+        temp_min_f: 72.0,
+        temp_max_f: 104.0,
+        notes: "Fast fermenter; fruity esters; thrives at very high temps",
+    },
+    YeastStrainInfo {
+        name: "M05",
+        aliases: &["mangrove jack m05", "mj m05"],
+        nitrogen_requirement: "medium",
+        alcohol_tolerance_pct: 18.0,
+        temp_min_f: 64.0,
+        temp_max_f: 82.0,
+        notes: "Mangrove Jack mead yeast; clean, slightly fruity",
+    },
+    YeastStrainInfo {
+        name: "US-05",
+        aliases: &["us05", "safale us-05", "american ale"],
+        nitrogen_requirement: "low",
+        alcohol_tolerance_pct: 11.0,
+        temp_min_f: 59.0,
+        temp_max_f: 75.0,
+        notes: "American ale; low gravity meads; clean profile",
+    },
+];
+
+pub fn lookup_strain(name: &str) -> Option<&'static YeastStrainInfo> {
+    let lower = name.to_lowercase();
+    YEAST_STRAIN_TABLE.iter().find(|s| {
+        s.name.to_lowercase() == lower || s.aliases.iter().any(|a| a.to_lowercase() == lower)
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Temperature safety evaluation (task 9)
+// ---------------------------------------------------------------------------
+
+pub async fn evaluate_temperature_safety(
+    db: &DatabaseConnection,
+    http_client: &reqwest::Client,
+    brew_id: Uuid,
+    brew_name: &str,
+    yeast_strain: &str,
+    temperature_f: f64,
+    recorded_at: DateTime<Utc>,
+) {
+    let Some(strain) = lookup_strain(yeast_strain) else {
+        return;
+    };
+
+    if temperature_f <= strain.temp_max_f {
+        return;
+    }
+
+    let existing_events = match brew_event_service::find_by_brew(db, brew_id, None, None).await {
+        Ok(events) => events,
+        Err(e) => {
+            tracing::error!(brew_id = %brew_id, error = %e, "Failed to load brew events for temp safety check");
+            return;
+        }
+    };
+
+    let cooldown_ok = existing_events.iter().any(|e| {
+        e.event_type == BrewEventType::TemperatureChange
+            && e.notes
+                .as_deref()
+                .map(|n| n.contains("Temperature warning"))
+                .unwrap_or(false)
+            && recorded_at.signed_duration_since(e.event_time) < Duration::minutes(60)
+    });
+
+    if cooldown_ok {
+        tracing::debug!(brew_id = %brew_id, "Temp warning suppressed by 60-min cooldown");
+        return;
+    }
+
+    let excess = temperature_f - strain.temp_max_f;
+    let fusel_note = if strain.name == "D47" {
+        " D47 produces significant fusel alcohols above 65°F."
+    } else {
+        ""
+    };
+    let notes = format!(
+        "Temperature warning: {:.1}°F exceeds safe max {:.1}°F for {} by {:.1}°F.{}",
+        temperature_f, strain.temp_max_f, strain.name, excess, fusel_note
+    );
+
+    if let Err(e) = brew_event_service::create(
+        db,
+        CreateBrewEvent {
+            brew_id,
+            event_type: BrewEventType::TemperatureChange,
+            label: format!("Temp Warning — {}", strain.name),
+            notes: Some(notes.clone()),
+            gravity_at_event: None,
+            temp_at_event: Some(temperature_f),
+            event_time: recorded_at,
+        },
+    )
+    .await
+    {
+        tracing::error!(brew_id = %brew_id, error = %e, "Failed to create temperature warning event");
+    }
+
+    let targets = match alert_target_service::find_all_raw(db).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to load alert targets for temp warning");
+            return;
+        }
+    };
+
+    let title = format!("🌡️ Temperature Warning — {brew_name}");
+    let detail = format!(
+        "{:.1}°F exceeds safe max {:.1}°F for {} by {:.1}°F.{}",
+        temperature_f, strain.temp_max_f, strain.name, excess, fusel_note
+    );
+
+    use serde_json::json;
+    use shared::WebhookFormat;
+
+    for target in &targets {
+        if !target.enabled {
+            continue;
+        }
+        let format = serde_json::from_value::<WebhookFormat>(serde_json::Value::String(
+            target.format.clone(),
+        ))
+        .unwrap_or(WebhookFormat::GenericJson);
+
+        let payload = match format {
+            WebhookFormat::GenericJson => json!({
+                "brew_id": brew_id,
+                "brew_name": brew_name,
+                "yeast_strain": strain.name,
+                "current_temp_f": temperature_f,
+                "max_safe_temp_f": strain.temp_max_f,
+                "excess_degrees": excess,
+                "recorded_at": recorded_at.to_rfc3339(),
+            }),
+            WebhookFormat::Discord => json!({
+                "embeds": [{
+                    "title": title,
+                    "color": 0xE67E22_u32,
+                    "fields": [
+                        { "name": "Yeast", "value": strain.name, "inline": true },
+                        { "name": "Current Temp", "value": format!("{:.1}°F", temperature_f), "inline": true },
+                        { "name": "Safe Max", "value": format!("{:.1}°F", strain.temp_max_f), "inline": true },
+                        { "name": "Details", "value": detail.clone(), "inline": false },
+                    ],
+                    "timestamp": recorded_at.to_rfc3339(),
+                }]
+            }),
+            WebhookFormat::Slack => json!({
+                "blocks": [
+                    { "type": "header", "text": { "type": "plain_text", "text": title, "emoji": true } },
+                    { "type": "section", "fields": [
+                        { "type": "mrkdwn", "text": format!("*Yeast:*\n{}", strain.name) },
+                        { "type": "mrkdwn", "text": format!("*Current Temp:*\n{:.1}°F", temperature_f) },
+                        { "type": "mrkdwn", "text": format!("*Safe Max:*\n{:.1}°F", strain.temp_max_f) },
+                        { "type": "mrkdwn", "text": format!("*Details:*\n{}", detail) },
+                    ]}
+                ]
+            }),
+        };
+
+        let mut req = http_client.post(&target.url).json(&payload);
+        if let Some(ref secret) = target.secret_header {
+            req = req.header("Authorization", secret);
+        }
+        if let Err(e) = req.send().await {
+            tracing::warn!(target_name = %target.name, error = %e, "Temp warning dispatch failed");
+        }
+    }
+}
+
 pub fn og_to_brix(og: f64) -> f64 {
     261.3 * (1.0 - 1.0 / og)
 }
@@ -597,6 +864,84 @@ mod tests {
         assert!((nitrogen_factor("medium") - 0.90).abs() < f64::EPSILON);
         assert!((nitrogen_factor("high") - 1.25).abs() < f64::EPSILON);
         assert!((nitrogen_factor("unknown") - 0.90).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn strain_table_has_eleven_strains() {
+        assert!(YEAST_STRAIN_TABLE.len() >= 11);
+    }
+
+    #[test]
+    fn strain_71b_is_low_nitrogen() {
+        let s = lookup_strain("71B").expect("71B must be in table");
+        assert_eq!(s.nitrogen_requirement, "low");
+    }
+
+    #[test]
+    fn strain_ec1118_is_medium_nitrogen() {
+        let s = lookup_strain("EC-1118").expect("EC-1118 must be in table");
+        assert_eq!(s.nitrogen_requirement, "medium");
+    }
+
+    #[test]
+    fn strain_d47_is_low_and_max_65f() {
+        let s = lookup_strain("D47").expect("D47 must be in table");
+        assert_eq!(s.nitrogen_requirement, "low");
+        assert!((s.temp_max_f - 65.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn lookup_strain_case_insensitive() {
+        let s = lookup_strain("71b").expect("71b lowercase must match");
+        assert_eq!(s.name, "71B");
+    }
+
+    #[test]
+    fn lookup_strain_via_alias_champagne_yeast() {
+        let s =
+            lookup_strain("champagne yeast").expect("alias 'champagne yeast' must match EC-1118");
+        assert_eq!(s.name, "EC-1118");
+    }
+
+    #[test]
+    fn lookup_strain_unknown_returns_none() {
+        assert!(lookup_strain("XYZ-Unknown-9000").is_none());
+    }
+
+    #[test]
+    fn voss_kveik_temp_range() {
+        let s = lookup_strain("Voss Kveik").expect("Voss Kveik in table");
+        assert!((s.temp_min_f - 72.0).abs() < f64::EPSILON);
+        assert!((s.temp_max_f - 104.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn d47_notes_contain_fusel_warning() {
+        let s = lookup_strain("D47").unwrap();
+        assert!(
+            s.notes.to_lowercase().contains("fusel"),
+            "D47 notes must mention fusel alcohols"
+        );
+    }
+
+    #[test]
+    fn temperature_safety_fires_for_d47_at_68f() {
+        let og = 1.060;
+        let current = 1.040;
+        let strain = lookup_strain("D47").unwrap();
+        assert!(
+            68.0 > strain.temp_max_f,
+            "68°F should exceed D47 max ({})°F",
+            strain.temp_max_f
+        );
+        let _ = (og, current);
+    }
+
+    #[test]
+    fn temperature_safety_does_not_fire_below_max() {
+        let strain = lookup_strain("D47").unwrap();
+        let safe_temp = strain.temp_max_f - 1.0;
+        assert!(safe_temp <= strain.temp_max_f);
     }
 
     #[test]

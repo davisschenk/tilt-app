@@ -76,11 +76,18 @@ async fn get_nutrient_schedule(
         )
     })?;
 
-    let nitrogen_req = brew
-        .yeast_nitrogen_requirement
-        .as_deref()
-        .unwrap_or("medium")
-        .to_string();
+    let (nitrogen_req, resolved_from_strain) =
+        if let Some(ref req) = brew.yeast_nitrogen_requirement {
+            (req.clone(), false)
+        } else if let Some(strain) = brew
+            .yeast_strain
+            .as_deref()
+            .and_then(tosna_service::lookup_strain)
+        {
+            (strain.nitrogen_requirement.to_string(), true)
+        } else {
+            ("medium".to_string(), false)
+        };
 
     let protocol_str = brew.nutrient_protocol.as_deref().unwrap_or("tosna_2");
     let protocol = NutrientProtocol::from_protocol_str(protocol_str);
@@ -115,6 +122,7 @@ async fn get_nutrient_schedule(
         target_fg,
         nitrogen_requirement: nitrogen_req,
         pitch_time,
+        resolved_from_strain,
     }))
 }
 
