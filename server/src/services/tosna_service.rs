@@ -1,7 +1,17 @@
-#![allow(dead_code)]
-
 use chrono::{DateTime, Duration, Utc};
-use shared::{NutrientAddition, NutrientProduct, NutrientProtocol, NutrientTrigger};
+use sea_orm::DatabaseConnection;
+use shared::{
+    BrewEventType, CreateBrewEvent, NutrientAddition, NutrientProduct, NutrientProtocol,
+    NutrientTrigger,
+};
+use uuid::Uuid;
+
+use super::alert_target_service;
+use super::brew_event_service;
+use super::webhook_dispatcher::{
+    self, DAP_G_PER_TSP, FERMAID_K_G_PER_TSP, FERMAID_O_G_PER_TSP, GOFERM_G_PER_TSP,
+    NutrientWebhookPayload,
+};
 
 pub fn og_to_brix(og: f64) -> f64 {
     261.3 * (1.0 - 1.0 / og)
@@ -35,6 +45,7 @@ pub fn fermaid_k_grams_for_yan(yan_ppm: f64, volume_liters: f64) -> f64 {
     (yan_ppm / 100.0) * volume_liters
 }
 
+#[allow(dead_code)]
 pub fn dap_grams_for_yan(yan_ppm: f64, volume_liters: f64) -> f64 {
     (yan_ppm / 210.0) * volume_liters
 }
@@ -263,6 +274,195 @@ pub fn advanced_sna_schedule(
     ]
 }
 
+fn product_name(p: NutrientProduct) -> &'static str {
+    match p {
+        NutrientProduct::FermaidO => "Fermaid-O",
+        NutrientProduct::FermaidK => "Fermaid-K",
+        NutrientProduct::Dap => "DAP",
+        NutrientProduct::GoFerm => "GoFerm",
+    }
+}
+
+fn grams_to_tsp(product: NutrientProduct, grams: f64) -> f64 {
+    let g_per_tsp = match product {
+        NutrientProduct::FermaidO => FERMAID_O_G_PER_TSP,
+        NutrientProduct::FermaidK => FERMAID_K_G_PER_TSP,
+        NutrientProduct::Dap => DAP_G_PER_TSP,
+        NutrientProduct::GoFerm => GOFERM_G_PER_TSP,
+    };
+    grams / g_per_tsp
+}
+
+fn is_inorganic(p: NutrientProduct) -> bool {
+    matches!(p, NutrientProduct::FermaidK | NutrientProduct::Dap)
+}
+
+fn is_due(
+    addition: &NutrientAddition,
+    current_gravity: f64,
+    recorded_at: DateTime<Utc>,
+    pitch_time: DateTime<Utc>,
+) -> (bool, &'static str) {
+    match addition.primary_trigger {
+        NutrientTrigger::AtPitch => (true, "at_pitch"),
+        NutrientTrigger::GravityThreshold => {
+            if let Some(thresh) = addition.gravity_threshold
+                && current_gravity <= thresh
+            {
+                return (true, "gravity");
+            }
+            if let Some(hours) = addition.fallback_hours
+                && recorded_at >= pitch_time + Duration::hours(hours as i64)
+            {
+                return (true, "time_fallback");
+            }
+            (false, "")
+        }
+        NutrientTrigger::TimeElapsed => {
+            if let Some(hours) = addition.fallback_hours
+                && recorded_at >= pitch_time + Duration::hours(hours as i64)
+            {
+                return (true, "time_fallback");
+            }
+            (false, "")
+        }
+    }
+}
+
+fn addition_label(num: u8) -> String {
+    format!("Addition #{num}")
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn evaluate_due_additions(
+    db: &DatabaseConnection,
+    http_client: &reqwest::Client,
+    brew_id: Uuid,
+    brew_name: &str,
+    og: f64,
+    target_fg: f64,
+    batch_gallons: f64,
+    nitrogen_req: &str,
+    protocol_str: &str,
+    pitch_time: DateTime<Utc>,
+    current_gravity: f64,
+    recorded_at: DateTime<Utc>,
+) {
+    let protocol = NutrientProtocol::from_protocol_str(protocol_str);
+    let schedule = compute_schedule(
+        protocol,
+        og,
+        target_fg,
+        batch_gallons,
+        nitrogen_req,
+        pitch_time,
+    );
+
+    let existing_events = match brew_event_service::find_by_brew(db, brew_id, None, None).await {
+        Ok(events) => events,
+        Err(e) => {
+            tracing::error!(brew_id = %brew_id, error = %e, "Failed to load brew events for TOSNA evaluation");
+            return;
+        }
+    };
+
+    let completed_additions: std::collections::HashSet<u8> = existing_events
+        .iter()
+        .filter(|e| e.event_type == shared::BrewEventType::NutrientAddition)
+        .filter_map(|e| {
+            e.notes.as_deref().and_then(|n| {
+                n.strip_prefix("Addition #")
+                    .and_then(|rest| rest.split(':').next())
+                    .and_then(|num| num.trim().parse::<u8>().ok())
+            })
+        })
+        .collect();
+
+    let current_abv = abv_at_gravity(og, current_gravity);
+
+    let targets = match alert_target_service::find_all_raw(db).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to load alert targets for TOSNA notification");
+            return;
+        }
+    };
+
+    for addition in &schedule {
+        if completed_additions.contains(&addition.addition_number) {
+            continue;
+        }
+
+        if is_inorganic(addition.product) && current_abv >= 9.0 {
+            tracing::info!(
+                brew_id = %brew_id,
+                addition_number = addition.addition_number,
+                current_abv,
+                "Skipping inorganic addition — ABV >= 9%"
+            );
+            continue;
+        }
+
+        let (due, reason) = is_due(addition, current_gravity, recorded_at, pitch_time);
+        if !due {
+            continue;
+        }
+
+        let amount_tsp = grams_to_tsp(addition.product, addition.amount_grams);
+        let notes = format!(
+            "Addition #{}: {:.1}g {} (triggered by {}), gravity={:.4}",
+            addition.addition_number,
+            addition.amount_grams,
+            product_name(addition.product),
+            reason,
+            current_gravity
+        );
+
+        if let Err(e) = brew_event_service::create(
+            db,
+            CreateBrewEvent {
+                brew_id,
+                event_type: BrewEventType::NutrientAddition,
+                label: addition_label(addition.addition_number),
+                notes: Some(notes),
+                gravity_at_event: Some(current_gravity),
+                temp_at_event: None,
+                event_time: recorded_at,
+            },
+        )
+        .await
+        {
+            tracing::error!(brew_id = %brew_id, addition_number = addition.addition_number, error = %e, "Failed to create NutrientAddition brew event");
+            continue;
+        }
+
+        let payload = NutrientWebhookPayload {
+            brew_id,
+            brew_name: brew_name.to_string(),
+            addition_number: addition.addition_number,
+            nutrient_product: product_name(addition.product).to_string(),
+            amount_grams: addition.amount_grams,
+            amount_tsp,
+            trigger_reason: reason.to_string(),
+            current_gravity,
+            threshold_gravity: addition.gravity_threshold,
+            recorded_at,
+        };
+
+        for target in &targets {
+            if !target.enabled {
+                continue;
+            }
+            if let Err(e) =
+                webhook_dispatcher::dispatch_nutrient_notification(http_client, target, &payload)
+                    .await
+            {
+                tracing::warn!(target_name = %target.name, error = %e, "Nutrient notification dispatch failed");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -397,5 +597,110 @@ mod tests {
         assert!((nitrogen_factor("medium") - 0.90).abs() < f64::EPSILON);
         assert!((nitrogen_factor("high") - 1.25).abs() < f64::EPSILON);
         assert!((nitrogen_factor("unknown") - 0.90).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn is_due_gravity_threshold_fires_when_at_or_below() {
+        let pitch = Utc::now() - Duration::hours(10);
+        let addition = NutrientAddition {
+            addition_number: 1,
+            product: NutrientProduct::FermaidO,
+            amount_grams: 5.0,
+            primary_trigger: NutrientTrigger::GravityThreshold,
+            gravity_threshold: Some(1.070),
+            fallback_hours: Some(24),
+            due_at: None,
+        };
+        let (due, reason) = is_due(&addition, 1.070, pitch + Duration::hours(10), pitch);
+        assert!(due);
+        assert_eq!(reason, "gravity");
+
+        let (due2, _) = is_due(&addition, 1.071, pitch + Duration::hours(10), pitch);
+        assert!(!due2, "Should not fire when gravity above threshold");
+    }
+
+    #[test]
+    fn is_due_time_fallback_fires_after_hours_elapsed() {
+        let pitch = Utc::now() - Duration::hours(25);
+        let addition = NutrientAddition {
+            addition_number: 2,
+            product: NutrientProduct::FermaidO,
+            amount_grams: 5.0,
+            primary_trigger: NutrientTrigger::GravityThreshold,
+            gravity_threshold: Some(1.060),
+            fallback_hours: Some(24),
+            due_at: None,
+        };
+        let now = Utc::now();
+        let (due, reason) = is_due(&addition, 1.080, now, pitch);
+        assert!(due, "Should fire via time fallback");
+        assert_eq!(reason, "time_fallback");
+    }
+
+    #[test]
+    fn is_due_at_pitch_always_fires() {
+        let pitch = Utc::now();
+        let addition = NutrientAddition {
+            addition_number: 1,
+            product: NutrientProduct::GoFerm,
+            amount_grams: 5.0,
+            primary_trigger: NutrientTrigger::AtPitch,
+            gravity_threshold: None,
+            fallback_hours: Some(0),
+            due_at: None,
+        };
+        let (due, reason) = is_due(&addition, 1.060, pitch, pitch);
+        assert!(due);
+        assert_eq!(reason, "at_pitch");
+    }
+
+    #[test]
+    fn grams_to_tsp_fermaid_o() {
+        let tsp = grams_to_tsp(NutrientProduct::FermaidO, 2.6);
+        assert!((tsp - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn grams_to_tsp_fermaid_k() {
+        let tsp = grams_to_tsp(NutrientProduct::FermaidK, 2.8);
+        assert!((tsp - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn grams_to_tsp_dap() {
+        let tsp = grams_to_tsp(NutrientProduct::Dap, 3.1);
+        assert!((tsp - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn is_inorganic_identifies_k_and_dap() {
+        assert!(is_inorganic(NutrientProduct::FermaidK));
+        assert!(is_inorganic(NutrientProduct::Dap));
+        assert!(!is_inorganic(NutrientProduct::FermaidO));
+        assert!(!is_inorganic(NutrientProduct::GoFerm));
+    }
+
+    #[test]
+    fn fermaid_o_not_blocked_at_high_abv() {
+        let og = 1.080;
+        let current = 1.010;
+        let abv = abv_at_gravity(og, current);
+        assert!(abv >= 9.0, "Test requires ABV >= 9%, got {abv}");
+        assert!(
+            !is_inorganic(NutrientProduct::FermaidO),
+            "Fermaid-O is organic — not blocked"
+        );
+    }
+
+    #[test]
+    fn fermaid_k_blocked_when_abv_at_or_above_nine() {
+        let og = 1.080;
+        let current = 1.010;
+        let abv = abv_at_gravity(og, current);
+        assert!(abv >= 9.0, "Test precondition: ABV >= 9%, got {abv}");
+        assert!(
+            is_inorganic(NutrientProduct::FermaidK),
+            "Fermaid-K is inorganic — should be blocked"
+        );
     }
 }

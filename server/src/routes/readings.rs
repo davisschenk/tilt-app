@@ -10,7 +10,7 @@ use crate::guards::auth_or_api_key::AuthOrApiKey;
 use crate::guards::current_user::CurrentUser;
 use crate::services::{
     alert_rule_service, alert_target_service, brew_service, hydrometer_service, reading_service,
-    webhook_dispatcher,
+    tosna_service, webhook_dispatcher,
 };
 
 #[post("/readings", data = "<batch>")]
@@ -41,12 +41,10 @@ async fn create_batch(
                 Status::InternalServerError
             })?;
 
-        let active_brew = brew_service::find_active_for_hydrometer(db.inner(), hydrometer.id).await;
-        let brew_id = match active_brew {
-            Ok(Some(b)) => Some(b.id),
-            Ok(None) => None,
-            Err(_) => None,
-        };
+        let active_brew = brew_service::find_active_for_hydrometer(db.inner(), hydrometer.id)
+            .await
+            .unwrap_or(None);
+        let brew_id = active_brew.as_ref().map(|b| b.id);
 
         let count = reading_service::batch_create(
             db.inner(),
@@ -62,7 +60,7 @@ async fn create_batch(
 
         total_count += count;
 
-        // Alert evaluation: spawn as background task so it never blocks the response
+        // Alert + TOSNA evaluation: spawn as background task so it never blocks the response
         if let Some(latest) = batch_readings.last() {
             let db_ref = db.inner().clone();
             let client_ref = http_client.inner().clone();
@@ -70,6 +68,25 @@ async fn create_batch(
             let temp_f = latest.temperature_f;
             let recorded_at = latest.recorded_at;
             let hydro_id = hydrometer.id;
+
+            // Capture TOSNA fields if the brew has them configured
+            let tosna_ctx = active_brew.as_ref().and_then(|b| {
+                Some((
+                    b.id,
+                    b.name.clone(),
+                    b.og?,
+                    b.target_fg?,
+                    b.batch_size_gallons?,
+                    b.yeast_nitrogen_requirement
+                        .clone()
+                        .unwrap_or_else(|| "medium".to_string()),
+                    b.nutrient_protocol
+                        .clone()
+                        .unwrap_or_else(|| "tosna_2".to_string()),
+                    chrono::DateTime::<chrono::Utc>::from(b.pitch_time?),
+                ))
+            });
+
             tokio::spawn(async move {
                 evaluate_alerts(
                     &db_ref,
@@ -81,6 +98,26 @@ async fn create_batch(
                     Some(hydro_id),
                 )
                 .await;
+
+                if let Some((bid, bname, og, target_fg, gallons, n_req, protocol, pitch_time)) =
+                    tosna_ctx
+                {
+                    tosna_service::evaluate_due_additions(
+                        &db_ref,
+                        &client_ref,
+                        bid,
+                        &bname,
+                        og,
+                        target_fg,
+                        gallons,
+                        &n_req,
+                        &protocol,
+                        pitch_time,
+                        gravity,
+                        recorded_at,
+                    )
+                    .await;
+                }
             });
         }
     }
