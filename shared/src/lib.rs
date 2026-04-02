@@ -454,6 +454,53 @@ pub struct UpdateBrewEvent {
     pub event_time: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NutrientProduct {
+    FermaidO,
+    FermaidK,
+    Dap,
+    GoFerm,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NutrientProtocol {
+    Tosna2,
+    Tosna3,
+    AdvancedSna,
+}
+
+impl NutrientProtocol {
+    pub fn from_protocol_str(s: &str) -> Self {
+        match s {
+            "tosna_3" => Self::Tosna3,
+            "advanced_sna" => Self::AdvancedSna,
+            _ => Self::Tosna2,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NutrientTrigger {
+    GravityThreshold,
+    TimeElapsed,
+    AtPitch,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NutrientAddition {
+    pub addition_number: u8,
+    pub product: NutrientProduct,
+    pub amount_grams: f64,
+    pub primary_trigger: NutrientTrigger,
+    pub gravity_threshold: Option<f64>,
+    pub fallback_hours: Option<u32>,
+    pub due_at: Option<DateTime<Utc>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

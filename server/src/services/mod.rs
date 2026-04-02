@@ -7,4 +7,5 @@ pub mod brew_service;
 pub mod hydrometer_service;
 pub mod reading_service;
 pub mod sessions;
+pub mod tosna_service;
 pub mod webhook_dispatcher;
