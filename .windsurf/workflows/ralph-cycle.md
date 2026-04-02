@@ -57,4 +57,5 @@ If verification passes:
 1. Update `prd.json`: set `passes` to `true` for this task
 2. Update `progress.md`: Append "**Result:** Success"
 3. Run `git add .`
-4. Run `git commit --no-gpg-sign -m "feat: [task description]"`
+4. Run `git reset HEAD prd.json progress.md` to unstage those files — **NEVER commit `prd.json` or `progress.md`**; they are Ralph's private working state, not project artifacts
+5. Run `git commit --no-gpg-sign -m "feat: [task description]"`

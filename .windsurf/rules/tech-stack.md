@@ -157,4 +157,7 @@ trigger: always_on
 - **TypeScript:** strict mode, no `any` types; mirror shared crate DTOs as TS interfaces in `web/src/types/`
 - **Package management:** use `npm` for all dependency operations
 - **Dev server:** `npm run dev` from `web/` directory; proxies API requests or uses `VITE_API_URL`
+
+## Ralph Workflow Rules
+- **NEVER commit `prd.json` or `progress.md`** — these are Ralph's private working state files. Always run `git reset HEAD prd.json progress.md` after `git add .` and before committing.
 </coding_conventions>
