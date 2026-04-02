@@ -165,6 +165,10 @@ pub struct CreateBrew {
     pub og: Option<f64>,
     pub target_fg: Option<f64>,
     pub notes: Option<String>,
+    pub batch_size_gallons: Option<f64>,
+    pub yeast_nitrogen_requirement: Option<String>,
+    pub pitch_time: Option<DateTime<Utc>>,
+    pub nutrient_protocol: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,6 +182,10 @@ pub struct UpdateBrew {
     pub status: Option<BrewStatus>,
     pub notes: Option<String>,
     pub end_date: Option<DateTime<Utc>>,
+    pub batch_size_gallons: Option<f64>,
+    pub yeast_nitrogen_requirement: Option<String>,
+    pub pitch_time: Option<DateTime<Utc>>,
+    pub nutrient_protocol: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,6 +208,10 @@ pub struct BrewResponse {
     pub live_abv: Option<f64>,
     pub apparent_attenuation: Option<f64>,
     pub final_abv: Option<f64>,
+    pub batch_size_gallons: Option<f64>,
+    pub yeast_nitrogen_requirement: Option<String>,
+    pub pitch_time: Option<DateTime<Utc>>,
+    pub nutrient_protocol: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -621,6 +633,10 @@ mod tests {
             og: Some(1.090),
             target_fg: Some(1.020),
             notes: Some("Dark and rich".to_string()),
+            batch_size_gallons: None,
+            yeast_nitrogen_requirement: None,
+            pitch_time: None,
+            nutrient_protocol: None,
         };
         let json = serde_json::to_string(&brew).unwrap();
         assert!(json.contains("\"hydrometerId\""));
@@ -664,6 +680,10 @@ mod tests {
             live_abv: Some(4.2),
             apparent_attenuation: Some(75.0),
             final_abv: None,
+            batch_size_gallons: None,
+            yeast_nitrogen_requirement: None,
+            pitch_time: None,
+            nutrient_protocol: None,
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"latestReading\""));
@@ -674,6 +694,59 @@ mod tests {
         assert_eq!(deserialized.name, "Pale Ale");
         assert_eq!(deserialized.status, BrewStatus::Active);
         assert!((deserialized.live_abv.unwrap() - 4.2).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn nutrient_fields_serde_round_trip() {
+        let now = Utc::now();
+        let json = format!(
+            r#"{{"name":"Mead","hydrometerId":"a495bb10-c5b1-4b44-b512-1370f02d74de","batchSizeGallons":5.0,"yeastNitrogenRequirement":"low","pitchTime":"{}","nutrientProtocol":"tosna_2"}}"#,
+            now.to_rfc3339()
+        );
+        let brew: CreateBrew = serde_json::from_str(&json).unwrap();
+        assert!((brew.batch_size_gallons.unwrap() - 5.0).abs() < f64::EPSILON);
+        assert_eq!(brew.yeast_nitrogen_requirement.as_deref(), Some("low"));
+        assert!(brew.pitch_time.is_some());
+        assert_eq!(brew.nutrient_protocol.as_deref(), Some("tosna_2"));
+        let out = serde_json::to_string(&brew).unwrap();
+        assert!(out.contains("\"batchSizeGallons\""));
+        assert!(out.contains("\"yeastNitrogenRequirement\""));
+        assert!(out.contains("\"pitchTime\""));
+        assert!(out.contains("\"nutrientProtocol\""));
+    }
+
+    #[test]
+    fn nutrient_fields_absent_are_null_in_response() {
+        let now = Utc::now();
+        let resp = BrewResponse {
+            id: Uuid::new_v4(),
+            name: "Test".to_string(),
+            style: None,
+            og: None,
+            fg: None,
+            target_fg: None,
+            status: BrewStatus::Active,
+            start_date: None,
+            end_date: None,
+            notes: None,
+            hydrometer_id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            latest_reading: None,
+            live_abv: None,
+            apparent_attenuation: None,
+            final_abv: None,
+            batch_size_gallons: Some(1.0),
+            yeast_nitrogen_requirement: Some("medium".to_string()),
+            pitch_time: Some(now),
+            nutrient_protocol: Some("tosna_3".to_string()),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let back: BrewResponse = serde_json::from_str(&json).unwrap();
+        assert!((back.batch_size_gallons.unwrap() - 1.0).abs() < f64::EPSILON);
+        assert_eq!(back.yeast_nitrogen_requirement.as_deref(), Some("medium"));
+        assert!(back.pitch_time.is_some());
+        assert_eq!(back.nutrient_protocol.as_deref(), Some("tosna_3"));
     }
 
     #[test]

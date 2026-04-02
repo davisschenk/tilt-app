@@ -24,6 +24,11 @@ pub struct Model {
     pub hydrometer_id: Uuid,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    #[sea_orm(column_type = "Double", nullable)]
+    pub batch_size_gallons: Option<f64>,
+    pub yeast_nitrogen_requirement: Option<String>,
+    pub pitch_time: Option<DateTimeWithTimeZone>,
+    pub nutrient_protocol: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
