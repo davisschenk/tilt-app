@@ -10,6 +10,7 @@ mod m20260301_000002_create_alert_rules;
 mod m20260316_000001_create_brew_events;
 mod m20260316_000002_add_window_hours_to_alert_rules;
 mod m20260317_071445_drop_abv_from_brews;
+mod m20260402_014416_create_nutrient_tables;
 
 pub struct Migrator;
 
@@ -27,6 +28,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260316_000001_create_brew_events::Migration),
             Box::new(m20260316_000002_add_window_hours_to_alert_rules::Migration),
             Box::new(m20260317_071445_drop_abv_from_brews::Migration),
+            Box::new(m20260402_014416_create_nutrient_tables::Migration),
         ]
     }
 }

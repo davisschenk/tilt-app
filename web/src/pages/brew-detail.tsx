@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
-import { Pencil, CheckCircle, Archive, Trash2, PartyPopper, Bell, ChevronDown, ChevronUp, Plus } from "lucide-react";
+import { Pencil, CheckCircle, Archive, Trash2, PartyPopper, Bell, ChevronDown, ChevronUp, Plus, Beaker } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,9 @@ import ReadingsTable from "@/components/readings/readings-table";
 import FermentationStats from "@/components/readings/fermentation-stats";
 import BrewNotes from "@/components/brew/brew-notes";
 import BrewEventLog from "@/components/brew/brew-event-log";
+import { NutrientCalculator } from "@/components/nutrients/nutrient-calculator";
+import { NutrientSchedule } from "@/components/nutrients/nutrient-schedule";
+import { useNutrientSchedule } from "@/hooks/use-nutrient-schedule";
 import * as toast from "@/lib/toast";
 import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
 import type { AlertMetric, AlertOperator } from "@/types";
@@ -69,6 +72,8 @@ export default function BrewDetail() {
   const { data: alertRules } = useAlertRules(id);
   const { data: alertTargets } = useAlertTargets();
   const { data: analytics } = useBrewAnalytics(id!);
+  const { data: nutrientSchedule } = useNutrientSchedule(id!);
+  const [showNutrientCalc, setShowNutrientCalc] = useState(false);
 
   function handleStatusChange(status: "Completed" | "Archived") {
     updateBrew.mutate(
@@ -264,6 +269,27 @@ export default function BrewDetail() {
       )}
 
       <BrewNotes brewId={brew.id} notes={brew.notes ?? null} />
+
+      {/* Nutrient Schedule Section */}
+      {nutrientSchedule ? (
+        <NutrientSchedule brewId={brew.id} schedule={nutrientSchedule} />
+      ) : showNutrientCalc ? (
+        <NutrientCalculator
+          brewId={brew.id}
+          brewOg={brew.og}
+          onCreated={() => setShowNutrientCalc(false)}
+          onCancel={() => setShowNutrientCalc(false)}
+        />
+      ) : brew.status === "Active" ? (
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => setShowNutrientCalc(true)}
+        >
+          <Beaker className="mr-2 h-4 w-4" />
+          Set Up Nutrient Schedule
+        </Button>
+      ) : null}
 
       <EditBrewDialog brew={brew} open={editOpen} onOpenChange={setEditOpen} />
       <DeleteBrewDialog brewId={brew.id} brewName={brew.name} open={deleteOpen} onOpenChange={setDeleteOpen} />

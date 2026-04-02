@@ -8,5 +8,7 @@ pub mod api_keys;
 pub mod brew_events;
 pub mod brews;
 pub mod hydrometers;
+pub mod nutrient_additions;
+pub mod nutrient_schedules;
 pub mod readings;
 pub mod user_sessions;

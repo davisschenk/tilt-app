@@ -442,6 +442,135 @@ pub struct UpdateBrewEvent {
     pub event_time: Option<DateTime<Utc>>,
 }
 
+// --- Nutrient Addition Calculator ---
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NitrogenRequirement {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NutrientProtocol {
+    FermaidO,
+    FermaidOK,
+    FermaidOKDap,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NutrientTriggerType {
+    Time,
+    GravityOrTime,
+}
+
+pub fn parse_nitrogen_requirement(s: &str) -> NitrogenRequirement {
+    serde_json::from_value::<NitrogenRequirement>(serde_json::Value::String(s.to_string()))
+        .unwrap_or(NitrogenRequirement::Medium)
+}
+
+pub fn parse_nutrient_protocol(s: &str) -> NutrientProtocol {
+    serde_json::from_value::<NutrientProtocol>(serde_json::Value::String(s.to_string()))
+        .unwrap_or(NutrientProtocol::FermaidO)
+}
+
+pub fn parse_nutrient_trigger_type(s: &str) -> NutrientTriggerType {
+    serde_json::from_value::<NutrientTriggerType>(serde_json::Value::String(s.to_string()))
+        .unwrap_or(NutrientTriggerType::Time)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NutrientCalculateRequest {
+    pub og: f64,
+    pub batch_size_gallons: f64,
+    pub nitrogen_requirement: NitrogenRequirement,
+    pub nutrient_protocol: NutrientProtocol,
+    pub go_ferm_offset: bool,
+    pub fruit_offset_ppm: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NutrientAdditionDetail {
+    pub addition_number: i32,
+    pub fermaid_o_grams: f64,
+    pub fermaid_k_grams: f64,
+    pub dap_grams: f64,
+    pub trigger_type: NutrientTriggerType,
+    pub target_hours: Option<f64>,
+    pub target_gravity: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NutrientCalculateResponse {
+    pub total_yan_ppm: f64,
+    pub effective_yan_ppm: f64,
+    pub go_ferm_yan_offset_ppm: f64,
+    pub fruit_yan_offset_ppm: f64,
+    pub one_third_break_sg: f64,
+    pub go_ferm_grams: f64,
+    pub yeast_grams: f64,
+    pub rehydration_water_ml: f64,
+    pub additions: Vec<NutrientAdditionDetail>,
+    pub max_dosage_capped: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateNutrientSchedule {
+    pub batch_size_gallons: f64,
+    pub og: f64,
+    pub nitrogen_requirement: NitrogenRequirement,
+    pub nutrient_protocol: NutrientProtocol,
+    pub go_ferm_offset: bool,
+    pub fruit_offset_ppm: f64,
+    pub alert_target_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NutrientAdditionResponse {
+    pub id: Uuid,
+    pub addition_number: i32,
+    pub fermaid_o_grams: f64,
+    pub fermaid_k_grams: f64,
+    pub dap_grams: f64,
+    pub trigger_type: NutrientTriggerType,
+    pub target_hours: Option<f64>,
+    pub target_gravity: Option<f64>,
+    pub notified_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NutrientScheduleResponse {
+    pub id: Uuid,
+    pub brew_id: Uuid,
+    pub batch_size_gallons: f64,
+    pub og: f64,
+    pub nitrogen_requirement: NitrogenRequirement,
+    pub nutrient_protocol: NutrientProtocol,
+    pub total_yan_ppm: f64,
+    pub effective_yan_ppm: f64,
+    pub go_ferm_yan_offset_ppm: f64,
+    pub fruit_yan_offset_ppm: f64,
+    pub go_ferm_grams: f64,
+    pub yeast_grams: f64,
+    pub rehydration_water_ml: f64,
+    pub one_third_break_sg: f64,
+    pub alert_target_id: Option<Uuid>,
+    pub additions: Vec<NutrientAdditionResponse>,
+    pub max_dosage_capped: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

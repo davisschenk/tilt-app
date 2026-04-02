@@ -7,5 +7,7 @@ pub use super::api_keys::Entity as ApiKeys;
 pub use super::brew_events::Entity as BrewEvents;
 pub use super::brews::Entity as Brews;
 pub use super::hydrometers::Entity as Hydrometers;
+pub use super::nutrient_additions::Entity as NutrientAdditions;
+pub use super::nutrient_schedules::Entity as NutrientSchedules;
 pub use super::readings::Entity as Readings;
 pub use super::user_sessions::Entity as UserSessions;
