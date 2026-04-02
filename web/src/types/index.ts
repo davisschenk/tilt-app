@@ -38,6 +38,10 @@ export interface UpdateBrew {
   status?: BrewStatus | null;
   notes?: string | null;
   endDate?: string | null;
+  batchSizeGallons?: number | null;
+  yeastNitrogenRequirement?: string | null;
+  pitchTime?: string | null;
+  nutrientProtocol?: string | null;
 }
 
 export interface BrewResponse {
@@ -58,6 +62,10 @@ export interface BrewResponse {
   liveAbv: number | null;
   apparentAttenuation: number | null;
   finalAbv: number | null;
+  batchSizeGallons: number | null;
+  yeastNitrogenRequirement: string | null;
+  pitchTime: string | null;
+  nutrientProtocol: string | null;
 }
 
 export interface CreateHydrometer {
@@ -113,7 +121,8 @@ export type BrewEventType =
   | "gravity_sample"
   | "tasting_note"
   | "temperature_change"
-  | "note";
+  | "note"
+  | "nutrient_addition";
 
 export interface BrewEventResponse {
   id: string;
@@ -240,4 +249,31 @@ export interface TestFireResult {
   ok: boolean;
   statusCode?: number;
   error?: string;
+}
+
+export type NutrientProduct = "fermaid_o" | "fermaid_k" | "dap" | "go_ferm";
+export type NutrientProtocol = "tosna_2" | "tosna_3" | "advanced_sna";
+export type NutrientTrigger = "gravity_threshold" | "time_elapsed" | "at_pitch";
+
+export interface NutrientAddition {
+  additionNumber: number;
+  product: NutrientProduct;
+  amountGrams: number;
+  primaryTrigger: NutrientTrigger;
+  gravityThreshold: number | null;
+  fallbackHours: number | null;
+  dueAt: string | null;
+}
+
+export interface NutrientScheduleResponse {
+  protocol: string;
+  additions: NutrientAddition[];
+  totalYanRequiredPpm: number;
+  nutrientTotals: Record<string, number>;
+  batchSizeGallons: number;
+  batchSizeLiters: number;
+  og: number;
+  targetFg: number;
+  nitrogenRequirement: string;
+  pitchTime: string;
 }

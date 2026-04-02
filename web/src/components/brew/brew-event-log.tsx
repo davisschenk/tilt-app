@@ -56,6 +56,7 @@ const EVENT_ICONS: Record<BrewEventType, React.ReactNode> = {
   tasting_note: <Star className="h-4 w-4" />,
   temperature_change: <SlidersHorizontal className="h-4 w-4" />,
   note: <StickyNote className="h-4 w-4" />,
+  nutrient_addition: <Droplets className="h-4 w-4" />,
 };
 
 const EVENT_COLORS: Record<BrewEventType, string> = {
@@ -71,6 +72,7 @@ const EVENT_COLORS: Record<BrewEventType, string> = {
   tasting_note: "text-amber-500",
   temperature_change: "text-purple-500",
   note: "text-gray-500",
+  nutrient_addition: "text-lime-600",
 };
 
 const EVENT_TYPE_LABELS: Record<BrewEventType, string> = {
@@ -86,6 +88,7 @@ const EVENT_TYPE_LABELS: Record<BrewEventType, string> = {
   tasting_note: "Tasting Note",
   temperature_change: "Temperature Change",
   note: "Note",
+  nutrient_addition: "Nutrient Addition",
 };
 
 const ALL_EVENT_TYPES: BrewEventType[] = [
