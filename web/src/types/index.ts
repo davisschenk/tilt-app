@@ -241,3 +241,86 @@ export interface TestFireResult {
   statusCode?: number;
   error?: string;
 }
+
+// --- Nutrient Calculator ---
+
+export type NitrogenRequirement = "low" | "medium" | "high";
+export type NutrientProtocol = "fermaid_o" | "fermaid_ok" | "fermaid_okdap";
+export type NutrientTriggerType = "time" | "gravity_or_time";
+
+export interface NutrientCalculateRequest {
+  og: number;
+  batchSizeGallons: number;
+  nitrogenRequirement: NitrogenRequirement;
+  nutrientProtocol: NutrientProtocol;
+  goFermOffset: boolean;
+  fruitOffsetPpm: number;
+}
+
+export interface NutrientAdditionDetail {
+  additionNumber: number;
+  fermaidOGrams: number;
+  fermaidKGrams: number;
+  dapGrams: number;
+  triggerType: NutrientTriggerType;
+  targetHours: number | null;
+  targetGravity: number | null;
+}
+
+export interface NutrientCalculateResponse {
+  totalYanPpm: number;
+  effectiveYanPpm: number;
+  goFermYanOffsetPpm: number;
+  fruitYanOffsetPpm: number;
+  oneThirdBreakSg: number;
+  goFermGrams: number;
+  yeastGrams: number;
+  rehydrationWaterMl: number;
+  additions: NutrientAdditionDetail[];
+  maxDosageCapped: boolean;
+}
+
+export interface CreateNutrientSchedule {
+  batchSizeGallons: number;
+  og: number;
+  nitrogenRequirement: NitrogenRequirement;
+  nutrientProtocol: NutrientProtocol;
+  goFermOffset: boolean;
+  fruitOffsetPpm: number;
+  alertTargetId: string | null;
+}
+
+export interface NutrientAdditionResponse {
+  id: string;
+  additionNumber: number;
+  fermaidOGrams: number;
+  fermaidKGrams: number;
+  dapGrams: number;
+  triggerType: NutrientTriggerType;
+  targetHours: number | null;
+  targetGravity: number | null;
+  notifiedAt: string | null;
+  createdAt: string;
+}
+
+export interface NutrientScheduleResponse {
+  id: string;
+  brewId: string;
+  batchSizeGallons: number;
+  og: number;
+  nitrogenRequirement: NitrogenRequirement;
+  nutrientProtocol: NutrientProtocol;
+  totalYanPpm: number;
+  effectiveYanPpm: number;
+  goFermYanOffsetPpm: number;
+  fruitYanOffsetPpm: number;
+  goFermGrams: number;
+  yeastGrams: number;
+  rehydrationWaterMl: number;
+  oneThirdBreakSg: number;
+  alertTargetId: string | null;
+  additions: NutrientAdditionResponse[];
+  maxDosageCapped: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

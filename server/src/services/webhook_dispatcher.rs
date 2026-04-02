@@ -208,6 +208,150 @@ pub async fn dispatch(
     Ok(())
 }
 
+/// Send a nutrient addition notification.
+pub async fn dispatch_nutrient(
+    client: &reqwest::Client,
+    target: &alert_targets::Model,
+    brew_name: &str,
+    brew_id: uuid::Uuid,
+    addition: &crate::models::entities::nutrient_additions::Model,
+    total_additions: i32,
+    one_third_break_sg: f64,
+) -> Result<(), DispatchError> {
+    let format =
+        serde_json::from_value::<WebhookFormat>(serde_json::Value::String(target.format.clone()))
+            .unwrap_or(WebhookFormat::GenericJson);
+
+    let trigger_label = if addition.trigger_type == "gravity_or_time" {
+        "gravity/time"
+    } else {
+        "time"
+    };
+
+    // Build a human-readable nutrient list
+    let mut nutrients = Vec::new();
+    if addition.fermaid_o_grams > 0.0 {
+        nutrients.push(format!("{:.1}g Fermaid O", addition.fermaid_o_grams));
+    }
+    if addition.fermaid_k_grams > 0.0 {
+        nutrients.push(format!("{:.1}g Fermaid K", addition.fermaid_k_grams));
+    }
+    if addition.dap_grams > 0.0 {
+        nutrients.push(format!("{:.1}g DAP", addition.dap_grams));
+    }
+    let nutrient_str = nutrients.join(", ");
+    let message = format!(
+        "Nutrient addition #{} of {} is due for {} — add {}",
+        addition.addition_number, total_additions, brew_name, nutrient_str
+    );
+
+    let payload = match format {
+        WebhookFormat::GenericJson => json!({
+            "type": "nutrient_addition",
+            "brew_name": brew_name,
+            "brew_id": brew_id.to_string(),
+            "addition_number": addition.addition_number,
+            "total_additions": total_additions,
+            "fermaid_o_grams": addition.fermaid_o_grams,
+            "fermaid_k_grams": addition.fermaid_k_grams,
+            "dap_grams": addition.dap_grams,
+            "trigger": trigger_label,
+            "one_third_break_sg": one_third_break_sg,
+            "message": message,
+        }),
+        WebhookFormat::Discord => json!({
+            "embeds": [{
+                "title": format!("🧪 Nutrient Addition #{} — {}", addition.addition_number, brew_name),
+                "color": 0xF39C12, // amber
+                "description": message,
+                "fields": build_nutrient_discord_fields(addition, trigger_label, one_third_break_sg),
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }]
+        }),
+        WebhookFormat::Slack => json!({
+            "blocks": [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": format!("🧪 Nutrient Addition #{} — {}", addition.addition_number, brew_name),
+                        "emoji": true
+                    }
+                },
+                {
+                    "type": "section",
+                    "fields": build_nutrient_slack_fields(addition, trigger_label, &nutrient_str, one_third_break_sg)
+                }
+            ]
+        }),
+    };
+
+    let mut request = client.post(&target.url).json(&payload);
+    if let Some(ref secret) = target.secret_header {
+        request = request.header("Authorization", secret);
+    }
+
+    let response = request.send().await.map_err(DispatchError::HttpError)?;
+    let status = response.status().as_u16();
+    if status >= 400 {
+        tracing::warn!(
+            target_name = %target.name,
+            addition = addition.addition_number,
+            status,
+            "Nutrient webhook dispatch failed"
+        );
+        return Err(DispatchError::ServerError(status));
+    }
+
+    tracing::info!(
+        target_name = %target.name,
+        brew = brew_name,
+        addition = addition.addition_number,
+        "Nutrient webhook dispatched"
+    );
+    Ok(())
+}
+
+fn build_nutrient_discord_fields(
+    addition: &crate::models::entities::nutrient_additions::Model,
+    trigger: &str,
+    break_sg: f64,
+) -> Vec<serde_json::Value> {
+    let mut fields = vec![
+        json!({"name": "Addition", "value": format!("#{} of 4", addition.addition_number), "inline": true}),
+        json!({"name": "Trigger", "value": trigger, "inline": true}),
+    ];
+    if addition.fermaid_o_grams > 0.0 {
+        fields.push(json!({"name": "Fermaid O", "value": format!("{:.1}g", addition.fermaid_o_grams), "inline": true}));
+    }
+    if addition.fermaid_k_grams > 0.0 {
+        fields.push(json!({"name": "Fermaid K", "value": format!("{:.1}g", addition.fermaid_k_grams), "inline": true}));
+    }
+    if addition.dap_grams > 0.0 {
+        fields.push(
+            json!({"name": "DAP", "value": format!("{:.1}g", addition.dap_grams), "inline": true}),
+        );
+    }
+    fields.push(
+        json!({"name": "1/3 Sugar Break", "value": format!("{:.3}", break_sg), "inline": true}),
+    );
+    fields
+}
+
+fn build_nutrient_slack_fields(
+    addition: &crate::models::entities::nutrient_additions::Model,
+    trigger: &str,
+    nutrient_str: &str,
+    break_sg: f64,
+) -> Vec<serde_json::Value> {
+    vec![
+        json!({"type": "mrkdwn", "text": format!("*Addition:*\n#{} of 4", addition.addition_number)}),
+        json!({"type": "mrkdwn", "text": format!("*Nutrients:*\n{nutrient_str}")}),
+        json!({"type": "mrkdwn", "text": format!("*Trigger:*\n{trigger}")}),
+        json!({"type": "mrkdwn", "text": format!("*1/3 Sugar Break:*\n{:.3}", break_sg)}),
+    ]
+}
+
 /// Send a test payload to verify webhook configuration.
 pub async fn dispatch_test(
     client: &reqwest::Client,

@@ -9,8 +9,8 @@ use shared::{CreateReadingsBatch, ReadingResponse, ReadingsQuery, TiltReading};
 use crate::guards::auth_or_api_key::AuthOrApiKey;
 use crate::guards::current_user::CurrentUser;
 use crate::services::{
-    alert_rule_service, alert_target_service, brew_service, hydrometer_service, reading_service,
-    webhook_dispatcher,
+    alert_rule_service, alert_target_service, brew_event_service, brew_service, hydrometer_service,
+    nutrient_service, reading_service, webhook_dispatcher,
 };
 
 #[post("/readings", data = "<batch>")]
@@ -155,7 +155,110 @@ async fn evaluate_alerts(
             }
         }
     }
+
+    // Nutrient schedule notifications
+    if let Some(brew_id) = brew_id {
+        evaluate_nutrient_additions(db, http_client, brew_id, gravity).await;
+    }
 }
+
+async fn evaluate_nutrient_additions(
+    db: &DatabaseConnection,
+    http_client: &reqwest::Client,
+    brew_id: Uuid,
+    current_gravity: f64,
+) {
+    let schedule_data = match nutrient_service::find_pending_additions_for_brew(db, brew_id).await {
+        Ok(Some(data)) => data,
+        Ok(None) => return,
+        Err(e) => {
+            tracing::error!(brew_id = %brew_id, error = %e, "Failed to query nutrient schedule");
+            return;
+        }
+    };
+
+    let (schedule, pending_additions) = schedule_data;
+    let alert_target_id = match schedule.alert_target_id {
+        Some(id) => id,
+        None => return,
+    };
+
+    // Find pitch time from brew events
+    let pitch_time = match brew_event_service::find_by_brew(db, brew_id, None, None).await {
+        Ok(events) => events
+            .iter()
+            .find(|e| e.event_type == shared::BrewEventType::YeastPitch)
+            .map(|e| e.event_time),
+        Err(_) => return,
+    };
+
+    let Some(pitch_time) = pitch_time else {
+        return;
+    };
+
+    // Get brew name
+    let brew_name = match brew_service::find_by_id(db, brew_id).await {
+        Ok(Some(b)) => b.name,
+        _ => "Unknown Brew".to_string(),
+    };
+
+    // Check only the lowest un-notified addition (sequential)
+    let Some(addition) = pending_additions.first() else {
+        return;
+    };
+
+    let now = chrono::Utc::now();
+    let hours_since_pitch = (now - pitch_time).num_seconds() as f64 / 3600.0;
+
+    let should_notify = match addition.trigger_type.as_str() {
+        "time" => addition
+            .target_hours
+            .is_some_and(|h| hours_since_pitch >= h),
+        "gravity_or_time" => {
+            let time_triggered = addition
+                .target_hours
+                .is_some_and(|h| hours_since_pitch >= h);
+            let gravity_triggered = addition
+                .target_gravity
+                .is_some_and(|g| current_gravity <= g);
+            time_triggered || gravity_triggered
+        }
+        _ => false,
+    };
+
+    if !should_notify {
+        return;
+    }
+
+    // Look up the alert target
+    let target = match alert_target_service::find_by_id_raw(db, alert_target_id).await {
+        Ok(Some(t)) if t.enabled => t,
+        _ => return,
+    };
+
+    match webhook_dispatcher::dispatch_nutrient(
+        http_client,
+        &target,
+        &brew_name,
+        brew_id,
+        addition,
+        NUM_NUTRIENT_ADDITIONS,
+        schedule.one_third_break_sg,
+    )
+    .await
+    {
+        Ok(()) => {
+            if let Err(e) = nutrient_service::mark_addition_notified(db, addition.id).await {
+                tracing::error!(addition_id = %addition.id, error = %e, "Failed to mark nutrient addition as notified");
+            }
+        }
+        Err(e) => {
+            tracing::error!(addition_id = %addition.id, error = %e, "Nutrient webhook dispatch failed");
+        }
+    }
+}
+
+const NUM_NUTRIENT_ADDITIONS: i32 = 4;
 
 #[get("/readings?<brew_id>&<hydrometer_id>&<since>&<until>&<limit>")]
 async fn query(
