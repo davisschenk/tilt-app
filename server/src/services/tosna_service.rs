@@ -141,6 +141,7 @@ pub fn lookup_strain(name: &str) -> Option<&'static YeastStrainInfo> {
 // Temperature safety evaluation (task 9)
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 pub async fn evaluate_temperature_safety(
     db: &DatabaseConnection,
     http_client: &reqwest::Client,
@@ -149,6 +150,7 @@ pub async fn evaluate_temperature_safety(
     yeast_strain: &str,
     temperature_f: f64,
     recorded_at: DateTime<Utc>,
+    nutrient_alert_target_id: Option<Uuid>,
 ) {
     let Some(strain) = lookup_strain(yeast_strain) else {
         return;
@@ -208,12 +210,16 @@ pub async fn evaluate_temperature_safety(
         tracing::error!(brew_id = %brew_id, error = %e, "Failed to create temperature warning event");
     }
 
-    let targets = match alert_target_service::find_all_raw(db).await {
-        Ok(t) => t,
-        Err(e) => {
-            tracing::error!(error = %e, "Failed to load alert targets for temp warning");
-            return;
-        }
+    let target = match nutrient_alert_target_id {
+        None => return,
+        Some(id) => match alert_target_service::find_raw_by_id(db, id).await {
+            Ok(Some(t)) if t.enabled => t,
+            Ok(_) => return,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to load alert target for temp warning");
+                return;
+            }
+        },
     };
 
     let title = format!("🌡️ Temperature Warning — {brew_name}");
@@ -225,10 +231,7 @@ pub async fn evaluate_temperature_safety(
     use serde_json::json;
     use shared::WebhookFormat;
 
-    for target in &targets {
-        if !target.enabled {
-            continue;
-        }
+    {
         let format = serde_json::from_value::<WebhookFormat>(serde_json::Value::String(
             target.format.clone(),
         ))
@@ -614,6 +617,7 @@ pub async fn evaluate_due_additions(
     pitch_time: DateTime<Utc>,
     current_gravity: f64,
     recorded_at: DateTime<Utc>,
+    nutrient_alert_target_id: Option<Uuid>,
 ) {
     let protocol = NutrientProtocol::from_protocol_str(protocol_str);
     let schedule = compute_schedule(
@@ -647,12 +651,16 @@ pub async fn evaluate_due_additions(
 
     let current_abv = abv_at_gravity(og, current_gravity);
 
-    let targets = match alert_target_service::find_all_raw(db).await {
-        Ok(t) => t,
-        Err(e) => {
-            tracing::error!(error = %e, "Failed to load alert targets for TOSNA notification");
-            return;
-        }
+    let target_opt = match nutrient_alert_target_id {
+        None => None,
+        Some(id) => match alert_target_service::find_raw_by_id(db, id).await {
+            Ok(Some(t)) if t.enabled => Some(t),
+            Ok(_) => None,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to load alert target for TOSNA notification");
+                None
+            }
+        },
     };
 
     for addition in &schedule {
@@ -716,16 +724,12 @@ pub async fn evaluate_due_additions(
             recorded_at,
         };
 
-        for target in &targets {
-            if !target.enabled {
-                continue;
-            }
-            if let Err(e) =
+        if let Some(target) = &target_opt
+            && let Err(e) =
                 webhook_dispatcher::dispatch_nutrient_notification(http_client, target, &payload)
                     .await
-            {
-                tracing::warn!(target_name = %target.name, error = %e, "Nutrient notification dispatch failed");
-            }
+        {
+            tracing::warn!(target_name = %target.name, error = %e, "Nutrient notification dispatch failed");
         }
     }
 }

@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useUpdateBrewNutrientSetup } from "@/hooks/use-nutrient-schedule";
+import { useAlertTargets } from "@/hooks/use-alert-targets";
 import * as toast from "@/lib/toast";
 import type { BrewResponse } from "@/types";
 
@@ -42,7 +43,11 @@ export default function NutrientSetupPanel({ brew }: Props) {
   );
   const [protocol, setProtocol] = useState(brew.nutrientProtocol ?? "tosna_2");
   const [yeastStrain, setYeastStrain] = useState(brew.yeastStrain ?? "");
+  const [alertTargetId, setAlertTargetId] = useState<string>(
+    brew.nutrientAlertTargetId ?? "",
+  );
 
+  const { data: alertTargets } = useAlertTargets();
   const update = useUpdateBrewNutrientSetup(brew.id);
 
   const isConfigured =
@@ -67,6 +72,7 @@ export default function NutrientSetupPanel({ brew }: Props) {
         yeastNitrogenRequirement: nitrogenReq,
         nutrientProtocol: protocol,
         yeastStrain: yeastStrain.trim() || null,
+        nutrientAlertTargetId: alertTargetId || null,
       },
       {
         onSuccess: () => toast.success("Nutrient schedule settings saved"),
@@ -173,6 +179,29 @@ export default function NutrientSetupPanel({ brew }: Props) {
                   )}
                 </span>
               </div>
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="alert-target">Webhook Alert Target</Label>
+              <Select
+                value={alertTargetId}
+                onValueChange={setAlertTargetId}
+              >
+                <SelectTrigger id="alert-target">
+                  <SelectValue placeholder="None (no webhook notifications)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None (no notifications)</SelectItem>
+                  {alertTargets?.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Nutrient addition and temperature warnings will be sent to this target only.
+              </p>
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">

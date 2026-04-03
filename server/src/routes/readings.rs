@@ -72,7 +72,7 @@ async fn create_batch(
             // Capture yeast strain for temperature safety check
             let temp_safety_ctx = active_brew.as_ref().and_then(|b| {
                 let strain = b.yeast_strain.clone()?;
-                Some((b.id, b.name.clone(), strain))
+                Some((b.id, b.name.clone(), strain, b.nutrient_alert_target_id))
             });
 
             // Capture TOSNA fields if the brew has them configured
@@ -90,6 +90,7 @@ async fn create_batch(
                         .clone()
                         .unwrap_or_else(|| "tosna_2".to_string()),
                     chrono::DateTime::<chrono::Utc>::from(b.pitch_time?),
+                    b.nutrient_alert_target_id,
                 ))
             });
 
@@ -105,8 +106,17 @@ async fn create_batch(
                 )
                 .await;
 
-                if let Some((bid, bname, og, target_fg, gallons, n_req, protocol, pitch_time)) =
-                    tosna_ctx
+                if let Some((
+                    bid,
+                    bname,
+                    og,
+                    target_fg,
+                    gallons,
+                    n_req,
+                    protocol,
+                    pitch_time,
+                    alert_target_id,
+                )) = tosna_ctx
                 {
                     tosna_service::evaluate_due_additions(
                         &db_ref,
@@ -121,11 +131,12 @@ async fn create_batch(
                         pitch_time,
                         gravity,
                         recorded_at,
+                        alert_target_id,
                     )
                     .await;
                 }
 
-                if let Some((bid, bname, strain)) = temp_safety_ctx {
+                if let Some((bid, bname, strain, alert_target_id)) = temp_safety_ctx {
                     tosna_service::evaluate_temperature_safety(
                         &db_ref,
                         &client_ref,
@@ -134,6 +145,7 @@ async fn create_batch(
                         &strain,
                         temp_f,
                         recorded_at,
+                        alert_target_id,
                     )
                     .await;
                 }

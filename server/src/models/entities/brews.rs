@@ -30,6 +30,7 @@ pub struct Model {
     pub pitch_time: Option<DateTimeWithTimeZone>,
     pub nutrient_protocol: Option<String>,
     pub yeast_strain: Option<String>,
+    pub nutrient_alert_target_id: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

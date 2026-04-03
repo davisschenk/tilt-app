@@ -43,6 +43,7 @@ export interface UpdateBrew {
   pitchTime?: string | null;
   nutrientProtocol?: string | null;
   yeastStrain?: string | null;
+  nutrientAlertTargetId?: string | null;
 }
 
 export interface BrewResponse {
@@ -68,6 +69,7 @@ export interface BrewResponse {
   pitchTime: string | null;
   nutrientProtocol: string | null;
   yeastStrain: string | null;
+  nutrientAlertTargetId: string | null;
 }
 
 export interface CreateHydrometer {

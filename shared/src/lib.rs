@@ -170,6 +170,7 @@ pub struct CreateBrew {
     pub pitch_time: Option<DateTime<Utc>>,
     pub nutrient_protocol: Option<String>,
     pub yeast_strain: Option<String>,
+    pub nutrient_alert_target_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,6 +189,7 @@ pub struct UpdateBrew {
     pub pitch_time: Option<DateTime<Utc>>,
     pub nutrient_protocol: Option<String>,
     pub yeast_strain: Option<String>,
+    pub nutrient_alert_target_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -215,6 +217,7 @@ pub struct BrewResponse {
     pub pitch_time: Option<DateTime<Utc>>,
     pub nutrient_protocol: Option<String>,
     pub yeast_strain: Option<String>,
+    pub nutrient_alert_target_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -705,6 +708,7 @@ mod tests {
             pitch_time: None,
             nutrient_protocol: None,
             yeast_strain: None,
+            nutrient_alert_target_id: None,
         };
         let json = serde_json::to_string(&brew).unwrap();
         assert!(json.contains("\"hydrometerId\""));
@@ -753,6 +757,7 @@ mod tests {
             pitch_time: None,
             nutrient_protocol: None,
             yeast_strain: None,
+            nutrient_alert_target_id: None,
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"latestReading\""));
@@ -810,6 +815,7 @@ mod tests {
             yeast_strain: None,
             pitch_time: Some(now),
             nutrient_protocol: Some("tosna_3".to_string()),
+            nutrient_alert_target_id: None,
         };
         let json = serde_json::to_string(&resp).unwrap();
         let back: BrewResponse = serde_json::from_str(&json).unwrap();
