@@ -44,7 +44,7 @@ export default function NutrientSetupPanel({ brew }: Props) {
   const [protocol, setProtocol] = useState(brew.nutrientProtocol ?? "tosna_2");
   const [yeastStrain, setYeastStrain] = useState(brew.yeastStrain ?? "");
   const [alertTargetId, setAlertTargetId] = useState<string>(
-    brew.nutrientAlertTargetId ?? "",
+    brew.nutrientAlertTargetId ?? "none",
   );
 
   const { data: alertTargets } = useAlertTargets();
@@ -72,7 +72,7 @@ export default function NutrientSetupPanel({ brew }: Props) {
         yeastNitrogenRequirement: nitrogenReq,
         nutrientProtocol: protocol,
         yeastStrain: yeastStrain.trim() || null,
-        nutrientAlertTargetId: alertTargetId || null,
+        nutrientAlertTargetId: alertTargetId === "none" ? null : alertTargetId,
       },
       {
         onSuccess: () => toast.success("Nutrient schedule settings saved"),
@@ -191,7 +191,7 @@ export default function NutrientSetupPanel({ brew }: Props) {
                   <SelectValue placeholder="None (no webhook notifications)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None (no notifications)</SelectItem>
+                  <SelectItem value="none">None (no notifications)</SelectItem>
                   {alertTargets?.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.name}

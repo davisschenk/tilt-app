@@ -130,7 +130,7 @@ function AdditionRow({
 }
 
 export default function NutrientScheduleTable({ brew }: Props) {
-  const { data: schedule, isLoading, error } = useNutrientSchedule(brew.id);
+  const { data: schedule, isLoading, error } = useNutrientSchedule(brew);
   const { data: events } = useBrewEvents(brew.id);
   const createEvent = useCreateBrewEvent(brew.id);
 
