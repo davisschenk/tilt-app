@@ -1,10 +1,11 @@
 import { format } from "date-fns";
-import { CheckCircle2, Clock, Droplets, AlertCircle } from "lucide-react";
+import { CheckCircle2, Clock, Droplets, AlertCircle, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNutrientSchedule } from "@/hooks/use-nutrient-schedule";
-import { useBrewEvents } from "@/hooks/use-brew-events";
+import { useBrewEvents, useCreateBrewEvent } from "@/hooks/use-brew-events";
 import type { BrewResponse, NutrientAddition, NutrientProduct } from "@/types";
 
 interface Props {
@@ -49,10 +50,14 @@ function AdditionRow({
   addition,
   completed,
   current,
+  onLog,
+  isLogging,
 }: {
   addition: NutrientAddition;
   completed: boolean;
   current: boolean;
+  onLog: () => void;
+  isLogging: boolean;
 }) {
   const tsp = gramsToTsp(addition.product, addition.amountGrams);
 
@@ -101,9 +106,24 @@ function AdditionRow({
         )}
       </div>
 
-      <div className="text-right shrink-0">
+      <div className="flex flex-col items-end gap-2 shrink-0">
         <p className="font-semibold text-sm">{addition.amountGrams.toFixed(1)} g</p>
         <p className="text-xs text-muted-foreground">{tsp.toFixed(1)} tsp</p>
+        {!completed && (
+          <Button
+            size="sm"
+            variant={current ? "default" : "outline"}
+            className="text-xs h-7 px-2"
+            onClick={onLog}
+            disabled={isLogging}
+          >
+            {isLogging ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              "Log"
+            )}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -112,6 +132,7 @@ function AdditionRow({
 export default function NutrientScheduleTable({ brew }: Props) {
   const { data: schedule, isLoading, error } = useNutrientSchedule(brew.id);
   const { data: events } = useBrewEvents(brew.id);
+  const createEvent = useCreateBrewEvent(brew.id);
 
   const isConfigured =
     brew.batchSizeGallons != null &&
@@ -263,6 +284,22 @@ export default function NutrientScheduleTable({ brew }: Props) {
             addition={addition}
             completed={completedNums.has(addition.additionNumber)}
             current={isCurrentlyDue(addition)}
+            onLog={() =>
+              createEvent.mutate({
+                brewId: brew.id,
+                eventType: "nutrient_addition",
+                label: `Nutrient Addition #${addition.additionNumber}`,
+                notes: `Addition #${addition.additionNumber}: ${addition.amountGrams.toFixed(1)}g ${PRODUCT_LABELS[addition.product] ?? addition.product} logged manually`,
+                eventTime: new Date().toISOString(),
+                gravityAtEvent: brew.latestReading?.gravity ?? null,
+                tempAtEvent: null,
+              })
+            }
+            isLogging={
+              createEvent.isPending &&
+              createEvent.variables?.label ===
+                `Nutrient Addition #${addition.additionNumber}`
+            }
           />
         ))}
       </CardContent>

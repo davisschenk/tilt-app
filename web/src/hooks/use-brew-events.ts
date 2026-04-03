@@ -21,6 +21,8 @@ export function useCreateBrewEvent(brewId: string) {
       apiPost<BrewEventResponse>(`/brews/${brewId}/events`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["brew-events", brewId] });
+      queryClient.invalidateQueries({ queryKey: ["nutrient-schedule", brewId] });
+      queryClient.invalidateQueries({ queryKey: ["brews", brewId] });
     },
   });
 }
