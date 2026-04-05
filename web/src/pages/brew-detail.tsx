@@ -278,7 +278,7 @@ export default function BrewDetail() {
 
       <div>
         <h2 className="text-lg font-semibold mb-4">Readings</h2>
-        <FermentationStats brewId={brew.id} og={brew.og} />
+        <FermentationStats brewId={brew.id} og={brew.og} targetFg={brew.targetFg} />
         {brew.status === "Active" &&
           brew.targetFg != null &&
           brew.latestReading &&

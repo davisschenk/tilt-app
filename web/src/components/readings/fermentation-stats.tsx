@@ -8,9 +8,10 @@ import { useReadings } from "@/hooks/use-readings";
 interface FermentationStatsProps {
   brewId: string;
   og?: number | null;
+  targetFg?: number | null;
 }
 
-export default function FermentationStats({ brewId, og }: FermentationStatsProps) {
+export default function FermentationStats({ brewId, og, targetFg }: FermentationStatsProps) {
   const { data: readings, isLoading } = useReadings({ brewId });
 
   const stats = useMemo(() => {
@@ -25,9 +26,13 @@ export default function FermentationStats({ brewId, og }: FermentationStatsProps
 
     let attenuation: number | null = null;
     let estimatedAbv: number | null = null;
+    let potentialAbv: number | null = null;
     if (og && og > 1.0) {
       attenuation = ((og - currentGravity) / (og - 1.0)) * 100;
       estimatedAbv = (og - currentGravity) * 131.25;
+      if (targetFg != null) {
+        potentialAbv = (og - targetFg) * 131.25;
+      }
     }
 
     let tempTrend: "up" | "down" | "steady" = "steady";
@@ -42,12 +47,12 @@ export default function FermentationStats({ brewId, og }: FermentationStatsProps
       addSuffix: true,
     });
 
-    return { currentGravity, attenuation, estimatedAbv, tempTrend, timeSince, latestTemp: latest.temperatureF };
-  }, [readings, og]);
+    return { currentGravity, attenuation, estimatedAbv, potentialAbv, tempTrend, timeSince, latestTemp: latest.temperatureF };
+  }, [readings, og, targetFg]);
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-6">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6 mb-6">
         {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-20" />
         ))}
@@ -65,7 +70,7 @@ export default function FermentationStats({ brewId, og }: FermentationStatsProps
         : Minus;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-6">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6 mb-6">
       <Card>
         <CardContent className="pt-4 pb-4">
           <p className="text-xs text-muted-foreground">Current Gravity</p>
@@ -85,6 +90,14 @@ export default function FermentationStats({ brewId, og }: FermentationStatsProps
           <p className="text-xs text-muted-foreground">Estimated ABV</p>
           <p className="text-xl font-bold">
             {stats.estimatedAbv != null ? `${stats.estimatedAbv.toFixed(1)}%` : "—"}
+          </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <p className="text-xs text-muted-foreground">Potential ABV</p>
+          <p className="text-xl font-bold">
+            {stats.potentialAbv != null ? `${stats.potentialAbv.toFixed(1)}%` : "—"}
           </p>
         </CardContent>
       </Card>
