@@ -542,16 +542,21 @@ pub fn advanced_sna_schedule(
     ];
 
     if og < 1.100 {
-        // Low gravity: all Fermaid-O upfront
-        additions.push(NutrientAddition {
-            addition_number: 3,
-            product: NutrientProduct::FermaidO,
-            amount_grams: o_total_grams,
-            primary_trigger: NutrientTrigger::AtPitch,
-            gravity_threshold: None,
-            fallback_hours: Some(0),
-            due_at: Some(pitch_time),
-        });
+        // Low gravity: Fermaid-O split across 3 time-based additions (24h / 48h / 72h).
+        // Denard says "all upfront" meaning no gravity-based staggering, but time-staggering
+        // is still best practice to avoid CO2 blow-off and nutrient shock.
+        let per_addition = o_total_grams / 3.0;
+        for (i, hours) in [(3u8, 24i64), (4, 48), (5, 72)] {
+            additions.push(NutrientAddition {
+                addition_number: i,
+                product: NutrientProduct::FermaidO,
+                amount_grams: per_addition,
+                primary_trigger: NutrientTrigger::TimeElapsed,
+                gravity_threshold: None,
+                fallback_hours: Some(hours as u32),
+                due_at: Some(pitch_time + Duration::hours(hours)),
+            });
+        }
     } else {
         // High gravity (≥ 1.100): split Fermaid-O across 3 gravity-triggered additions,
         // each 10 points before a 1/3 sugar break so yeast have time to process it.
@@ -918,17 +923,22 @@ mod tests {
     }
 
     #[test]
-    fn advanced_sna_low_og_has_three_additions_all_at_pitch() {
-        // OG < 1.100: GoFerm + Fermaid-K + all Fermaid-O upfront = 3 additions
+    fn advanced_sna_low_og_has_five_additions_time_staggered() {
+        // OG < 1.100: GoFerm + Fermaid-K at pitch, then Fermaid-O × 3 at 24/48/72h
         let now = Utc::now();
         let additions = advanced_sna_schedule(1.060, 1.010, 1.0, "medium", now);
-        assert_eq!(additions.len(), 3);
+        assert_eq!(additions.len(), 5);
         assert_eq!(additions[0].product, NutrientProduct::GoFerm);
         assert_eq!(additions[0].primary_trigger, NutrientTrigger::AtPitch);
         assert_eq!(additions[1].product, NutrientProduct::FermaidK);
         assert_eq!(additions[1].primary_trigger, NutrientTrigger::AtPitch);
         assert_eq!(additions[2].product, NutrientProduct::FermaidO);
-        assert_eq!(additions[2].primary_trigger, NutrientTrigger::AtPitch);
+        assert_eq!(additions[2].primary_trigger, NutrientTrigger::TimeElapsed);
+        assert_eq!(additions[2].fallback_hours, Some(24));
+        assert_eq!(additions[3].product, NutrientProduct::FermaidO);
+        assert_eq!(additions[3].fallback_hours, Some(48));
+        assert_eq!(additions[4].product, NutrientProduct::FermaidO);
+        assert_eq!(additions[4].fallback_hours, Some(72));
     }
 
     #[test]
