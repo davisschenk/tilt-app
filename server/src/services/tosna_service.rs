@@ -385,7 +385,6 @@ pub fn tosna_2_schedule(
     let g15 = sugar_depletion_gravity(og, target_fg, 0.15);
     let g30 = sugar_depletion_gravity(og, target_fg, 0.30);
     let g45 = sugar_depletion_gravity(og, target_fg, 0.45);
-    let g33 = sugar_depletion_gravity(og, target_fg, 0.333_333);
 
     vec![
         NutrientAddition {
@@ -419,8 +418,8 @@ pub fn tosna_2_schedule(
             addition_number: 4,
             product: NutrientProduct::FermaidO,
             amount_grams: per_addition,
-            primary_trigger: NutrientTrigger::GravityThreshold,
-            gravity_threshold: Some(g33),
+            primary_trigger: NutrientTrigger::TimeElapsed,
+            gravity_threshold: None,
             fallback_hours: Some(168),
             due_at: Some(pitch_time + Duration::hours(168)),
         },
@@ -440,7 +439,6 @@ pub fn tosna_3_schedule(
     let g15 = sugar_depletion_gravity(og, target_fg, 0.15);
     let g30 = sugar_depletion_gravity(og, target_fg, 0.30);
     let g45 = sugar_depletion_gravity(og, target_fg, 0.45);
-    let g33 = sugar_depletion_gravity(og, target_fg, 0.333_333);
 
     vec![
         NutrientAddition {
@@ -474,8 +472,8 @@ pub fn tosna_3_schedule(
             addition_number: 4,
             product: NutrientProduct::FermaidO,
             amount_grams: o_grams_per_addition,
-            primary_trigger: NutrientTrigger::GravityThreshold,
-            gravity_threshold: Some(g33),
+            primary_trigger: NutrientTrigger::TimeElapsed,
+            gravity_threshold: None,
             fallback_hours: Some(168),
             due_at: Some(pitch_time + Duration::hours(168)),
         },
@@ -873,13 +871,13 @@ mod tests {
     }
 
     #[test]
-    fn tosna_2_addition_4_is_one_third_break_with_7_day_fallback() {
+    fn tosna_2_addition_4_is_time_elapsed_7_day() {
         let now = Utc::now();
         let additions = tosna_2_schedule(1.080, 1.010, 1.0, "medium", now);
         let a4 = &additions[3];
+        assert_eq!(a4.primary_trigger, NutrientTrigger::TimeElapsed);
         assert_eq!(a4.fallback_hours, Some(168));
-        let expected_g = sugar_depletion_gravity(1.080, 1.010, 0.333_333);
-        assert!((a4.gravity_threshold.unwrap() - expected_g).abs() < 0.0001);
+        assert!(a4.gravity_threshold.is_none());
     }
 
     #[test]
