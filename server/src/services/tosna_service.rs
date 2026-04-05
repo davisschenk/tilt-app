@@ -283,12 +283,9 @@ pub async fn evaluate_temperature_safety(
     }
 }
 
+#[allow(dead_code)]
 pub fn og_to_brix(og: f64) -> f64 {
     261.3 * (1.0 - 1.0 / og)
-}
-
-pub fn sugar_g_per_l(og: f64) -> f64 {
-    og_to_brix(og) * og * 10.0
 }
 
 pub fn nitrogen_factor(requirement: &str) -> f64 {
@@ -299,8 +296,12 @@ pub fn nitrogen_factor(requirement: &str) -> f64 {
     }
 }
 
+/// Compute required YAN in ppm using the standard TOSNA formula:
+/// YAN (ppm) = (OG - 1.0) × 1000 × nitrogen_factor
+///
+/// e.g. OG 1.092, medium (0.90) → 92 × 0.90 = 82.8 ppm
 pub fn required_yan_ppm(og: f64, nitrogen_req: &str) -> f64 {
-    sugar_g_per_l(og) * nitrogen_factor(nitrogen_req)
+    (og - 1.0) * 1000.0 * nitrogen_factor(nitrogen_req)
 }
 
 pub fn gallons_to_liters(gallons: f64) -> f64 {
@@ -745,31 +746,35 @@ mod tests {
     }
 
     #[test]
-    fn sugar_g_per_l_uses_og_multiplier() {
-        let s = sugar_g_per_l(1.100);
-        assert!(
-            (s - 261.4).abs() < 1.0,
-            "Expected ~261.4 g/L (corrected formula), got {s}"
-        );
-        let simple = og_to_brix(1.100) * 10.0;
-        assert!(
-            (s - simple).abs() > 5.0,
-            "Corrected formula should differ meaningfully from Brix*10 at high OG"
-        );
+    fn required_yan_ppm_medium() {
+        // (1.100 - 1.0) * 1000 * 0.90 = 90 ppm
+        let ppm = required_yan_ppm(1.100, "medium");
+        assert!((ppm - 90.0).abs() < 0.01, "Expected 90.0 ppm, got {ppm}");
     }
 
     #[test]
-    fn required_yan_ppm_medium() {
-        let ppm = required_yan_ppm(1.100, "medium");
-        assert!((ppm - 235.0).abs() < 5.0, "Expected ~235 ppm, got {ppm}");
+    fn required_yan_ppm_low() {
+        // (1.092 - 1.0) * 1000 * 0.75 = 69 ppm
+        let ppm = required_yan_ppm(1.092, "low");
+        assert!((ppm - 69.0).abs() < 0.01, "Expected 69.0 ppm, got {ppm}");
+    }
+
+    #[test]
+    fn fermaid_o_grams_matches_meadmakr_1092_1gal_medium() {
+        // Meadmakr: OG 1.092, 1 gal, medium nitrogen, TOSNA 2 → ~8g total
+        let yan = required_yan_ppm(1.092, "medium");
+        let liters = gallons_to_liters(1.0);
+        let grams = fermaid_o_grams_for_yan(yan, liters);
+        assert!((grams - 7.84).abs() < 0.1, "Expected ~7.84g, got {grams}");
     }
 
     #[test]
     fn fermaid_o_grams_for_one_gallon_1100() {
+        // (1.100 - 1.0) * 1000 * 0.90 = 90 ppm; (90/40) * 3.785 = 8.52g
         let yan = required_yan_ppm(1.100, "medium");
         let liters = gallons_to_liters(1.0);
         let grams = fermaid_o_grams_for_yan(yan, liters);
-        assert!((grams - 22.2).abs() < 1.0, "Expected ~22.2g, got {grams}");
+        assert!((grams - 8.52).abs() < 0.1, "Expected ~8.52g, got {grams}");
     }
 
     #[test]
