@@ -1,9 +1,9 @@
 import { format } from "date-fns";
 import { CheckCircle2, Clock, Droplets, AlertCircle, Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import { useNutrientSchedule } from "@/hooks/use-nutrient-schedule";
 import { useBrewEvents, useCreateBrewEvent } from "@/hooks/use-brew-events";
 import type { BrewResponse, NutrientAddition, NutrientProduct } from "@/types";
@@ -146,32 +146,24 @@ export default function NutrientScheduleTable({ brew }: Props) {
 
   if (isLoading) {
     return (
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle className="text-base">Nutrient Schedule</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-        </CardContent>
-      </Card>
+      <div className="space-y-3">
+        <Separator />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+      </div>
     );
   }
 
   if (error || !schedule) {
     return (
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle className="text-base">Nutrient Schedule</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <AlertCircle className="h-4 w-4" />
-            <span>Could not load nutrient schedule. Ensure OG, Target FG, batch size, and pitch time are set.</span>
-          </div>
-        </CardContent>
-      </Card>
+      <div>
+        <Separator className="mb-4" />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <AlertCircle className="h-4 w-4" />
+          <span>Could not load nutrient schedule. Ensure OG, Target FG, batch size, and pitch time are set.</span>
+        </div>
+      </div>
     );
   }
 
@@ -219,27 +211,21 @@ export default function NutrientScheduleTable({ brew }: Props) {
   }, 0);
 
   return (
-    <Card className="mt-6">
-      <CardHeader className="pb-3">
+    <div>
+      <Separator className="mb-4" />
+      <div className="space-y-3 mb-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <CardTitle className="text-base">Nutrient Schedule — {protocolLabel}</CardTitle>
-          <div className="flex flex-wrap items-center gap-4 text-sm">
-            <span>
-              <span className="font-medium">Target YAN:</span>{" "}
-              {schedule.totalYanRequiredPpm.toFixed(0)} ppm
-            </span>
-            <span className="text-muted-foreground">|</span>
-            <span>
-              <span className="font-medium">Provided by schedule:</span>{" "}
-              {providedYan.toFixed(0)} ppm
-            </span>
+          <p className="text-sm font-semibold">Schedule — {protocolLabel}</p>
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <span><span className="font-medium text-foreground">Target YAN:</span> {schedule.totalYanRequiredPpm.toFixed(0)} ppm</span>
+            <span>·</span>
+            <span><span className="font-medium text-foreground">Provided:</span> {providedYan.toFixed(0)} ppm</span>
             {schedule.resolvedFromStrain && (
-              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900 dark:text-blue-200">
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 dark:bg-blue-900 dark:text-blue-200">
                 Auto-detected from strain
               </span>
             )}
-          </div>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span>·</span>
             <span>{schedule.batchSizeGallons.toFixed(1)} gal</span>
             <span>·</span>
             <span className="capitalize">{schedule.nitrogenRequirement} N</span>
@@ -255,29 +241,23 @@ export default function NutrientScheduleTable({ brew }: Props) {
         </div>
 
         {Object.keys(schedule.nutrientTotals).length > 0 && (
-          <div className="flex flex-wrap gap-3 mt-2">
+          <div className="flex flex-wrap gap-2">
             {Object.entries(schedule.nutrientTotals).map(([product, grams]) => {
               const typedProduct = product.replace("-", "_") as NutrientProduct;
               const tsp = grams / (G_PER_TSP[typedProduct] ?? 1);
-              const label =
-                PRODUCT_LABELS[typedProduct] ?? product;
+              const label = PRODUCT_LABELS[typedProduct] ?? product;
               return (
-                <div
-                  key={product}
-                  className="rounded-md bg-muted px-2.5 py-1 text-xs"
-                >
+                <div key={product} className="rounded-md bg-muted px-2.5 py-1 text-xs">
                   <span className="font-medium">{label}</span>
-                  <span className="text-muted-foreground ml-1">
-                    {grams.toFixed(1)}g / {tsp.toFixed(1)} tsp total
-                  </span>
+                  <span className="text-muted-foreground ml-1">{grams.toFixed(1)}g / {tsp.toFixed(1)} tsp total</span>
                 </div>
               );
             })}
           </div>
         )}
-      </CardHeader>
+      </div>
 
-      <CardContent className="space-y-3">
+      <div className="space-y-3">
         {schedule.additions.map((addition) => (
           <AdditionRow
             key={addition.additionNumber}
@@ -302,7 +282,7 @@ export default function NutrientScheduleTable({ brew }: Props) {
             }
           />
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

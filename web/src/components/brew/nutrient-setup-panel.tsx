@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { FlaskConical, ChevronDown, ChevronUp, Info } from "lucide-react";
+import { FlaskConical, ChevronDown, ChevronUp, Info, Settings2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import NutrientScheduleTable from "./nutrient-schedule-table";
 import {
   Select,
   SelectContent,
@@ -112,6 +113,10 @@ export default function NutrientSetupPanel({ brew }: Props) {
 
       {expanded && (
         <CardContent className="space-y-4">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <Settings2 className="h-3.5 w-3.5" />
+            Settings
+          </div>
           {missingFields.length > 0 && (
             <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200">
               Set {missingFields.join(" and ")} on the brew to enable schedule calculation.
@@ -224,6 +229,8 @@ export default function NutrientSetupPanel({ brew }: Props) {
               {update.isPending ? "Saving…" : "Save Settings"}
             </Button>
           </div>
+
+          <NutrientScheduleTable brew={brew} />
         </CardContent>
       )}
     </Card>
