@@ -621,6 +621,76 @@ mod tests {
     }
 
     #[test]
+    fn reduce_zero_iqr_uniform_cluster_returns_common_value() {
+        let mut acc = ReadingAccumulator::new();
+        // All samples identical — IQR = 0, no fence applied, all pass through.
+        for _ in 0..5 {
+            acc.add(TiltColor::Purple, 68.0, 1.050, -60);
+        }
+        let r = acc.reduce(TiltColor::Purple, 3, "ts").unwrap();
+        assert!((r.gravity - 1.050).abs() < 1e-9, "zero-IQR cluster should return 1.050, got {}", r.gravity);
+        assert!((r.temperature_f - 68.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn reduce_exactly_min_samples_returns_some() {
+        let mut acc = ReadingAccumulator::new();
+        // Exactly 3 samples, min_samples=3 — should succeed.
+        acc.add(TiltColor::Orange, 68.0, 1.050, -60);
+        acc.add(TiltColor::Orange, 68.0, 1.051, -60);
+        acc.add(TiltColor::Orange, 68.0, 1.052, -60);
+        assert!(acc.reduce(TiltColor::Orange, 3, "ts").is_some());
+    }
+
+    #[test]
+    fn reduce_one_below_min_samples_returns_none() {
+        let mut acc = ReadingAccumulator::new();
+        // 2 samples, min_samples=3 — should fail.
+        acc.add(TiltColor::Yellow, 68.0, 1.050, -60);
+        acc.add(TiltColor::Yellow, 68.0, 1.051, -60);
+        assert!(acc.reduce(TiltColor::Yellow, 3, "ts").is_none());
+    }
+
+    #[test]
+    fn reduce_full_realistic_sg_range_no_false_rejections() {
+        let mut acc = ReadingAccumulator::new();
+        // Realistic Tilt range 1.000 to 1.120 — these are genuinely different brews.
+        // A tight cluster within this range should never trigger false outlier rejection.
+        let gravities = [1.048, 1.049, 1.050, 1.051, 1.052];
+        for g in gravities {
+            acc.add(TiltColor::Black, 68.0, g, -60);
+        }
+        let r = acc.reduce(TiltColor::Black, 5, "ts").unwrap();
+        // Median of sorted [1.048, 1.049, 1.050, 1.051, 1.052] = 1.050
+        assert!((r.gravity - 1.050).abs() < 1e-9, "expected 1.050, got {}", r.gravity);
+    }
+
+    #[test]
+    fn reduce_nine_clean_plus_one_spike_rejected() {
+        let mut acc = ReadingAccumulator::new();
+        for _ in 0..9 {
+            acc.add(TiltColor::Pink, 68.0, 1.050, -60);
+        }
+        acc.add(TiltColor::Pink, 68.0, 0.999, -60); // low spike
+        let r = acc.reduce(TiltColor::Pink, 3, "ts").unwrap();
+        assert!((r.gravity - 1.050).abs() < 1e-9, "spike 0.999 should be rejected, got {}", r.gravity);
+    }
+
+    #[test]
+    fn reduce_all_two_colors_both_returned() {
+        let mut acc = ReadingAccumulator::new();
+        for _ in 0..4 {
+            acc.add(TiltColor::Red, 68.0, 1.060, -60);
+            acc.add(TiltColor::Green, 70.0, 1.045, -55);
+        }
+        let results = acc.reduce_all(3, "ts");
+        assert_eq!(results.len(), 2);
+        let has_red = results.iter().any(|r| r.color == TiltColor::Red);
+        let has_green = results.iter().any(|r| r.color == TiltColor::Green);
+        assert!(has_red && has_green);
+    }
+
+    #[test]
     fn sample_stats_returns_raw_counts() {
         let mut acc = ReadingAccumulator::new();
         acc.add(TiltColor::Red, 68.0, 1.050, -60);
