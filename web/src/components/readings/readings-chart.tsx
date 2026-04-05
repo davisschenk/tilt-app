@@ -67,7 +67,7 @@ interface EventTooltipState {
 }
 
 export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: ReadingsChartProps) {
-  const [range, setRange] = useState<TimeRange>("7d");
+  const [range, setRange] = useState<TimeRange>("all");
   const [eventTooltip, setEventTooltip] = useState<EventTooltipState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; isoTime: string } | null>(null);
   const [addEventOpen, setAddEventOpen] = useState(false);
