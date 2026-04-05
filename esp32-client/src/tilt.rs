@@ -250,13 +250,31 @@ impl ReadingAccumulator {
             .filter_map(|(t, ok)| if *ok { Some(*t) } else { None })
             .collect();
 
+        let raw_count = raw.len();
+        let grav_outliers = raw_count - grav_inliers.len();
+
         if grav_inliers.len() < min_samples || temp_inliers.len() < min_samples {
+            log::info!(
+                "Tilt {:?}: only {} samples after outlier rejection, skipping (min={})",
+                color,
+                grav_inliers.len().min(temp_inliers.len()),
+                min_samples,
+            );
             return None;
         }
 
         // grav_inliers is already sorted (came from sorted gravities).
         let median_gravity = Self::median_sorted(&grav_inliers);
         let median_temp = Self::median_sorted(&temp_inliers);
+
+        log::info!(
+            "Tilt {:?}: {} samples, {} outliers rejected -> temp={:.1}°F gravity={:.4}",
+            color,
+            raw_count,
+            grav_outliers,
+            median_temp,
+            median_gravity,
+        );
 
         Some(TiltReading::new(
             color,
@@ -273,6 +291,15 @@ impl ReadingAccumulator {
         self.samples
             .keys()
             .filter_map(|color| self.reduce(*color, min_samples, recorded_at))
+            .collect()
+    }
+
+    /// Return the raw sample count for every color seen during the scan window.
+    /// Useful for diagnostics and logging outside of `reduce()`.
+    pub fn sample_stats(&self) -> Vec<(TiltColor, usize)> {
+        self.samples
+            .iter()
+            .map(|(color, samples)| (*color, samples.len()))
             .collect()
     }
 }
@@ -591,5 +618,20 @@ mod tests {
         }
         let r = acc.reduce(TiltColor::Red, 3, "2026-04-05T12:00:00Z").unwrap();
         assert_eq!(r.recorded_at, "2026-04-05T12:00:00Z");
+    }
+
+    #[test]
+    fn sample_stats_returns_raw_counts() {
+        let mut acc = ReadingAccumulator::new();
+        acc.add(TiltColor::Red, 68.0, 1.050, -60);
+        acc.add(TiltColor::Red, 68.0, 1.050, -60);
+        acc.add(TiltColor::Blue, 70.0, 1.040, -55);
+        let stats = acc.sample_stats();
+        let red_count = stats.iter().find(|(c, _)| *c == TiltColor::Red).map(|(_, n)| *n);
+        let blue_count = stats.iter().find(|(c, _)| *c == TiltColor::Blue).map(|(_, n)| *n);
+        let green_count = stats.iter().find(|(c, _)| *c == TiltColor::Green).map(|(_, n)| *n);
+        assert_eq!(red_count, Some(2));
+        assert_eq!(blue_count, Some(1));
+        assert_eq!(green_count, None);
     }
 }
