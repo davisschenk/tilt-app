@@ -101,7 +101,7 @@ async fn get_nutrient_schedule(
         pitch_time,
     );
 
-    let total_yan = tosna_service::required_yan_ppm(og, &nitrogen_req);
+    let total_yan = tosna_service::required_yan_ppm(og, &nitrogen_req, batch_size_gallons);
     let batch_size_liters = tosna_service::gallons_to_liters(batch_size_gallons);
 
     let mut nutrient_totals: HashMap<String, f64> = HashMap::new();

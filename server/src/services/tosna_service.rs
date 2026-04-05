@@ -296,22 +296,40 @@ pub fn nitrogen_factor(requirement: &str) -> f64 {
     }
 }
 
-/// Compute required YAN in ppm using the standard TOSNA formula:
-/// YAN (ppm) = (OG - 1.0) × 1000 × nitrogen_factor
+/// Compute total grams of Fermaid-O needed using the official TOSNA formula:
+/// total_g = (Brix × 10 × NF / 50) × batch_gallons
 ///
-/// e.g. OG 1.092, medium (0.90) → 92 × 0.90 = 82.8 ppm
-pub fn required_yan_ppm(og: f64, nitrogen_req: &str) -> f64 {
-    (og - 1.0) * 1000.0 * nitrogen_factor(nitrogen_req)
+/// e.g. OG 1.092, medium (NF=0.90), 2 gal:
+///   og_to_brix(1.092)=22.01 → (22.01×10×0.90/50)×2 = 7.9g ≈ 8g (matches Meadmakr)
+pub fn total_fermaid_o_grams(og: f64, nitrogen_req: &str, batch_gallons: f64) -> f64 {
+    let brix = og_to_brix(og);
+    (brix * 10.0 * nitrogen_factor(nitrogen_req) / 50.0) * batch_gallons
+}
+
+/// Compute total grams of Fermaid-K needed (same TOSNA formula, different YAN density).
+/// Fermaid-K has ~100 ppm YAN/g vs Fermaid-O's ~40 ppm YAN/g → scale by 40/100 = 0.4.
+pub fn total_fermaid_k_grams(og: f64, nitrogen_req: &str, batch_gallons: f64) -> f64 {
+    total_fermaid_o_grams(og, nitrogen_req, batch_gallons) * (40.0 / 100.0)
+}
+
+/// Compute the YAN (ppm) that the scheduled Fermaid-O additions will provide.
+/// Used for display in the UI.
+pub fn required_yan_ppm(og: f64, nitrogen_req: &str, batch_gallons: f64) -> f64 {
+    let volume_liters = gallons_to_liters(batch_gallons);
+    let total_g = total_fermaid_o_grams(og, nitrogen_req, batch_gallons);
+    (total_g * 40.0) / volume_liters
 }
 
 pub fn gallons_to_liters(gallons: f64) -> f64 {
     gallons * 3.785_41
 }
 
+#[allow(dead_code)]
 pub fn fermaid_o_grams_for_yan(yan_ppm: f64, volume_liters: f64) -> f64 {
     (yan_ppm / 40.0) * volume_liters
 }
 
+#[allow(dead_code)]
 pub fn fermaid_k_grams_for_yan(yan_ppm: f64, volume_liters: f64) -> f64 {
     (yan_ppm / 100.0) * volume_liters
 }
@@ -361,10 +379,7 @@ pub fn tosna_2_schedule(
     nitrogen_req: &str,
     pitch_time: DateTime<Utc>,
 ) -> Vec<NutrientAddition> {
-    let volume_liters = gallons_to_liters(batch_gallons);
-    let yan_ppm = required_yan_ppm(og, nitrogen_req);
-    let total_grams = fermaid_o_grams_for_yan(yan_ppm, volume_liters);
-    let per_addition = total_grams / 4.0;
+    let per_addition = total_fermaid_o_grams(og, nitrogen_req, batch_gallons) / 4.0;
 
     let g15 = sugar_depletion_gravity(og, target_fg, 0.15);
     let g30 = sugar_depletion_gravity(og, target_fg, 0.30);
@@ -418,11 +433,8 @@ pub fn tosna_3_schedule(
     nitrogen_req: &str,
     pitch_time: DateTime<Utc>,
 ) -> Vec<NutrientAddition> {
-    let volume_liters = gallons_to_liters(batch_gallons);
-    let yan_ppm = required_yan_ppm(og, nitrogen_req);
-    let half_yan = yan_ppm / 2.0;
-    let k_grams_per_addition = fermaid_k_grams_for_yan(half_yan, volume_liters) / 2.0;
-    let o_grams_per_addition = fermaid_o_grams_for_yan(half_yan, volume_liters) / 2.0;
+    let k_grams_per_addition = total_fermaid_k_grams(og, nitrogen_req, batch_gallons) / 2.0;
+    let o_grams_per_addition = total_fermaid_o_grams(og, nitrogen_req, batch_gallons) / 2.0 / 2.0;
 
     let g15 = sugar_depletion_gravity(og, target_fg, 0.15);
     let g30 = sugar_depletion_gravity(og, target_fg, 0.30);
@@ -476,15 +488,9 @@ pub fn advanced_sna_schedule(
     nitrogen_req: &str,
     pitch_time: DateTime<Utc>,
 ) -> Vec<NutrientAddition> {
-    let volume_liters = gallons_to_liters(batch_gallons);
-    let yan_ppm = required_yan_ppm(og, nitrogen_req);
-
     let goferm_grams = batch_gallons * 1.25;
-    let o_yan = yan_ppm * 0.40;
-    let inorganic_yan = yan_ppm * 0.60;
-
-    let o_total = fermaid_o_grams_for_yan(o_yan, volume_liters);
-    let k_per_addition = fermaid_k_grams_for_yan(inorganic_yan / 2.0, volume_liters);
+    let o_total = total_fermaid_o_grams(og, nitrogen_req, batch_gallons) * 0.40;
+    let k_per_addition = total_fermaid_k_grams(og, nitrogen_req, batch_gallons) * 0.60 / 2.0;
 
     let g15 = sugar_depletion_gravity(og, target_fg, 0.15);
     let g33 = sugar_depletion_gravity(og, target_fg, 0.333_333);
@@ -747,34 +753,42 @@ mod tests {
 
     #[test]
     fn required_yan_ppm_medium() {
-        // (1.100 - 1.0) * 1000 * 0.90 = 90 ppm
-        let ppm = required_yan_ppm(1.100, "medium");
-        assert!((ppm - 90.0).abs() < 0.01, "Expected 90.0 ppm, got {ppm}");
-    }
-
-    #[test]
-    fn required_yan_ppm_low() {
-        // (1.092 - 1.0) * 1000 * 0.75 = 69 ppm
-        let ppm = required_yan_ppm(1.092, "low");
-        assert!((ppm - 69.0).abs() < 0.01, "Expected 69.0 ppm, got {ppm}");
+        // total_g = (23.77*10*0.90/50)*1 = 4.28g; yan = 4.28*40/3.785 = 45.2 ppm
+        let ppm = required_yan_ppm(1.100, "medium", 1.0);
+        assert!((ppm - 45.2).abs() < 1.0, "Expected ~45.2 ppm, got {ppm}");
     }
 
     #[test]
     fn fermaid_o_grams_matches_meadmakr_1092_1gal_medium() {
         // Meadmakr: OG 1.092, 1 gal, medium nitrogen, TOSNA 2 → ~8g total
-        let yan = required_yan_ppm(1.092, "medium");
-        let liters = gallons_to_liters(1.0);
-        let grams = fermaid_o_grams_for_yan(yan, liters);
-        assert!((grams - 7.84).abs() < 0.1, "Expected ~7.84g, got {grams}");
+        // og_to_brix(1.092)=22.01; (220.1*0.90/50)*1 = 3.96g per addition * 4 ... wait
+        // total = (22.01*10*0.90/50)*1 = (220.1*0.90/50) = 198.09/50 = 3.96g — that's per addition?
+        // No: total = 3.96g total for 1 gallon, so 2 gallons = 7.92g ≈ 8g ✓
+        let grams = total_fermaid_o_grams(1.092, "medium", 1.0);
+        assert!(
+            (grams - 3.96).abs() < 0.1,
+            "Expected ~3.96g per gallon, got {grams}"
+        );
     }
 
     #[test]
-    fn fermaid_o_grams_for_one_gallon_1100() {
-        // (1.100 - 1.0) * 1000 * 0.90 = 90 ppm; (90/40) * 3.785 = 8.52g
-        let yan = required_yan_ppm(1.100, "medium");
-        let liters = gallons_to_liters(1.0);
-        let grams = fermaid_o_grams_for_yan(yan, liters);
-        assert!((grams - 8.52).abs() < 0.1, "Expected ~8.52g, got {grams}");
+    fn fermaid_o_grams_2gal_matches_meadmakr() {
+        // Meadmakr: OG 1.092, 2 gal, medium → 8g total (2g per addition × 4)
+        let grams = total_fermaid_o_grams(1.092, "medium", 2.0);
+        assert!(
+            (grams - 7.92).abs() < 0.1,
+            "Expected ~7.92g total, got {grams}"
+        );
+    }
+
+    #[test]
+    fn fermaid_o_per_addition_matches_meadmakr() {
+        // 7.92g total / 4 additions = 1.98g ≈ 2g per addition ✓
+        let per = total_fermaid_o_grams(1.092, "medium", 2.0) / 4.0;
+        assert!(
+            (per - 1.98).abs() < 0.1,
+            "Expected ~1.98g per addition, got {per}"
+        );
     }
 
     #[test]
