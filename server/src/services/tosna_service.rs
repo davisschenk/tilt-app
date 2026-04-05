@@ -623,7 +623,9 @@ fn is_due(
     pitch_time: DateTime<Utc>,
 ) -> (bool, &'static str) {
     match addition.primary_trigger {
-        NutrientTrigger::AtPitch => (true, "at_pitch"),
+        // AtPitch additions must be logged manually — they happen before any readings
+        // are recorded, so the auto-evaluator should never fire them.
+        NutrientTrigger::AtPitch => (false, ""),
         NutrientTrigger::GravityThreshold => {
             if let Some(thresh) = addition.gravity_threshold
                 && current_gravity <= thresh
@@ -1134,7 +1136,8 @@ mod tests {
     }
 
     #[test]
-    fn is_due_at_pitch_always_fires() {
+    fn is_due_at_pitch_never_auto_fires() {
+        // AtPitch additions are manual-only; the auto-evaluator must not fire them.
         let pitch = Utc::now();
         let addition = NutrientAddition {
             addition_number: 1,
@@ -1145,9 +1148,11 @@ mod tests {
             fallback_hours: Some(0),
             due_at: None,
         };
-        let (due, reason) = is_due(&addition, 1.060, pitch, pitch);
-        assert!(due);
-        assert_eq!(reason, "at_pitch");
+        let (due, _) = is_due(&addition, 1.060, pitch, pitch);
+        assert!(
+            !due,
+            "AtPitch additions must not be auto-logged by the evaluator"
+        );
     }
 
     #[test]
