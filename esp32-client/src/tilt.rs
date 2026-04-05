@@ -4,8 +4,10 @@
 //! client cannot depend on it (different toolchain/target). Contains TiltColor
 //! enum, UUID constants, iBeacon parsing, and the TiltReading struct.
 
-use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::SystemTime;
+
+use serde::{Deserialize, Serialize};
 
 const TILT_UUID_RED: [u8; 16] = [
     0xA4, 0x95, 0xBB, 0x10, 0xC5, 0xB1, 0x4B, 0x44, 0xB5, 0x12, 0x13, 0x70, 0xF0, 0x2D, 0x74,
@@ -128,6 +130,37 @@ impl TiltReading {
 
 pub const IBEACON_TYPE: u8 = 0x02;
 pub const IBEACON_LENGTH: u8 = 0x15;
+
+/// Accumulates raw BLE advertisement samples for each Tilt color during a scan window.
+///
+/// Multiple advertisements from the same Tilt are collected here so that
+/// `reduce()` / `reduce_all()` can compute a median and reject outliers,
+/// rather than simply keeping the last-seen advertisement.
+pub struct ReadingAccumulator {
+    samples: HashMap<TiltColor, Vec<(f64, f64, i16)>>,
+}
+
+impl ReadingAccumulator {
+    /// Create an empty accumulator.
+    pub fn new() -> Self {
+        Self {
+            samples: HashMap::new(),
+        }
+    }
+
+    /// Push a raw (temp_f, gravity, rssi) sample for the given color.
+    pub fn add(&mut self, color: TiltColor, temp_f: f64, gravity: f64, rssi: i16) {
+        self.samples
+            .entry(color)
+            .or_insert_with(Vec::new)
+            .push((temp_f, gravity, rssi));
+    }
+
+    /// Return the number of samples collected for `color` (0 if unseen).
+    pub fn len(&self, color: TiltColor) -> usize {
+        self.samples.get(&color).map_or(0, |v: &Vec<(f64, f64, i16)>| v.len())
+    }
+}
 
 pub fn parse_ibeacon(manufacturer_data: &[u8]) -> Option<TiltReading> {
     // iBeacon manufacturer data (after company ID):
@@ -322,5 +355,40 @@ mod tests {
         // 2025-06-15T15:10:45Z = 1750000245 seconds since epoch
         let t = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1750000245);
         assert_eq!(format_timestamp(t), "2025-06-15T15:10:45Z");
+    }
+
+    #[test]
+    fn accumulator_new_is_empty() {
+        let acc = ReadingAccumulator::new();
+        assert_eq!(acc.len(TiltColor::Red), 0);
+        assert_eq!(acc.len(TiltColor::Green), 0);
+    }
+
+    #[test]
+    fn accumulator_add_increments_len() {
+        let mut acc = ReadingAccumulator::new();
+        acc.add(TiltColor::Red, 68.0, 1.050, -60);
+        assert_eq!(acc.len(TiltColor::Red), 1);
+        acc.add(TiltColor::Red, 69.0, 1.049, -61);
+        assert_eq!(acc.len(TiltColor::Red), 2);
+        assert_eq!(acc.len(TiltColor::Green), 0);
+    }
+
+    #[test]
+    fn accumulator_add_separate_colors() {
+        let mut acc = ReadingAccumulator::new();
+        acc.add(TiltColor::Red, 68.0, 1.050, -60);
+        acc.add(TiltColor::Blue, 70.0, 1.040, -55);
+        assert_eq!(acc.len(TiltColor::Red), 1);
+        assert_eq!(acc.len(TiltColor::Blue), 1);
+        assert_eq!(acc.len(TiltColor::Green), 0);
+    }
+
+    #[test]
+    fn accumulator_len_unseen_color_is_zero() {
+        let acc = ReadingAccumulator::new();
+        for color in TiltColor::all() {
+            assert_eq!(acc.len(*color), 0);
+        }
     }
 }
