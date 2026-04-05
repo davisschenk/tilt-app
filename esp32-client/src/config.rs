@@ -48,6 +48,10 @@ pub struct Config {
     /// Must be between 1 and 50.
     #[default(3)]
     min_samples_per_color: u32,
+    /// Exponential weighted average smoothing factor as an integer percentage.
+    /// e.g. 30 means α = 0.30. Range 1–100. Set to 100 to disable smoothing (pass-through).
+    #[default(30)]
+    ewa_alpha_percent: u32,
 }
 
 const NVS_NAMESPACE: &str = "tilt_cfg";
@@ -123,6 +127,10 @@ pub fn apply_nvs_overrides(
         log::info!("NVS override: min_samples_per_color = {}", val);
         cfg.min_samples_per_color = val;
     }
+    if let Some(val) = nvs_get_u32(&nvs, "ewa_alpha") {
+        log::info!("NVS override: ewa_alpha_percent = {}", val);
+        cfg.ewa_alpha_percent = val;
+    }
 }
 
 pub fn validate_config(cfg: &Config) -> anyhow::Result<()> {
@@ -145,6 +153,12 @@ pub fn validate_config(cfg: &Config) -> anyhow::Result<()> {
         anyhow::bail!(
             "min_samples_per_color must be between 1 and 50, got {}",
             cfg.min_samples_per_color
+        );
+    }
+    if cfg.ewa_alpha_percent < 1 || cfg.ewa_alpha_percent > 100 {
+        anyhow::bail!(
+            "ewa_alpha_percent must be between 1 and 100, got {}",
+            cfg.ewa_alpha_percent
         );
     }
     if cfg.buffer_capacity < 10 || cfg.buffer_capacity > 500 {
@@ -184,5 +198,6 @@ pub fn log_config(cfg: &Config) {
     log::info!("  health_interval        = {} cycles", cfg.health_report_interval_cycles);
     log::info!("  ota_check_interval     = {} cycles", cfg.ota_check_interval_cycles);
     log::info!("  min_samples_per_color  = {}", cfg.min_samples_per_color);
+    log::info!("  ewa_alpha              = {} (α={:.2})", cfg.ewa_alpha_percent, cfg.ewa_alpha_percent as f64 / 100.0);
     log::info!("  firmware_version       = '{}'", cfg.firmware_version);
 }

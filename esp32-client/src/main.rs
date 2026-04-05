@@ -123,6 +123,8 @@ struct LoopState {
     reading_buffer: buffer::ReadingBuffer,
     /// Exponential backoff state for upload retries.
     backoff: buffer::Backoff,
+    /// EWA smoother — maintains per-color smoothed gravity/temp across cycles.
+    smoother: tilt::EwaSmoother,
 }
 
 fn main() {
@@ -208,6 +210,7 @@ fn run() -> Result<()> {
         consecutive_errors: 0,
         reading_buffer: buffer::ReadingBuffer::new(cfg.buffer_capacity as usize),
         backoff: buffer::Backoff::new(1000, 60_000, 2),
+        smoother: tilt::EwaSmoother::new(cfg.ewa_alpha_percent as f64 / 100.0),
     };
 
     let scan_interval = Duration::from_secs(cfg.scan_interval_secs as u64);
@@ -220,7 +223,7 @@ fn run() -> Result<()> {
         let cycle_start = Instant::now();
 
         // Phase 1: Scan for Tilt hydrometers
-        let readings = match run_ble_phase(&mut ble_scanner, &cfg) {
+        let mut readings = match run_ble_phase(&mut ble_scanner, &cfg) {
             Ok(r) => r,
             Err(e) => {
                 log::warn!("BLE scan error: {:?}", e);
@@ -244,6 +247,9 @@ fn run() -> Result<()> {
                 continue;
             }
         };
+
+        // Phase 1b: Apply EWA smoothing to suppress quantization oscillation.
+        state.smoother.smooth_batch(&mut readings);
 
         // Phase 2: Upload readings
         run_upload_phase(&mut state, &uploader, &mut wifi_manager, &readings, &cfg);

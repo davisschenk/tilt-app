@@ -304,6 +304,66 @@ impl ReadingAccumulator {
     }
 }
 
+/// Exponential weighted average smoother for Tilt gravity and temperature readings.
+///
+/// Maintains per-color smoothed state across scan cycles to suppress the
+/// quantization oscillation (square-wave pattern) that occurs when a Tilt sits
+/// on the boundary between two adjacent integer values.
+///
+/// Formula applied each cycle:
+/// ```text
+/// smoothed = α * new_value + (1 - α) * previous_smoothed
+/// ```
+/// α = 1.0 on the first reading (no prior state), producing a pass-through.
+/// Typical α: 0.3 (heavy smoothing) to 0.7 (light smoothing).
+pub struct EwaSmoother {
+    /// Smoothed (gravity, temperature) state per color.
+    state: HashMap<TiltColor, (f64, f64)>,
+    /// Smoothing factor α ∈ (0, 1].
+    alpha: f64,
+}
+
+impl EwaSmoother {
+    /// Create a new smoother with the given α.
+    ///
+    /// α = 1.0 disables smoothing (pass-through).
+    /// α = 0.3 is a good default for suppressing 1-unit quantization noise.
+    pub fn new(alpha: f64) -> Self {
+        Self {
+            state: HashMap::new(),
+            alpha: alpha.clamp(0.01, 1.0),
+        }
+    }
+
+    /// Apply EWA smoothing to a reading in-place and update stored state.
+    ///
+    /// On the first reading for a color there is no prior state, so the raw
+    /// value is stored as-is (equivalent to α = 1.0 for that cycle).
+    pub fn smooth(&mut self, reading: &mut TiltReading) {
+        let alpha = self.alpha;
+        let new_g = reading.gravity;
+        let new_t = reading.temperature_f;
+
+        let (sg, st) = self
+            .state
+            .entry(reading.color)
+            .or_insert((new_g, new_t));
+
+        *sg = alpha * new_g + (1.0 - alpha) * *sg;
+        *st = alpha * new_t + (1.0 - alpha) * *st;
+
+        reading.gravity = *sg;
+        reading.temperature_f = *st;
+    }
+
+    /// Apply smoothing to every reading in a batch in-place.
+    pub fn smooth_batch(&mut self, readings: &mut Vec<TiltReading>) {
+        for reading in readings.iter_mut() {
+            self.smooth(reading);
+        }
+    }
+}
+
 pub fn parse_ibeacon(manufacturer_data: &[u8]) -> Option<TiltReading> {
     // iBeacon manufacturer data (after company ID):
     // [0] = 0x02 (iBeacon type)
@@ -703,5 +763,76 @@ mod tests {
         assert_eq!(red_count, Some(2));
         assert_eq!(blue_count, Some(1));
         assert_eq!(green_count, None);
+    }
+
+    fn make_reading(color: TiltColor, temp: f64, gravity: f64) -> TiltReading {
+        TiltReading::new(color, temp, gravity, Some(-60), "ts".to_string())
+    }
+
+    #[test]
+    fn ewa_first_reading_passes_through() {
+        let mut smoother = EwaSmoother::new(0.3);
+        let mut r = make_reading(TiltColor::Red, 68.0, 1.050);
+        smoother.smooth(&mut r);
+        // First reading: no prior state, passes through unchanged.
+        assert!((r.gravity - 1.050).abs() < 1e-9);
+        assert!((r.temperature_f - 68.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ewa_smooths_oscillating_gravity() {
+        let mut smoother = EwaSmoother::new(0.3);
+        // Simulate square-wave oscillation between 1.050 and 1.051.
+        let values = [1.050, 1.051, 1.050, 1.051, 1.050, 1.051, 1.050, 1.051];
+        let mut last = 0.0;
+        for g in values {
+            let mut r = make_reading(TiltColor::Red, 68.0, g);
+            smoother.smooth(&mut r);
+            last = r.gravity;
+        }
+        // After 8 cycles the smoothed value should be between the two extremes,
+        // not oscillating. It should be closer to 1.0505 than to either extreme.
+        assert!(last > 1.050 && last < 1.051, "expected value between extremes, got {}", last);
+    }
+
+    #[test]
+    fn ewa_alpha_100_is_passthrough() {
+        let mut smoother = EwaSmoother::new(1.0);
+        let mut r1 = make_reading(TiltColor::Green, 68.0, 1.050);
+        smoother.smooth(&mut r1);
+        let mut r2 = make_reading(TiltColor::Green, 68.0, 1.060);
+        smoother.smooth(&mut r2);
+        // α=1.0: output always equals input.
+        assert!((r2.gravity - 1.060).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ewa_independent_per_color() {
+        let mut smoother = EwaSmoother::new(0.3);
+        let mut red1 = make_reading(TiltColor::Red, 68.0, 1.050);
+        let mut green1 = make_reading(TiltColor::Green, 70.0, 1.040);
+        smoother.smooth(&mut red1);
+        smoother.smooth(&mut green1);
+        // Both pass through on first reading.
+        let mut red2 = make_reading(TiltColor::Red, 68.0, 1.060);
+        let mut green2 = make_reading(TiltColor::Green, 70.0, 1.030);
+        smoother.smooth(&mut red2);
+        smoother.smooth(&mut green2);
+        // Red and green states are independent — red smoothed up, green smoothed down.
+        assert!(red2.gravity > 1.050, "red should have increased toward 1.060");
+        assert!(green2.gravity < 1.040, "green should have decreased toward 1.030");
+    }
+
+    #[test]
+    fn ewa_smooth_batch_applies_to_all() {
+        let mut smoother = EwaSmoother::new(0.3);
+        let mut readings = vec![
+            make_reading(TiltColor::Red, 68.0, 1.050),
+            make_reading(TiltColor::Blue, 70.0, 1.040),
+        ];
+        smoother.smooth_batch(&mut readings);
+        // First reading for each — pass-through.
+        assert!((readings[0].gravity - 1.050).abs() < 1e-9);
+        assert!((readings[1].gravity - 1.040).abs() < 1e-9);
     }
 }
