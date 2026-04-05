@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
-import { Pencil, CheckCircle, Archive, Trash2, PartyPopper, Bell, ChevronDown, ChevronUp, Plus } from "lucide-react";
+import { Pencil, CheckCircle, Archive, Trash2, PartyPopper, Bell, ChevronDown, ChevronUp, Plus, Table2 } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +67,7 @@ export default function BrewDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [alertsExpanded, setAlertsExpanded] = useState(false);
+  const [readingsExpanded, setReadingsExpanded] = useState(false);
   const [addAlertOpen, setAddAlertOpen] = useState(false);
   const { data: alertRules } = useAlertRules(id);
   const { data: alertTargets } = useAlertTargets();
@@ -303,7 +304,6 @@ export default function BrewDetail() {
             </div>
           )}
         <ReadingsChart brewId={brew.id} targetFg={brew.targetFg} predictedFgDate={analytics?.predictedFgDate} />
-        <ReadingsTable brewId={brew.id} />
       </div>
 
       <Separator className="my-8" />
@@ -373,6 +373,21 @@ export default function BrewDetail() {
       </div>
 
       <CreateAlertRuleDialog open={addAlertOpen} onOpenChange={setAddAlertOpen} defaultBrewId={brew.id} />
+
+      <Separator className="my-8" />
+
+      <div>
+        <button
+          type="button"
+          className="flex items-center gap-2 text-lg font-semibold hover:text-primary transition-colors mb-4"
+          onClick={() => setReadingsExpanded(!readingsExpanded)}
+        >
+          <Table2 className="h-5 w-5" />
+          Recent Readings
+          {readingsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        {readingsExpanded && <ReadingsTable brewId={brew.id} />}
+      </div>
     </div>
   );
 }
