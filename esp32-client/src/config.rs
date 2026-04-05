@@ -43,6 +43,11 @@ pub struct Config {
     /// Long scans are split into chunks of this size so the watchdog can be fed between them.
     #[default(30)]
     max_scan_chunk_secs: u32,
+    /// Minimum number of BLE advertisement samples per Tilt color before a reading is
+    /// reported. Colors with fewer inliers after IQR outlier rejection are skipped.
+    /// Must be between 1 and 50.
+    #[default(3)]
+    min_samples_per_color: u32,
 }
 
 const NVS_NAMESPACE: &str = "tilt_cfg";
@@ -114,6 +119,10 @@ pub fn apply_nvs_overrides(
         log::info!("NVS override: ota_check_interval_cycles = {}", val);
         cfg.ota_check_interval_cycles = val;
     }
+    if let Some(val) = nvs_get_u32(&nvs, "min_samples") {
+        log::info!("NVS override: min_samples_per_color = {}", val);
+        cfg.min_samples_per_color = val;
+    }
 }
 
 pub fn validate_config(cfg: &Config) -> anyhow::Result<()> {
@@ -130,6 +139,12 @@ pub fn validate_config(cfg: &Config) -> anyhow::Result<()> {
         anyhow::bail!(
             "scan_interval_secs must be between 5 and 300, got {}",
             cfg.scan_interval_secs
+        );
+    }
+    if cfg.min_samples_per_color < 1 || cfg.min_samples_per_color > 50 {
+        anyhow::bail!(
+            "min_samples_per_color must be between 1 and 50, got {}",
+            cfg.min_samples_per_color
         );
     }
     if cfg.buffer_capacity < 10 || cfg.buffer_capacity > 500 {
@@ -168,5 +183,6 @@ pub fn log_config(cfg: &Config) {
     log::info!("  watchdog_timeout       = {}s", cfg.watchdog_timeout_secs);
     log::info!("  health_interval        = {} cycles", cfg.health_report_interval_cycles);
     log::info!("  ota_check_interval     = {} cycles", cfg.ota_check_interval_cycles);
+    log::info!("  min_samples_per_color  = {}", cfg.min_samples_per_color);
     log::info!("  firmware_version       = '{}'", cfg.firmware_version);
 }
