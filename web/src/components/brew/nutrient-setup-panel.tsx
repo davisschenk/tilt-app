@@ -29,8 +29,8 @@ const PROTOCOL_LABELS: Record<string, string> = {
 
 const NITROGEN_LABELS: Record<string, string> = {
   low: "Low (e.g. EC-1118, Lalvin 71B)",
-  medium: "Medium (e.g. Lalvin D47, Lalvin K1-V1116)",
-  high: "High (e.g. Mangrove Jack M05)",
+  medium: "Medium (e.g. Lalvin D47, Mangrove Jack M05)",
+  high: "High",
 };
 
 export default function NutrientSetupPanel({ brew }: Props) {

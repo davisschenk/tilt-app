@@ -50,7 +50,7 @@ pub static YEAST_STRAIN_TABLE: &[YeastStrainInfo] = &[
     YeastStrainInfo {
         name: "EC-1118",
         aliases: &["ec1118", "champagne yeast", "epernay", "prise de mousse"],
-        nitrogen_requirement: "medium",
+        nitrogen_requirement: "low",
         alcohol_tolerance_pct: 18.0,
         temp_min_f: 50.0,
         temp_max_f: 86.0,
@@ -433,7 +433,7 @@ pub fn tosna_3_schedule(
     nitrogen_req: &str,
     pitch_time: DateTime<Utc>,
 ) -> Vec<NutrientAddition> {
-    let k_grams_per_addition = total_fermaid_k_grams(og, nitrogen_req, batch_gallons) / 2.0;
+    let k_grams_per_addition = total_fermaid_k_grams(og, nitrogen_req, batch_gallons) / 4.0;
     let o_grams_per_addition = total_fermaid_o_grams(og, nitrogen_req, batch_gallons) / 2.0 / 2.0;
 
     let g15 = sugar_depletion_gravity(og, target_fg, 0.15);
@@ -844,6 +844,32 @@ mod tests {
     }
 
     #[test]
+    fn tosna_3_total_yan_equals_tosna_2_target() {
+        let now = Utc::now();
+        let og = 1.080;
+        let fg = 1.010;
+        let gallons = 1.0;
+        let req = "medium";
+
+        let t2 = tosna_2_schedule(og, fg, gallons, req, now);
+        let t3 = tosna_3_schedule(og, fg, gallons, req, now);
+
+        let yan2: f64 = t2.iter().map(|a| a.amount_grams * 40.0).sum();
+        let yan3: f64 = t3
+            .iter()
+            .map(|a| match a.product {
+                NutrientProduct::FermaidK => a.amount_grams * 100.0,
+                _ => a.amount_grams * 40.0,
+            })
+            .sum();
+
+        assert!(
+            (yan2 - yan3).abs() < 0.01,
+            "TOSNA 3 YAN {yan3:.4} != TOSNA 2 YAN {yan2:.4}"
+        );
+    }
+
+    #[test]
     fn tosna_3_uses_fermaid_k_for_first_two() {
         let now = Utc::now();
         let additions = tosna_3_schedule(1.080, 1.010, 1.0, "medium", now);
@@ -901,9 +927,9 @@ mod tests {
     }
 
     #[test]
-    fn strain_ec1118_is_medium_nitrogen() {
+    fn strain_ec1118_is_low_nitrogen() {
         let s = lookup_strain("EC-1118").expect("EC-1118 must be in table");
-        assert_eq!(s.nitrogen_requirement, "medium");
+        assert_eq!(s.nitrogen_requirement, "low");
     }
 
     #[test]
