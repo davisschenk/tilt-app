@@ -347,6 +347,7 @@ pub fn sugar_depletion_gravity(og: f64, target_fg: f64, fraction: f64) -> f64 {
     og - (og - target_fg) * fraction
 }
 
+#[allow(dead_code)]
 pub fn max_inorganic_gravity(og: f64) -> f64 {
     og - 9.0 / 131.25
 }
@@ -481,6 +482,20 @@ pub fn tosna_3_schedule(
     ]
 }
 
+/// Advanced SNA schedule based on Denard Brewing's liquid-yeast protocol.
+///
+/// Science references:
+/// - Fermaid-K YAN: 100 ppm/g·L; legal limit 0.5 g/L = 1.89 g/gal → contributes 50 YAN
+/// - Fermaid-O YAN: 40 ppm/g·L (biologically ~4× more effective but calculated at face value)
+/// - DAP blocked after 9% ABV — difficult to transport across yeast membrane at high ABV
+/// - Fermaid-O added ~10 gravity points early because yeast must proteolytically process it
+///
+/// Protocol:
+/// 1. GoFerm at pitch: 1.25 g/gal (yeast rehydration)
+/// 2. Fermaid-K at pitch: fixed 1.89 g/gal (legal max; provides vitamins, minerals, 50 YAN)
+/// 3. Fermaid-O: total YAN minus K's 50 ppm, split by OG:
+///    - OG < 1.100: all upfront at pitch
+///    - OG ≥ 1.100: 3 equal additions triggered 10 gravity points before each 1/3 sugar break
 pub fn advanced_sna_schedule(
     og: f64,
     target_fg: f64,
@@ -488,21 +503,26 @@ pub fn advanced_sna_schedule(
     nitrogen_req: &str,
     pitch_time: DateTime<Utc>,
 ) -> Vec<NutrientAddition> {
+    let volume_liters = gallons_to_liters(batch_gallons);
+
+    // GoFerm: 1.25 g/gal for yeast rehydration at pitch
     let goferm_grams = batch_gallons * 1.25;
-    let o_total = total_fermaid_o_grams(og, nitrogen_req, batch_gallons) * 0.40;
-    let k_per_addition = total_fermaid_k_grams(og, nitrogen_req, batch_gallons) * 0.60 / 2.0;
 
-    let g15 = sugar_depletion_gravity(og, target_fg, 0.15);
-    let g33 = sugar_depletion_gravity(og, target_fg, 0.333_333);
-    let inorganic_cutoff = max_inorganic_gravity(og);
+    // Fermaid-K: fixed at legal limit (1.89 g/gal), contributes 50 ppm YAN
+    let k_grams = batch_gallons * 1.89;
+    let k_yan_ppm = (k_grams * 100.0) / volume_liters;
 
-    let safe_k_gravity = if inorganic_cutoff > g15 {
-        inorganic_cutoff
-    } else {
-        g15
-    };
+    // Fermaid-O: total required YAN minus what Fermaid-K already provides
+    let total_yan = required_yan_ppm(og, nitrogen_req, batch_gallons);
+    let o_yan_needed = (total_yan - k_yan_ppm).max(0.0);
+    let o_total_grams = (o_yan_needed / 40.0) * volume_liters;
 
-    vec![
+    // Gravity triggers: 10 points before each 1/3 sugar break (Fermaid-O needs processing time)
+    // 1/3 break minus 10 points ≈ fraction 0.333 of depletion, shifted up by 0.010 SG
+    let g_break1 = sugar_depletion_gravity(og, target_fg, 0.333_333) + 0.010;
+    let g_break2 = sugar_depletion_gravity(og, target_fg, 0.666_667) + 0.010;
+
+    let mut additions = vec![
         NutrientAddition {
             addition_number: 1,
             product: NutrientProduct::GoFerm,
@@ -514,41 +534,60 @@ pub fn advanced_sna_schedule(
         },
         NutrientAddition {
             addition_number: 2,
-            product: NutrientProduct::FermaidO,
-            amount_grams: o_total / 2.0,
-            primary_trigger: NutrientTrigger::TimeElapsed,
-            gravity_threshold: None,
-            fallback_hours: Some(24),
-            due_at: Some(pitch_time + Duration::hours(24)),
-        },
-        NutrientAddition {
-            addition_number: 3,
             product: NutrientProduct::FermaidK,
-            amount_grams: k_per_addition,
+            amount_grams: k_grams,
+            primary_trigger: NutrientTrigger::AtPitch,
+            gravity_threshold: None,
+            fallback_hours: Some(0),
+            due_at: Some(pitch_time),
+        },
+    ];
+
+    if og < 1.100 {
+        // Low gravity: all Fermaid-O upfront
+        additions.push(NutrientAddition {
+            addition_number: 3,
+            product: NutrientProduct::FermaidO,
+            amount_grams: o_total_grams,
+            primary_trigger: NutrientTrigger::AtPitch,
+            gravity_threshold: None,
+            fallback_hours: Some(0),
+            due_at: Some(pitch_time),
+        });
+    } else {
+        // High gravity (≥ 1.100): split Fermaid-O across 3 gravity-triggered additions,
+        // each 10 points before a 1/3 sugar break so yeast have time to process it.
+        let per_addition = o_total_grams / 3.0;
+        additions.push(NutrientAddition {
+            addition_number: 3,
+            product: NutrientProduct::FermaidO,
+            amount_grams: per_addition,
+            primary_trigger: NutrientTrigger::AtPitch,
+            gravity_threshold: None,
+            fallback_hours: Some(0),
+            due_at: Some(pitch_time),
+        });
+        additions.push(NutrientAddition {
+            addition_number: 4,
+            product: NutrientProduct::FermaidO,
+            amount_grams: per_addition,
             primary_trigger: NutrientTrigger::GravityThreshold,
-            gravity_threshold: Some(safe_k_gravity),
+            gravity_threshold: Some(g_break1),
             fallback_hours: Some(48),
             due_at: Some(pitch_time + Duration::hours(48)),
-        },
-        NutrientAddition {
-            addition_number: 4,
-            product: NutrientProduct::FermaidK,
-            amount_grams: k_per_addition,
-            primary_trigger: NutrientTrigger::GravityThreshold,
-            gravity_threshold: Some(safe_k_gravity),
-            fallback_hours: Some(72),
-            due_at: Some(pitch_time + Duration::hours(72)),
-        },
-        NutrientAddition {
+        });
+        additions.push(NutrientAddition {
             addition_number: 5,
             product: NutrientProduct::FermaidO,
-            amount_grams: o_total / 2.0,
+            amount_grams: per_addition,
             primary_trigger: NutrientTrigger::GravityThreshold,
-            gravity_threshold: Some(g33),
-            fallback_hours: Some(168),
-            due_at: Some(pitch_time + Duration::hours(168)),
-        },
-    ]
+            gravity_threshold: Some(g_break2),
+            fallback_hours: Some(96),
+            due_at: Some(pitch_time + Duration::hours(96)),
+        });
+    }
+
+    additions
 }
 
 fn product_name(p: NutrientProduct) -> &'static str {
@@ -881,30 +920,85 @@ mod tests {
     }
 
     #[test]
-    fn advanced_sna_has_five_additions_with_goferm_first() {
+    fn advanced_sna_low_og_has_three_additions_all_at_pitch() {
+        // OG < 1.100: GoFerm + Fermaid-K + all Fermaid-O upfront = 3 additions
         let now = Utc::now();
         let additions = advanced_sna_schedule(1.060, 1.010, 1.0, "medium", now);
-        assert_eq!(additions.len(), 5);
+        assert_eq!(additions.len(), 3);
         assert_eq!(additions[0].product, NutrientProduct::GoFerm);
         assert_eq!(additions[0].primary_trigger, NutrientTrigger::AtPitch);
+        assert_eq!(additions[1].product, NutrientProduct::FermaidK);
+        assert_eq!(additions[1].primary_trigger, NutrientTrigger::AtPitch);
+        assert_eq!(additions[2].product, NutrientProduct::FermaidO);
+        assert_eq!(additions[2].primary_trigger, NutrientTrigger::AtPitch);
     }
 
     #[test]
-    fn advanced_sna_inorganic_clamped_below_nine_pct_abv() {
+    fn advanced_sna_high_og_has_five_additions_with_gravity_triggers() {
+        // OG ≥ 1.100: GoFerm + Fermaid-K + 3× Fermaid-O = 5 additions
         let now = Utc::now();
-        let og = 1.060;
-        let additions = advanced_sna_schedule(og, 1.010, 1.0, "medium", now);
-        let cutoff = max_inorganic_gravity(og);
-        for a in &additions {
-            if a.product == NutrientProduct::FermaidK || a.product == NutrientProduct::Dap {
-                if let Some(thresh) = a.gravity_threshold {
-                    assert!(
-                        thresh >= cutoff,
-                        "Inorganic addition threshold {thresh} is below 9% ABV cutoff {cutoff}"
-                    );
-                }
-            }
+        let additions = advanced_sna_schedule(1.120, 1.010, 1.0, "medium", now);
+        assert_eq!(additions.len(), 5);
+        assert_eq!(additions[0].product, NutrientProduct::GoFerm);
+        assert_eq!(additions[1].product, NutrientProduct::FermaidK);
+        assert_eq!(additions[2].product, NutrientProduct::FermaidO);
+        assert_eq!(additions[2].primary_trigger, NutrientTrigger::AtPitch);
+        assert_eq!(additions[3].product, NutrientProduct::FermaidO);
+        assert_eq!(
+            additions[3].primary_trigger,
+            NutrientTrigger::GravityThreshold
+        );
+        assert_eq!(additions[4].product, NutrientProduct::FermaidO);
+        assert_eq!(
+            additions[4].primary_trigger,
+            NutrientTrigger::GravityThreshold
+        );
+        // Additions 4 and 5 must have distinct gravity thresholds
+        assert!(additions[3].gravity_threshold != additions[4].gravity_threshold);
+    }
+
+    #[test]
+    fn advanced_sna_fermaid_k_fixed_at_1_89_per_gallon() {
+        // Fermaid-K dose is fixed at legal limit 1.89 g/gal regardless of OG or nitrogen req
+        let now = Utc::now();
+        for &og in &[1.060_f64, 1.100, 1.130] {
+            let additions = advanced_sna_schedule(og, 1.010, 2.0, "medium", now);
+            let k = additions
+                .iter()
+                .find(|a| a.product == NutrientProduct::FermaidK)
+                .unwrap();
+            assert!(
+                (k.amount_grams - 2.0 * 1.89).abs() < 0.01,
+                "Expected 3.78g Fermaid-K for 2 gal at OG {og}, got {}",
+                k.amount_grams
+            );
         }
+    }
+
+    #[test]
+    fn advanced_sna_fermaid_o_gravity_breaks_10_points_early() {
+        // For OG ≥ 1.100, Fermaid-O additions 4 and 5 should trigger 10 pts before 1/3 sugar breaks
+        let now = Utc::now();
+        let og = 1.120;
+        let fg = 1.010;
+        let additions = advanced_sna_schedule(og, fg, 1.0, "medium", now);
+        let break1_expected = sugar_depletion_gravity(og, fg, 0.333_333) + 0.010;
+        let break2_expected = sugar_depletion_gravity(og, fg, 0.666_667) + 0.010;
+        let o_additions: Vec<_> = additions
+            .iter()
+            .filter(|a| a.product == NutrientProduct::FermaidO && a.gravity_threshold.is_some())
+            .collect();
+        assert_eq!(o_additions.len(), 2);
+        assert!(
+            (o_additions[0].gravity_threshold.unwrap() - break1_expected).abs() < 0.0001,
+            "First O addition should trigger at {break1_expected:.4}, got {:.4}",
+            o_additions[0].gravity_threshold.unwrap()
+        );
+        assert!(
+            (o_additions[1].gravity_threshold.unwrap() - break2_expected).abs() < 0.0001,
+            "Second O addition should trigger at {break2_expected:.4}, got {:.4}",
+            o_additions[1].gravity_threshold.unwrap()
+        );
     }
 
     #[test]
