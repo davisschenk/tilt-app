@@ -210,7 +210,84 @@ pub async fn find_triggered_rules(
         .collect())
 }
 
-#[allow(dead_code)]
+/// Find all enabled GravityPlateau rules that match the current brew/hydrometer scope,
+/// have passed their cooldown, and whose gravity has been stable within the rule's window.
+pub async fn find_triggered_plateau_rules(
+    db: &DatabaseConnection,
+    brew_id: Option<Uuid>,
+    hydrometer_id: Option<Uuid>,
+) -> Result<Vec<alert_rules::Model>, DbErr> {
+    let plateau_rules = AlertRule::find()
+        .filter(Column::Enabled.eq(true))
+        .filter(Column::Metric.eq("gravity_plateau"))
+        .all(db)
+        .await?;
+
+    let now = Utc::now();
+    let mut triggered = Vec::new();
+
+    for rule in plateau_rules {
+        // Scope check
+        if let Some(rule_brew) = rule.brew_id
+            && brew_id != Some(rule_brew)
+        {
+            continue;
+        }
+        if let Some(rule_hydro) = rule.hydrometer_id
+            && hydrometer_id != Some(rule_hydro)
+        {
+            continue;
+        }
+
+        // Cooldown check
+        if let Some(last) = rule.last_triggered_at {
+            let last_utc: chrono::DateTime<Utc> = last.into();
+            let cooldown = chrono::Duration::minutes(i64::from(rule.cooldown_minutes));
+            if now - last_utc < cooldown {
+                continue;
+            }
+        }
+
+        // Fetch historical readings within the rule's window
+        let window_start = now - chrono::Duration::hours(i64::from(rule.window_hours));
+        let query = shared::ReadingsQuery {
+            brew_id: rule.brew_id.or(brew_id),
+            hydrometer_id: rule.hydrometer_id.or(hydrometer_id),
+            since: Some(window_start),
+            until: Some(now),
+            limit: None,
+        };
+
+        let readings = match crate::services::reading_service::find_filtered(db, &query).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!(rule_id = %rule.id, error = %e, "Failed to fetch readings for plateau evaluation");
+                continue;
+            }
+        };
+
+        if readings.len() < 2 {
+            continue;
+        }
+
+        // Convert to (hours_elapsed, gravity) format expected by evaluate_plateau_rule
+        let earliest = readings.iter().map(|r| r.recorded_at).min().unwrap();
+        let window_data: Vec<(f64, f64)> = readings
+            .iter()
+            .map(|r| {
+                let hours = (r.recorded_at - earliest).num_seconds() as f64 / 3600.0;
+                (hours, r.gravity)
+            })
+            .collect();
+
+        if evaluate_plateau_rule(&window_data, rule.threshold) {
+            triggered.push(rule);
+        }
+    }
+
+    Ok(triggered)
+}
+
 /// Evaluate a gravity plateau rule against a slice of (recorded_at_hours, gravity) tuples.
 ///
 /// Returns true when max(gravity) - min(gravity) over the window is <= threshold,

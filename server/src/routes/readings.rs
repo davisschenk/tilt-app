@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use shared::{CreateReadingsBatch, ReadingResponse, ReadingsQuery, TiltReading};
 
+use crate::fairings::rate_limit::RateLimitGuard;
 use crate::guards::auth_or_api_key::AuthOrApiKey;
 use crate::guards::current_user::CurrentUser;
 use crate::services::{
@@ -16,6 +17,7 @@ use crate::services::{
 #[post("/readings", data = "<batch>")]
 async fn create_batch(
     _auth: AuthOrApiKey,
+    _rate_limit: RateLimitGuard,
     db: &State<DatabaseConnection>,
     http_client: &State<reqwest::Client>,
     batch: Json<CreateReadingsBatch>,
@@ -46,9 +48,19 @@ async fn create_batch(
             .unwrap_or(None);
         let brew_id = active_brew.as_ref().map(|b| b.id);
 
+        // Apply calibration offsets before storing
+        let adjusted_readings: Vec<TiltReading> = batch_readings
+            .iter()
+            .map(|r| TiltReading {
+                temperature_f: r.temperature_f + hydrometer.temp_offset_f,
+                gravity: r.gravity + hydrometer.gravity_offset,
+                ..r.clone()
+            })
+            .collect();
+
         let count = reading_service::batch_create(
             db.inner(),
-            batch_readings.clone(),
+            adjusted_readings.clone(),
             hydrometer.id,
             brew_id,
         )
@@ -61,7 +73,7 @@ async fn create_batch(
         total_count += count;
 
         // Alert + TOSNA evaluation: spawn as background task so it never blocks the response
-        if let Some(latest) = batch_readings.last() {
+        if let Some(latest) = adjusted_readings.last() {
             let db_ref = db.inner().clone();
             let client_ref = http_client.inner().clone();
             let gravity = latest.gravity;
@@ -220,6 +232,55 @@ async fn evaluate_alerts(
             }
             Err(e) => {
                 tracing::error!(rule_id = %rule_id, error = %e, "Webhook dispatch failed");
+            }
+        }
+    }
+
+    // Evaluate plateau rules (require historical readings, handled separately)
+    let plateau_triggered =
+        match alert_rule_service::find_triggered_plateau_rules(db, brew_id, hydrometer_id).await {
+            Ok(rules) => rules,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to query triggered plateau rules");
+                return;
+            }
+        };
+
+    for rule in plateau_triggered {
+        let target = match alert_target_service::find_by_id_raw(db, rule.alert_target_id).await {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                tracing::warn!(alert_target_id = %rule.alert_target_id, "Alert target not found for plateau rule");
+                continue;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to look up alert target for plateau rule");
+                continue;
+            }
+        };
+
+        if !target.enabled {
+            continue;
+        }
+
+        let rule_id = rule.id;
+        match webhook_dispatcher::dispatch(
+            http_client,
+            &target,
+            &rule,
+            gravity,
+            temperature_f,
+            recorded_at,
+        )
+        .await
+        {
+            Ok(()) => {
+                if let Err(e) = alert_rule_service::update_last_triggered(db, rule_id).await {
+                    tracing::error!(rule_id = %rule_id, error = %e, "Failed to update last_triggered_at for plateau rule");
+                }
+            }
+            Err(e) => {
+                tracing::error!(rule_id = %rule_id, error = %e, "Plateau webhook dispatch failed");
             }
         }
     }
