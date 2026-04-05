@@ -278,7 +278,7 @@ fn run_ble_phase(
     scanner: &mut ble::BleScanner,
     cfg: &config::Config,
 ) -> Result<Vec<tilt::TiltReading>> {
-    let readings = scanner.scan_for_tilts(cfg.scan_interval_secs)?;
+    let readings = scanner.scan_for_tilts(cfg.scan_interval_secs, cfg.min_samples_per_color as usize)?;
     scanner.reset_recovery_counter();
     Ok(readings)
 }

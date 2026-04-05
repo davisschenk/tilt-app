@@ -3,7 +3,6 @@
 //! Handles NimBLE BLE stack initialization, passive scanning for iBeacon
 //! advertisements, and integration with the Tilt parser to produce readings.
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
@@ -11,7 +10,7 @@ use anyhow::{Context, Result};
 use esp32_nimble::{BLEDevice, BLEScan};
 use esp_idf_svc::hal::task::block_on;
 
-use crate::tilt::{self, TiltColor, TiltReading};
+use crate::tilt::{self, ReadingAccumulator, TiltReading};
 
 const MAX_RECOVERY_FAILURES: u32 = 3;
 
@@ -91,13 +90,14 @@ impl BleScanner {
     /// Scan for Tilt hydrometer BLE advertisements for `duration_secs` seconds.
     ///
     /// Long scans are split into chunks of `max_scan_chunk_secs` with watchdog
-    /// feeds between each chunk. Returns one reading per Tilt color detected;
-    /// if a color is seen multiple times the last advertisement wins.
-    pub fn scan_for_tilts(&mut self, duration_secs: u32) -> Result<Vec<TiltReading>> {
-        let readings: Arc<Mutex<HashMap<TiltColor, TiltReading>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+    /// feeds between each chunk. All advertisements seen during the full window
+    /// are accumulated, then reduced to one reading per color via median + IQR
+    /// outlier rejection. Colors with fewer than `min_samples` inliers are dropped.
+    pub fn scan_for_tilts(&mut self, duration_secs: u32, min_samples: usize) -> Result<Vec<TiltReading>> {
+        let accumulator: Arc<Mutex<ReadingAccumulator>> =
+            Arc::new(Mutex::new(ReadingAccumulator::new()));
 
-        log::debug!("Starting BLE scan for {}s", duration_secs);
+        log::debug!("Starting BLE scan for {}s (min_samples={})", duration_secs, min_samples);
 
         // Break long scans into chunks of max_scan_chunk_secs, feeding the
         // watchdog between each chunk so the TWDT doesn't fire.
@@ -106,7 +106,7 @@ impl BleScanner {
             let chunk = remaining.min(self.max_scan_chunk_secs);
             remaining -= chunk;
 
-            let readings_clone = readings.clone();
+            let acc_clone = accumulator.clone();
             block_on(async {
                 let mut ble_scan = BLEScan::new();
                 ble_scan
@@ -124,19 +124,16 @@ impl BleScanner {
                             if let Some(mfg_data) = data.manufacture_data() {
                                 // Apple company ID is 0x004C
                                 if mfg_data.company_identifier == 0x004C {
-                                    if let Some(mut reading) =
+                                    if let Some(reading) =
                                         tilt::parse_ibeacon(mfg_data.payload)
                                     {
-                                        reading.rssi = Some(rssi as i16);
-                                        log::info!(
-                                            "Tilt {:?}: temp={:.1}°F gravity={:.4} rssi={}",
-                                            reading.color,
-                                            reading.temperature_f,
-                                            reading.gravity,
-                                            rssi
-                                        );
-                                        if let Ok(mut map) = readings_clone.lock() {
-                                            map.insert(reading.color, reading);
+                                        if let Ok(mut acc) = acc_clone.lock() {
+                                            acc.add(
+                                                reading.color,
+                                                reading.temperature_f,
+                                                reading.gravity,
+                                                rssi as i16,
+                                            );
                                         }
                                     }
                                 }
@@ -150,30 +147,20 @@ impl BleScanner {
                 Ok::<(), anyhow::Error>(())
             })?;
 
-            // Stamp recorded_at for any readings that were captured in this chunk.
-            // Done here (on the main task stack) rather than inside the nimble_host
-            // callback to avoid blowing the NimBLE host task stack.
-            let chunk_ts = tilt::format_timestamp(SystemTime::now());
-            if let Ok(mut map) = readings.lock() {
-                for reading in map.values_mut() {
-                    if reading.recorded_at.is_empty() {
-                        reading.recorded_at = chunk_ts.clone();
-                    }
-                }
-            }
-
             // Feed the watchdog between scan chunks
             crate::feed_watchdog_or_warn();
         }
 
-        let result: Vec<TiltReading> = readings
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Failed to lock readings: {}", e))?
-            .drain()
-            .map(|(_, v)| v)
-            .collect();
+        // Stamp recorded_at after all chunks complete — this is when the averaged
+        // reading is finalised, not when individual advertisements arrived.
+        let recorded_at = tilt::format_timestamp(SystemTime::now());
 
-        log::debug!("BLE scan complete: {} Tilt(s) found", result.len());
+        let result = accumulator
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to lock accumulator: {}", e))?
+            .reduce_all(min_samples, &recorded_at);
+
+        log::debug!("BLE scan complete: {} Tilt(s) reported", result.len());
         Ok(result)
     }
 }
