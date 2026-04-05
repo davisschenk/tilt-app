@@ -160,6 +160,121 @@ impl ReadingAccumulator {
     pub fn len(&self, color: TiltColor) -> usize {
         self.samples.get(&color).map_or(0, |v: &Vec<(f64, f64, i16)>| v.len())
     }
+
+    /// Compute the linear-interpolation percentile of a **sorted** slice.
+    fn percentile(sorted: &[f64], p: f64) -> f64 {
+        let n = sorted.len();
+        if n == 0 {
+            return 0.0;
+        }
+        if n == 1 {
+            return sorted[0];
+        }
+        let rank = p * (n - 1) as f64;
+        let lo = rank as usize;
+        let hi = (lo + 1).min(n - 1);
+        let frac = rank - lo as f64;
+        sorted[lo] + frac * (sorted[hi] - sorted[lo])
+    }
+
+    /// Compute the median of a **sorted** slice.
+    fn median_sorted(sorted: &[f64]) -> f64 {
+        let n = sorted.len();
+        if n == 0 {
+            return 0.0;
+        }
+        if n % 2 == 1 {
+            sorted[n / 2]
+        } else {
+            (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
+        }
+    }
+
+    /// Apply Tukey IQR fence to a sorted slice of values, returning inlier indices.
+    ///
+    /// When IQR == 0 (tight cluster) the fence is ±0, so all values equal to the
+    /// median pass. This prevents rejecting an entire uniform cluster.
+    fn iqr_inlier_mask(sorted: &[f64]) -> Vec<bool> {
+        let q1 = Self::percentile(sorted, 0.25);
+        let q3 = Self::percentile(sorted, 0.75);
+        let iqr = q3 - q1;
+        let lo = q1 - 1.5 * iqr;
+        let hi = q3 + 1.5 * iqr;
+        sorted.iter().map(|v| *v >= lo && *v <= hi).collect()
+    }
+
+    /// Reduce all samples for `color` into a single `TiltReading` using median
+    /// gravity and temperature after IQR outlier rejection.
+    ///
+    /// Returns `None` when:
+    /// - `color` has not been seen, or
+    /// - fewer than `min_samples` inliers remain after outlier rejection.
+    ///
+    /// RSSI is the mean of **all** raw samples (pre-filter).
+    pub fn reduce(&self, color: TiltColor, min_samples: usize, recorded_at: &str) -> Option<TiltReading> {
+        let raw = self.samples.get(&color)?;
+        if raw.is_empty() {
+            return None;
+        }
+
+        // Mean RSSI over all raw samples before any filtering.
+        let mean_rssi = (raw.iter().map(|(_, _, r)| *r as f64).sum::<f64>() / raw.len() as f64)
+            .round() as i16;
+
+        // Sort by gravity for IQR computation.
+        let mut by_gravity: Vec<(f64, f64)> = raw.iter().map(|(t, g, _)| (*t, *g)).collect();
+        by_gravity.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let gravities: Vec<f64> = by_gravity.iter().map(|(_, g)| *g).collect();
+        let grav_mask = Self::iqr_inlier_mask(&gravities);
+
+        // Collect gravity inliers and their paired temperatures.
+        let grav_inliers: Vec<f64> = gravities
+            .iter()
+            .zip(grav_mask.iter())
+            .filter_map(|(g, ok)| if *ok { Some(*g) } else { None })
+            .collect();
+        let temp_candidates: Vec<f64> = by_gravity
+            .iter()
+            .zip(grav_mask.iter())
+            .filter_map(|((t, _), ok)| if *ok { Some(*t) } else { None })
+            .collect();
+
+        // Apply IQR fence to temperature independently on the gravity-inlier set.
+        let mut sorted_temps = temp_candidates.clone();
+        sorted_temps.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let temp_mask = Self::iqr_inlier_mask(&sorted_temps);
+        let temp_inliers: Vec<f64> = sorted_temps
+            .iter()
+            .zip(temp_mask.iter())
+            .filter_map(|(t, ok)| if *ok { Some(*t) } else { None })
+            .collect();
+
+        if grav_inliers.len() < min_samples || temp_inliers.len() < min_samples {
+            return None;
+        }
+
+        // grav_inliers is already sorted (came from sorted gravities).
+        let median_gravity = Self::median_sorted(&grav_inliers);
+        let median_temp = Self::median_sorted(&temp_inliers);
+
+        Some(TiltReading::new(
+            color,
+            median_temp,
+            median_gravity,
+            Some(mean_rssi),
+            recorded_at.to_string(),
+        ))
+    }
+
+    /// Reduce all colors that have accumulated samples, returning one
+    /// `TiltReading` per color that meets `min_samples` after outlier rejection.
+    pub fn reduce_all(&self, min_samples: usize, recorded_at: &str) -> Vec<TiltReading> {
+        self.samples
+            .keys()
+            .filter_map(|color| self.reduce(*color, min_samples, recorded_at))
+            .collect()
+    }
 }
 
 pub fn parse_ibeacon(manufacturer_data: &[u8]) -> Option<TiltReading> {
@@ -390,5 +505,91 @@ mod tests {
         for color in TiltColor::all() {
             assert_eq!(acc.len(*color), 0);
         }
+    }
+
+    #[test]
+    fn reduce_unseen_color_returns_none() {
+        let acc = ReadingAccumulator::new();
+        assert!(acc.reduce(TiltColor::Red, 3, "ts").is_none());
+    }
+
+    #[test]
+    fn reduce_too_few_samples_returns_none() {
+        let mut acc = ReadingAccumulator::new();
+        acc.add(TiltColor::Red, 68.0, 1.050, -60);
+        acc.add(TiltColor::Red, 68.0, 1.050, -60);
+        // 2 samples, min_samples=3 → None
+        assert!(acc.reduce(TiltColor::Red, 3, "ts").is_none());
+    }
+
+    #[test]
+    fn reduce_median_gravity_five_clean_samples() {
+        let mut acc = ReadingAccumulator::new();
+        for (t, g) in [(68.0, 1.010), (68.0, 1.011), (68.0, 1.012), (68.0, 1.013), (68.0, 1.014)] {
+            acc.add(TiltColor::Red, t, g, -60);
+        }
+        let r = acc.reduce(TiltColor::Red, 3, "ts").unwrap();
+        assert!((r.gravity - 1.012).abs() < 1e-9, "expected 1.012, got {}", r.gravity);
+    }
+
+    #[test]
+    fn reduce_median_temperature_five_clean_samples() {
+        let mut acc = ReadingAccumulator::new();
+        for (t, g) in [(66.0, 1.050), (67.0, 1.050), (68.0, 1.050), (69.0, 1.050), (70.0, 1.050)] {
+            acc.add(TiltColor::Red, t, g, -60);
+        }
+        let r = acc.reduce(TiltColor::Red, 3, "ts").unwrap();
+        assert!((r.temperature_f - 68.0).abs() < 1e-9, "expected 68.0, got {}", r.temperature_f);
+    }
+
+    #[test]
+    fn reduce_spike_gravity_rejected_by_iqr() {
+        let mut acc = ReadingAccumulator::new();
+        // 10 clean readings around 1.050, plus one huge spike
+        for _ in 0..10 {
+            acc.add(TiltColor::Green, 68.0, 1.050, -60);
+        }
+        acc.add(TiltColor::Green, 68.0, 1.999, -60); // spike
+        let r = acc.reduce(TiltColor::Green, 3, "ts").unwrap();
+        assert!((r.gravity - 1.050).abs() < 1e-9, "spike should be rejected, got {}", r.gravity);
+    }
+
+    #[test]
+    fn reduce_rssi_is_mean_of_all_raw_samples() {
+        let mut acc = ReadingAccumulator::new();
+        acc.add(TiltColor::Blue, 68.0, 1.050, -50);
+        acc.add(TiltColor::Blue, 68.0, 1.050, -60);
+        acc.add(TiltColor::Blue, 68.0, 1.050, -70);
+        let r = acc.reduce(TiltColor::Blue, 3, "ts").unwrap();
+        // mean = (-50 + -60 + -70) / 3 = -60
+        assert_eq!(r.rssi, Some(-60));
+    }
+
+    #[test]
+    fn reduce_all_returns_one_per_color_with_sufficient_samples() {
+        let mut acc = ReadingAccumulator::new();
+        for _ in 0..3 {
+            acc.add(TiltColor::Red, 68.0, 1.050, -60);
+            acc.add(TiltColor::Green, 70.0, 1.040, -55);
+        }
+        // Blue only has 2 samples — should be excluded
+        acc.add(TiltColor::Blue, 72.0, 1.030, -50);
+        acc.add(TiltColor::Blue, 72.0, 1.030, -50);
+        let results = acc.reduce_all(3, "ts");
+        assert_eq!(results.len(), 2);
+        let colors: Vec<TiltColor> = results.iter().map(|r| r.color).collect();
+        assert!(colors.contains(&TiltColor::Red));
+        assert!(colors.contains(&TiltColor::Green));
+        assert!(!colors.contains(&TiltColor::Blue));
+    }
+
+    #[test]
+    fn reduce_timestamp_propagated() {
+        let mut acc = ReadingAccumulator::new();
+        for _ in 0..3 {
+            acc.add(TiltColor::Red, 68.0, 1.050, -60);
+        }
+        let r = acc.reduce(TiltColor::Red, 3, "2026-04-05T12:00:00Z").unwrap();
+        assert_eq!(r.recorded_at, "2026-04-05T12:00:00Z");
     }
 }
