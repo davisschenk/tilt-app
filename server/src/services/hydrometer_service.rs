@@ -70,6 +70,7 @@ pub async fn create(
         name: Set(input.name),
         temp_offset_f: Set(0.0),
         gravity_offset: Set(0.0),
+        is_disabled: Set(false),
         created_at: Set(chrono::Utc::now().into()),
     };
     let result = Hydrometer::insert(model).exec_with_returning(db).await?;
@@ -131,6 +132,7 @@ pub async fn find_or_create_by_color(
         name: Set(None),
         temp_offset_f: Set(0.0),
         gravity_offset: Set(0.0),
+        is_disabled: Set(false),
         created_at: Set(chrono::Utc::now().into()),
     };
     let result = Hydrometer::insert(model).exec_with_returning(db).await?;

@@ -16,6 +16,7 @@ pub struct Model {
     #[sea_orm(column_type = "Double")]
     pub gravity_offset: f64,
     pub created_at: DateTimeWithTimeZone,
+    pub is_disabled: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
