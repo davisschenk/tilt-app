@@ -650,10 +650,6 @@ fn is_due(
     }
 }
 
-fn addition_label(num: u8) -> String {
-    format!("Addition #{num}")
-}
-
 #[allow(clippy::too_many_arguments)]
 pub async fn evaluate_due_additions(
     db: &DatabaseConnection,
@@ -735,32 +731,14 @@ pub async fn evaluate_due_additions(
         }
 
         let amount_tsp = grams_to_tsp(addition.product, addition.amount_grams);
-        let notes = format!(
-            "Addition #{}: {:.1}g {} (triggered by {}), gravity={:.4}",
-            addition.addition_number,
-            addition.amount_grams,
-            product_name(addition.product),
-            reason,
-            current_gravity
-        );
 
-        if let Err(e) = brew_event_service::create(
-            db,
-            CreateBrewEvent {
-                brew_id,
-                event_type: BrewEventType::NutrientAddition,
-                label: addition_label(addition.addition_number),
-                notes: Some(notes),
-                gravity_at_event: Some(current_gravity),
-                temp_at_event: None,
-                event_time: recorded_at,
-            },
-        )
-        .await
-        {
-            tracing::error!(brew_id = %brew_id, addition_number = addition.addition_number, error = %e, "Failed to create NutrientAddition brew event");
-            continue;
-        }
+        tracing::info!(
+            brew_id = %brew_id,
+            addition_number = addition.addition_number,
+            reason,
+            current_gravity,
+            "Nutrient addition is due — notifying via webhook (manual log required)"
+        );
 
         let payload = NutrientWebhookPayload {
             brew_id,
