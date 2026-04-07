@@ -12,6 +12,7 @@ fn model_to_response(model: hydrometers::Model, latest: Option<TiltReading>) -> 
         name: model.name,
         temp_offset_f: model.temp_offset_f,
         gravity_offset: model.gravity_offset,
+        is_disabled: model.is_disabled,
         created_at: model.created_at.into(),
         latest_reading: latest,
     }
@@ -96,6 +97,9 @@ pub async fn update(
     }
     if let Some(gravity_offset) = input.gravity_offset {
         active.gravity_offset = Set(gravity_offset);
+    }
+    if let Some(is_disabled) = input.is_disabled {
+        active.is_disabled = Set(is_disabled);
     }
 
     let updated = active.update(db).await?;

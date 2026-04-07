@@ -233,6 +233,7 @@ pub struct UpdateHydrometer {
     pub name: Option<String>,
     pub temp_offset_f: Option<f64>,
     pub gravity_offset: Option<f64>,
+    pub is_disabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -243,6 +244,7 @@ pub struct HydrometerResponse {
     pub name: Option<String>,
     pub temp_offset_f: f64,
     pub gravity_offset: f64,
+    pub is_disabled: bool,
     pub created_at: DateTime<Utc>,
     pub latest_reading: Option<TiltReading>,
 }
@@ -870,6 +872,7 @@ mod tests {
             name: Some("Fermenter 1".to_string()),
             temp_offset_f: 0.0,
             gravity_offset: 0.0,
+            is_disabled: false,
             created_at: now,
             latest_reading: None,
         };
@@ -877,9 +880,11 @@ mod tests {
         assert!(json.contains("\"tempOffsetF\""));
         assert!(json.contains("\"gravityOffset\""));
         assert!(json.contains("\"createdAt\""));
+        assert!(json.contains("\"isDisabled\""));
         let deserialized: HydrometerResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.color, TiltColor::Green);
         assert_eq!(deserialized.name.unwrap(), "Fermenter 1");
+        assert!(!deserialized.is_disabled);
     }
 
     #[test]
