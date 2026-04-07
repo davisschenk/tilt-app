@@ -61,9 +61,9 @@ export default function ReadingsTable({ brewId }: ReadingsTableProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Recorded At</TableHead>
-                    <TableHead>Temperature (°F)</TableHead>
-                    <TableHead>Gravity (SG)</TableHead>
-                    <TableHead>RSSI</TableHead>
+                    <TableHead>Temp (°F)</TableHead>
+                    <TableHead>Gravity</TableHead>
+                    <TableHead className="hidden sm:table-cell">RSSI</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -74,14 +74,14 @@ export default function ReadingsTable({ brewId }: ReadingsTableProps) {
                       </TableCell>
                       <TableCell>{r.temperatureF.toFixed(1)}</TableCell>
                       <TableCell>{r.gravity.toFixed(3)}</TableCell>
-                      <TableCell>{r.rssi ?? "—"}</TableCell>
+                      <TableCell className="hidden sm:table-cell">{r.rssi ?? "—"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </div>
 
-            <div className="flex items-center justify-between mt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-4">
               <p className="text-sm text-muted-foreground">
                 {sorted.length} readings · Page {page + 1} of {totalPages}
               </p>
