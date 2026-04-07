@@ -43,6 +43,11 @@ async fn create_batch(
                 Status::InternalServerError
             })?;
 
+        if hydrometer.is_disabled {
+            tracing::debug!(color = ?color, id = %hydrometer.id, "Hydrometer is disabled; skipping readings");
+            continue;
+        }
+
         let active_brew = brew_service::find_active_for_hydrometer(db.inner(), hydrometer.id)
             .await
             .unwrap_or(None);
