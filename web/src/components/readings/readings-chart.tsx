@@ -72,9 +72,23 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; isoTime: string } | null>(null);
   const [addEventOpen, setAddEventOpen] = useState(false);
   const [addEventTime, setAddEventTime] = useState<string | undefined>(undefined);
+  const [containerWidth, setContainerWidth] = useState(800);
   const containerRef = useRef<HTMLDivElement>(null);
   const echartsRef = useRef<ReactECharts>(null);
   const theme = useEChartsTheme();
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? el.clientWidth;
+      setContainerWidth(width);
+      echartsRef.current?.getEchartsInstance().resize();
+    });
+    ro.observe(el);
+    setContainerWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
 
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -290,10 +304,15 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: 12 },
       },
       // Two grids: thin event strip at top / main chart below
-      grid: [
-        { left: 72, right: 64, top: 52, bottom: 52 },
-        { left: 72, right: 64, top: 28, height: 14 },
-      ],
+      grid: containerWidth < 640
+        ? [
+            { left: 52, right: 40, top: 40, bottom: 40 },
+            { left: 52, right: 40, top: 20, height: 14 },
+          ]
+        : [
+            { left: 72, right: 64, top: 52, bottom: 52 },
+            { left: 72, right: 64, top: 28, height: 14 },
+          ],
       xAxis: [
         {
           gridIndex: 0,
@@ -430,6 +449,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
     xMin,
     xMax,
     range,
+    containerWidth,
   ]);
 
   return (
@@ -451,9 +471,9 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <Skeleton className="h-[420px] w-full" />
+          <Skeleton className="h-[280px] sm:h-[420px] w-full" />
         ) : gravityData.length === 0 ? (
-          <div className="flex items-center justify-center h-[420px] text-muted-foreground">
+          <div className="flex items-center justify-center h-[280px] sm:h-[420px] text-muted-foreground">
             No readings for this time range
           </div>
         ) : (
@@ -461,7 +481,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
             <ReactECharts
               ref={echartsRef}
               option={option}
-              style={{ height: 420 }}
+              style={{ height: containerWidth < 640 ? 280 : 420 }}
               notMerge
               onEvents={onEvents}
             />

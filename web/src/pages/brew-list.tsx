@@ -68,7 +68,7 @@ export default function BrewList() {
           ))}
         </div>
       ) : brews && brews.length > 0 ? (
-        <div className="rounded-md border">
+        <div className="overflow-x-auto rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -93,7 +93,7 @@ export default function BrewList() {
                     className="cursor-pointer"
                     onClick={() => navigate(`/brews/${brew.id}`)}
                   >
-                    <TableCell className="font-medium">{brew.name}</TableCell>
+                    <TableCell className="font-medium py-3">{brew.name}</TableCell>
                     <TableCell className="hidden sm:table-cell">
                       {brew.style ?? "—"}
                     </TableCell>
@@ -103,7 +103,7 @@ export default function BrewList() {
                         <span>{color ?? "—"}</span>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="py-3">
                       <Badge variant={badge.variant}>{badge.label}</Badge>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import MDEditor from "@uiw/react-md-editor";
 import { Pencil, Check, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +15,16 @@ interface BrewNotesProps {
 export default function BrewNotes({ brewId, notes }: BrewNotesProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(notes ?? "");
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
   const updateBrew = useUpdateBrew(brewId);
   const { theme } = useTheme();
+
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 639px)");
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
 
   const colorMode =
     theme === "system"
@@ -68,7 +76,7 @@ export default function BrewNotes({ brewId, notes }: BrewNotesProps) {
               <MDEditor
                 value={draft}
                 onChange={(val) => setDraft(val ?? "")}
-                preview="live"
+                preview={isMobile ? "edit" : "live"}
                 height={300}
               />
             </div>

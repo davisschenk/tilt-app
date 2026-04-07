@@ -76,15 +76,15 @@ export default function AlertRules() {
           ))}
         </div>
       ) : rules && rules.length > 0 ? (
-        <div className="rounded-md border">
+        <div className="overflow-x-auto rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Condition</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Cooldown</TableHead>
-                <TableHead>Last Triggered</TableHead>
+                <TableHead className="hidden sm:table-cell">Condition</TableHead>
+                <TableHead className="hidden sm:table-cell">Target</TableHead>
+                <TableHead className="hidden sm:table-cell">Cooldown</TableHead>
+                <TableHead className="hidden sm:table-cell">Last Triggered</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-[100px]">Actions</TableHead>
               </TableRow>
@@ -92,26 +92,26 @@ export default function AlertRules() {
             <TableBody>
               {rules.map((r: AlertRuleResponse) => (
                 <TableRow key={r.id} className={!r.enabled ? "opacity-50" : ""}>
-                  <TableCell className="font-medium">{r.name}</TableCell>
-                  <TableCell>
+                  <TableCell className="font-medium py-3">{r.name}</TableCell>
+                  <TableCell className="hidden sm:table-cell">
                     <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
                       {formatCondition(r.metric, r.operator, r.threshold, r.windowHours)}
                     </code>
                   </TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="hidden sm:table-cell text-sm">
                     {targetMap.get(r.alertTargetId) ?? (
                       <span className="text-muted-foreground italic">Unknown</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm">{r.cooldownMinutes}m</TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="hidden sm:table-cell text-sm">{r.cooldownMinutes}m</TableCell>
+                  <TableCell className="hidden sm:table-cell text-sm">
                     {r.lastTriggeredAt ? (
                       formatDistanceToNow(new Date(r.lastTriggeredAt), { addSuffix: true })
                     ) : (
                       <span className="text-muted-foreground">Never</span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="py-3">
                     {r.enabled ? (
                       <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                         Enabled
@@ -122,7 +122,7 @@ export default function AlertRules() {
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="py-3">
                     <div className="flex gap-1">
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditTarget(r)}>
                         <Pencil className="h-3 w-3" />

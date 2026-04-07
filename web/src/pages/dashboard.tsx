@@ -221,14 +221,14 @@ export default function Dashboard() {
       <div className="flex flex-wrap gap-2 mb-6">
         <button
           onClick={() => navigate("/brews?status=Active")}
-          className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium hover:bg-muted transition-colors"
+          className="flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-medium hover:bg-muted transition-colors"
         >
           <Beer className="h-3 w-3" />
           {activeBrews?.length ?? 0} active brew{activeBrews?.length !== 1 ? "s" : ""}
         </button>
         <button
           onClick={() => navigate("/hydrometers")}
-          className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium hover:bg-muted transition-colors"
+          className="flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-medium hover:bg-muted transition-colors"
         >
           <Thermometer className="h-3 w-3" />
           {hydrometers?.length ?? 0} hydrometer{hydrometers?.length !== 1 ? "s" : ""}
@@ -236,7 +236,7 @@ export default function Dashboard() {
         {offlineCount > 0 && (
           <button
             onClick={() => navigate("/hydrometers?filter=offline")}
-            className="flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors dark:border-red-800 dark:bg-red-950 dark:text-red-400"
+            className="flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors dark:border-red-800 dark:bg-red-950 dark:text-red-400"
           >
             <WifiOff className="h-3 w-3" />
             {offlineCount} offline
@@ -245,7 +245,7 @@ export default function Dashboard() {
         {recentAlertsCount > 0 && (
           <button
             onClick={() => navigate("/alert-rules?filter=recent")}
-            className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400"
+            className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400"
           >
             <Activity className="h-3 w-3" />
             {recentAlertsCount} alert{recentAlertsCount !== 1 ? "s" : ""} (24h)
@@ -320,8 +320,8 @@ export default function Dashboard() {
 
       <RecentReadingsChart />
 
-      {/* New Brew FAB — hidden on mobile */}
-      <div className="hidden md:block fixed bottom-8 right-8 z-50">
+      {/* New Brew FAB */}
+      <div className="fixed bottom-[calc(2rem+env(safe-area-inset-bottom))] right-8 z-50">
         <Button
           size="lg"
           className="rounded-full shadow-lg h-14 w-14 p-0"

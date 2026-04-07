@@ -56,7 +56,7 @@ export default function ReadingsTable({ brewId }: ReadingsTableProps) {
           </div>
         ) : (
           <>
-            <div className="rounded-md border">
+            <div className="overflow-x-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -70,7 +70,7 @@ export default function ReadingsTable({ brewId }: ReadingsTableProps) {
                   {pageData.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell>
-                        {format(new Date(r.recordedAt), "MMM d, yyyy HH:mm:ss")}
+                        {format(new Date(r.recordedAt), "MMM d, HH:mm")}
                       </TableCell>
                       <TableCell>{r.temperatureF.toFixed(1)}</TableCell>
                       <TableCell>{r.gravity.toFixed(3)}</TableCell>

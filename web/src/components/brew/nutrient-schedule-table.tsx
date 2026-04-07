@@ -113,7 +113,7 @@ function AdditionRow({
           <Button
             size="sm"
             variant={current ? "default" : "outline"}
-            className="text-xs h-7 px-2"
+            className="text-xs h-9 px-2"
             onClick={onLog}
             disabled={isLogging}
           >
