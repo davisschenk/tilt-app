@@ -81,6 +81,7 @@ export interface UpdateHydrometer {
   name?: string | null;
   tempOffsetF?: number | null;
   gravityOffset?: number | null;
+  isDisabled?: boolean | null;
 }
 
 export interface HydrometerResponse {
@@ -89,6 +90,7 @@ export interface HydrometerResponse {
   name: string | null;
   tempOffsetF: number;
   gravityOffset: number;
+  isDisabled: boolean;
   createdAt: string;
   latestReading: TiltReading | null;
 }

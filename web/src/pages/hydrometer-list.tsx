@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, PowerOff, Power } from "lucide-react";
 import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import ColorDot from "@/components/ui/color-dot";
-import { useHydrometers } from "@/hooks/use-hydrometers";
+import { useHydrometers, useUpdateHydrometer } from "@/hooks/use-hydrometers";
 import { useBrews } from "@/hooks/use-brews";
+import * as toast from "@/lib/toast";
 import { TILT_COLOR_MAP } from "@/lib/tilt-colors";
 import RegisterHydrometerDialog from "@/components/hydrometer/register-hydrometer-dialog";
 import EditHydrometerDialog from "@/components/hydrometer/edit-hydrometer-dialog";
@@ -29,6 +30,20 @@ export default function HydrometerList() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<HydrometerResponse | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<HydrometerResponse | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const updateHydrometer = useUpdateHydrometer(togglingId ?? "");
+
+  function handleToggleDisabled(h: HydrometerResponse) {
+    setTogglingId(h.id);
+    updateHydrometer.mutate(
+      { isDisabled: !h.isDisabled },
+      {
+        onSuccess: () => toast.success(h.isDisabled ? "Hydrometer enabled" : "Hydrometer disabled"),
+        onError: () => toast.error("Failed to update hydrometer"),
+        onSettled: () => setTogglingId(null),
+      },
+    );
+  }
 
   function getActiveBrew(hydrometerId: string) {
     return activeBrews?.find((b) => b.hydrometerId === hydrometerId);
@@ -60,14 +75,16 @@ export default function HydrometerList() {
             const colorInfo = (TILT_COLOR_MAP as Record<string, typeof TILT_COLOR_MAP.Red>)[h.color];
             const activeBrew = getActiveBrew(h.id);
             return (
-              <Card key={h.id} style={{ borderTopColor: colorInfo?.hex ?? "#868E96", borderTopWidth: 3 }}>
+              <Card key={h.id} className={h.isDisabled ? "opacity-60" : ""} style={{ borderTopColor: colorInfo?.hex ?? "#868E96", borderTopWidth: 3 }}>
                 <CardContent className="pt-5 space-y-3">
                   <div className="flex items-center gap-3">
                     <ColorDot color={h.color} size="lg" />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <p className="font-semibold text-lg">{h.color}</p>
-                        {h.latestReading && isStale(h.latestReading.recordedAt) ? (
+                        {h.isDisabled ? (
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0.5">Disabled</Badge>
+                        ) : h.latestReading && isStale(h.latestReading.recordedAt) ? (
                           <Badge className="bg-red-500 text-white text-xs px-1.5 py-0.5">Offline</Badge>
                         ) : h.latestReading ? (
                           <Badge className="bg-green-500 text-white text-xs px-1.5 py-0.5">Live</Badge>
@@ -131,10 +148,22 @@ export default function HydrometerList() {
                     </div>
                   )}
 
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex gap-2 pt-2 flex-wrap">
                     <Button variant="outline" size="sm" onClick={() => setEditTarget(h)}>
                       <Pencil className="mr-1 h-3 w-3" />
                       Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleToggleDisabled(h)}
+                      disabled={togglingId === h.id}
+                    >
+                      {h.isDisabled ? (
+                        <><Power className="mr-1 h-3 w-3" />Enable</>
+                      ) : (
+                        <><PowerOff className="mr-1 h-3 w-3" />Disable</>
+                      )}
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => setDeleteTarget(h)}>
                       <Trash2 className="mr-1 h-3 w-3" />
