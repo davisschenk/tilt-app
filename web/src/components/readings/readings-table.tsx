@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,11 +16,32 @@ import { useReadings } from "@/hooks/use-readings";
 
 const PAGE_SIZE = 25;
 
-interface ReadingsTableProps {
-  brewId: string;
+function exportToCsv(rows: { recordedAt: string; temperatureF: number; gravity: number; rssi: number | null }[], filename: string) {
+  const header = "Recorded At,Temperature (°F),Gravity,RSSI";
+  const lines = rows.map((r) =>
+    [
+      format(new Date(r.recordedAt), "yyyy-MM-dd HH:mm:ss"),
+      r.temperatureF.toFixed(2),
+      r.gravity.toFixed(4),
+      r.rssi ?? "",
+    ].join(",")
+  );
+  const csv = [header, ...lines].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
-export default function ReadingsTable({ brewId }: ReadingsTableProps) {
+interface ReadingsTableProps {
+  brewId: string;
+  exportFilename?: string;
+}
+
+export default function ReadingsTable({ brewId, exportFilename = "readings.csv" }: ReadingsTableProps) {
   const [page, setPage] = useState(0);
   const { data: readings, isLoading } = useReadings({ brewId });
 
@@ -40,8 +61,18 @@ export default function ReadingsTable({ brewId }: ReadingsTableProps) {
 
   return (
     <Card className="mt-6">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base">Readings Data</CardTitle>
+        {sorted.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportToCsv(sorted, exportFilename)}
+          >
+            <Download className="mr-1 h-3 w-3" />
+            Export CSV
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         {isLoading ? (

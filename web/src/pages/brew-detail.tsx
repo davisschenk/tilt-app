@@ -382,7 +382,7 @@ export default function BrewDetail() {
           </TabsContent>
 
           <TabsContent value="data">
-            <ReadingsTable brewId={brew.id} />
+            <ReadingsTable brewId={brew.id} exportFilename={`${brew.name.replace(/[^a-z0-9]/gi, "_")}_readings.csv`} />
           </TabsContent>
         </Tabs>
       </div>
@@ -583,7 +583,7 @@ export default function BrewDetail() {
             Recent Readings
             {readingsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
-          {readingsExpanded && <ReadingsTable brewId={brew.id} />}
+          {readingsExpanded && <ReadingsTable brewId={brew.id} exportFilename={`${brew.name.replace(/[^a-z0-9]/gi, "_")}_readings.csv`} />}
         </div>
       </div>
 
