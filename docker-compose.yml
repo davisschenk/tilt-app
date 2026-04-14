@@ -28,8 +28,12 @@ services:
       ROCKET_ADDRESS: "0.0.0.0"
       ROCKET_SECRET_KEY: ${ROCKET_SECRET_KEY:-}
       RUST_LOG: ${RUST_LOG:-info}
+      UPLOAD_DIR: /app/uploads
     ports:
       - "8000:8000"
+    volumes:
+      - uploads:/app/uploads
 
 volumes:
   pgdata:
+  uploads:
