@@ -130,6 +130,16 @@ export type BrewEventType =
   | "note"
   | "nutrient_addition";
 
+export interface EventAttachmentResponse {
+  id: string;
+  eventId: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+  url: string;
+}
+
 export interface BrewEventResponse {
   id: string;
   brewId: string;
@@ -140,6 +150,7 @@ export interface BrewEventResponse {
   tempAtEvent: number | null;
   eventTime: string;
   createdAt: string;
+  attachments: EventAttachmentResponse[];
 }
 
 export interface CreateBrewEvent {

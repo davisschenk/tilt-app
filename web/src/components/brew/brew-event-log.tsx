@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import {
   Beaker,
@@ -18,6 +18,9 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  Camera,
+  X,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,8 +43,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useBrewEvents, useCreateBrewEvent, useUpdateBrewEvent, useDeleteBrewEvent } from "@/hooks/use-brew-events";
+import { useUploadAttachment, useDeleteAttachment } from "@/hooks/use-attachments";
 import * as toast from "@/lib/toast";
-import type { BrewEventResponse, BrewEventType, CreateBrewEvent, UpdateBrewEvent } from "@/types";
+import type { BrewEventResponse, BrewEventType, CreateBrewEvent, EventAttachmentResponse, UpdateBrewEvent } from "@/types";
 
 const EVENT_ICONS: Record<BrewEventType, React.ReactNode> = {
   yeast_pitch: <Beaker className="h-4 w-4" />,
@@ -358,6 +362,127 @@ function DeleteEventDialog({ brewId, event, open, onOpenChange }: DeleteEventDia
   );
 }
 
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? "/api/v1";
+
+interface AttachmentStripProps {
+  brewId: string;
+  event: BrewEventResponse;
+}
+
+function AttachmentStrip({ brewId, event }: AttachmentStripProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const upload = useUploadAttachment(brewId, event.id);
+  const deleteAttach = useDeleteAttachment(brewId, event.id);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<EventAttachmentResponse | null>(null);
+
+  const MAX_VISIBLE = 4;
+  const visible = event.attachments.slice(0, MAX_VISIBLE);
+  const extra = event.attachments.length - MAX_VISIBLE;
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files are supported");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File must be under 10 MB");
+      return;
+    }
+    upload.mutate(file, {
+      onSuccess: () => toast.success("Photo uploaded"),
+      onError: () => toast.error("Upload failed"),
+    });
+    e.target.value = "";
+  }
+
+  function handleDeleteConfirmed() {
+    if (!confirmDelete) return;
+    deleteAttach.mutate(confirmDelete.id, {
+      onSuccess: () => { toast.success("Photo deleted"); setConfirmDelete(null); },
+      onError: () => toast.error("Delete failed"),
+    });
+  }
+
+  return (
+    <>
+      <div className="flex items-center gap-1.5 flex-wrap mt-2">
+        {visible.map((att) => (
+          <div key={att.id} className="relative group">
+            <button
+              type="button"
+              onClick={() => setLightboxUrl(`${API_BASE_URL}${att.url.replace("/api/v1", "")}`)}
+              className="block"
+              title={att.filename}
+            >
+              <img
+                src={`${API_BASE_URL}${att.url.replace("/api/v1", "")}`}
+                alt={att.filename}
+                className="h-14 w-14 object-cover rounded-md border border-border"
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(att)}
+              className="absolute -top-1.5 -right-1.5 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow"
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          </div>
+        ))}
+        {extra > 0 && (
+          <span className="text-xs text-muted-foreground px-2">+{extra} more</span>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={upload.isPending}
+          className="flex h-14 w-14 items-center justify-center rounded-md border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+          title="Add photo"
+        >
+          {upload.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Camera className="h-4 w-4" />
+          )}
+        </button>
+      </div>
+
+      {lightboxUrl && (
+        <Dialog open onOpenChange={() => setLightboxUrl(null)}>
+          <DialogContent className="max-w-3xl p-2">
+            <img src={lightboxUrl} alt="Attachment" className="max-h-[80vh] w-full object-contain rounded" />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {confirmDelete && (
+        <Dialog open onOpenChange={(o) => { if (!o) setConfirmDelete(null); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Delete Photo</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">Delete <span className="font-medium text-foreground">"{confirmDelete.filename}"</span>? This cannot be undone.</p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeleteConfirmed} disabled={deleteAttach.isPending}>Delete</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  );
+}
+
 interface BrewEventLogProps {
   brewId: string;
 }
@@ -426,6 +551,7 @@ export default function BrewEventLog({ brewId }: BrewEventLogProps) {
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {format(new Date(ev.eventTime), "MMM d, yyyy 'at' HH:mm")}
                     </p>
+                    <AttachmentStrip brewId={brewId} event={ev} />
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <Button

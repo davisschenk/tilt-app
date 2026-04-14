@@ -65,3 +65,29 @@ export async function apiDelete<T = void>(path: string): Promise<T> {
   });
   return handleResponse<T>(response);
 }
+
+export async function uploadAttachment(
+  brewId: string,
+  eventId: string,
+  file: File,
+): Promise<import("@/types").EventAttachmentResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(
+    `${API_BASE_URL}/brews/${brewId}/events/${eventId}/attachments`,
+    { method: "POST", credentials: "include", body: form },
+  );
+  return handleResponse(response);
+}
+
+export async function deleteAttachment(
+  brewId: string,
+  eventId: string,
+  attachmentId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/brews/${brewId}/events/${eventId}/attachments/${attachmentId}`,
+    { method: "DELETE", credentials: "include" },
+  );
+  return handleResponse(response);
+}
