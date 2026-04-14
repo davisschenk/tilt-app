@@ -375,20 +375,20 @@ export default function BrewEventLog({ brewId }: BrewEventLogProps) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between gap-2 mb-3">
         <button
           type="button"
-          className="flex items-center gap-2 text-lg font-semibold hover:text-primary transition-colors"
+          className="flex items-center gap-2 text-lg font-semibold hover:text-primary transition-colors min-w-0"
           onClick={() => setExpanded((e) => !e)}
         >
-          <StickyNote className="h-5 w-5" />
-          Fermentation Log
+          <StickyNote className="h-5 w-5 shrink-0" />
+          <span className="truncate">Fermentation Log</span>
           {events && events.length > 0 && (
-            <Badge variant="secondary" className="ml-1">{events.length}</Badge>
+            <Badge variant="secondary" className="ml-1 shrink-0">{events.length}</Badge>
           )}
-          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          {expanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
         </button>
-        <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={() => setAddOpen(true)}>
           <Plus className="mr-1 h-3 w-3" />
           Add Event
         </Button>
@@ -402,8 +402,8 @@ export default function BrewEventLog({ brewId }: BrewEventLogProps) {
             <p className="text-sm text-muted-foreground py-4">No events logged yet. Add the first one!</p>
           ) : (
             sorted.map((ev) => (
-              <Card key={ev.id}>
-                <CardContent className="py-3 flex items-start gap-3">
+              <Card key={ev.id} className="overflow-hidden">
+                <CardContent className="py-3 flex items-start gap-3 min-w-0">
                   <span className={`mt-0.5 shrink-0 ${EVENT_COLORS[ev.eventType]}`}>
                     {EVENT_ICONS[ev.eventType]}
                   </span>

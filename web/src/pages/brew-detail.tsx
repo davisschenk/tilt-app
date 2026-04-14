@@ -362,15 +362,15 @@ export default function BrewDetail() {
                   const opSymbol = OPERATOR_SYMBOLS[r.operator] ?? r.operator;
                   const value = r.metric === "gravity" ? r.threshold.toFixed(3) : r.threshold.toFixed(1);
                   return (
-                    <Card key={r.id}>
-                      <CardContent className="py-3 flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-sm">{r.name}</p>
-                          <p className="text-xs text-muted-foreground">
+                    <Card key={r.id} className="overflow-hidden">
+                      <CardContent className="py-3 flex items-center gap-3 justify-between">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">{r.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">
                             {metricLabel} {opSymbol} {value} → {targetMap.get(r.alertTargetId) ?? "Unknown target"}
                           </p>
                         </div>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground shrink-0">
                           {formatDistanceToNow(new Date(r.lastTriggeredAt!), { addSuffix: true })}
                         </p>
                       </CardContent>
@@ -551,15 +551,15 @@ export default function BrewDetail() {
                   const opSymbol = OPERATOR_SYMBOLS[r.operator] ?? r.operator;
                   const value = r.metric === "gravity" ? r.threshold.toFixed(3) : r.threshold.toFixed(1);
                   return (
-                    <Card key={r.id}>
-                      <CardContent className="py-3 flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-sm">{r.name}</p>
-                          <p className="text-xs text-muted-foreground">
+                    <Card key={r.id} className="overflow-hidden">
+                      <CardContent className="py-3 flex items-center gap-3 justify-between">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">{r.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">
                             {metricLabel} {opSymbol} {value} → {targetMap.get(r.alertTargetId) ?? "Unknown target"}
                           </p>
                         </div>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground shrink-0">
                           {formatDistanceToNow(new Date(r.lastTriggeredAt!), { addSuffix: true })}
                         </p>
                       </CardContent>
