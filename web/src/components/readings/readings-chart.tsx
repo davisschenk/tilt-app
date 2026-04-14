@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
 import { format } from "date-fns";
-import { CalendarPlus } from "lucide-react";
+import { CalendarPlus, Milestone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -72,6 +72,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; isoTime: string } | null>(null);
   const [addEventOpen, setAddEventOpen] = useState(false);
   const [addEventTime, setAddEventTime] = useState<string | undefined>(undefined);
+  const [showEvents, setShowEvents] = useState(true);
   const [containerWidth, setContainerWidth] = useState(800);
   const containerRef = useRef<HTMLDivElement>(null);
   const echartsRef = useRef<ReactECharts>(null);
@@ -243,10 +244,12 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       { xAxis: new Date(g.endAt).getTime() },
     ]);
 
-    const eventScatterData = visibleEvents.map((ev) => ({
-      value: [new Date(ev.eventTime).getTime(), 0.5] as [number, number],
-      itemStyle: { color: EVENT_COLORS[ev.eventType] },
-    }));
+    const eventScatterData = showEvents
+      ? visibleEvents.map((ev) => ({
+          value: [new Date(ev.eventTime).getTime(), 0.5] as [number, number],
+          itemStyle: { color: EVENT_COLORS[ev.eventType] },
+        }))
+      : [];
 
     // When range === "all", xMin/xMax are undefined and each axis would auto-fit
     // to its own series' data extent. Derive explicit bounds from gravity data so
@@ -299,25 +302,25 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       },
       legend: {
         data: ["Gravity", "Temperature"],
-        bottom: 8,
+        bottom: 4,
         icon: "circle",
-        textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: 12 },
+        textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: containerWidth < 640 ? 10 : 12 },
       },
       // Two grids: thin event strip at top / main chart below
       grid: containerWidth < 640
         ? [
-            { left: 52, right: 40, top: 40, bottom: 40 },
-            { left: 52, right: 40, top: 20, height: 14 },
+            { left: 46, right: 34, top: 36, bottom: 36 },
+            { left: 46, right: 34, top: 18, height: 12 },
           ]
         : [
-            { left: 72, right: 64, top: 52, bottom: 52 },
+            { left: 72, right: 64, top: 52, bottom: 48 },
             { left: 72, right: 64, top: 28, height: 14 },
           ],
       xAxis: [
         {
           gridIndex: 0,
           ...sharedXAxisConfig,
-          axisLabel: { color: theme.mutedColor, fontFamily: theme.fontFamily, fontSize: 11, formatter: axisLabelFormatter },
+          axisLabel: { color: theme.mutedColor, fontFamily: theme.fontFamily, fontSize: containerWidth < 640 ? 9 : 11, formatter: axisLabelFormatter },
         },
         {
           // Event strip x-axis — hidden, just for positioning
@@ -330,14 +333,14 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         {
           gridIndex: 0,
           name: "SG",
-          nameTextStyle: { color: "#1971C2", fontFamily: theme.fontFamily, fontSize: 11 },
+          nameTextStyle: { color: "#1971C2", fontFamily: theme.fontFamily, fontSize: containerWidth < 640 ? 9 : 11 },
           min: Math.floor(gMin * 1000 - 1) / 1000,
           max: Math.ceil(gMax * 1000 + 1) / 1000,
-          splitNumber: 5,
+          splitNumber: containerWidth < 640 ? 3 : 5,
           axisLabel: {
             color: "#1971C2",
             fontFamily: theme.fontFamily,
-            fontSize: 11,
+            fontSize: containerWidth < 640 ? 9 : 11,
             formatter: (val: number) => val.toFixed(3),
           },
           splitLine: { lineStyle: { color: theme.gridColor } },
@@ -347,15 +350,15 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
           gridIndex: 0,
           name: "°F",
           position: "right" as const,
-          nameTextStyle: { color: "#E8590C", fontFamily: theme.fontFamily, fontSize: 11 },
+          nameTextStyle: { color: "#E8590C", fontFamily: theme.fontFamily, fontSize: containerWidth < 640 ? 9 : 11 },
           min: Math.floor(tMin - 2),
           max: Math.ceil(tMax + 2),
-          splitNumber: 5,
+          splitNumber: containerWidth < 640 ? 3 : 5,
           axisLabel: {
             color: "#E8590C",
             fontFamily: theme.fontFamily,
-            fontSize: 11,
-            formatter: (val: number) => `${val.toFixed(1)}°F`,
+            fontSize: containerWidth < 640 ? 9 : 11,
+            formatter: (val: number) => containerWidth < 640 ? `${val.toFixed(0)}°` : `${val.toFixed(1)}°F`,
           },
           splitLine: { show: false },
           axisLine: { lineStyle: { color: theme.borderColor } },
@@ -387,7 +390,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
             symbol: ["none", "none"],
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             data: [
-              ...visibleEvents.map((ev) => ({
+              ...(showEvents ? visibleEvents.map((ev) => ({
                 xAxis: new Date(ev.eventTime).getTime(),
                 lineStyle: {
                   color: EVENT_COLORS[ev.eventType],
@@ -395,7 +398,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
                   width: 2,
                 },
                 label: { show: false },
-              })),
+              })) : []),
               ...staticMarkLines,
             ] as any,
           },
@@ -450,23 +453,37 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
     xMax,
     range,
     containerWidth,
+    showEvents,
   ]);
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-base">Readings Chart</CardTitle>
-        <div className="flex gap-1">
-          {(["24h", "7d", "30d", "all"] as TimeRange[]).map((r) => (
-            <Button
-              key={r}
-              variant={range === r ? "default" : "outline"}
-              size="sm"
-              onClick={() => setRange(r)}
-            >
-              {r === "all" ? "All" : r}
-            </Button>
-          ))}
+        <div className="flex flex-wrap gap-1 justify-end">
+          <Button
+            variant={showEvents ? "secondary" : "outline"}
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => setShowEvents((v) => !v)}
+            title={showEvents ? "Hide event lines" : "Show event lines"}
+          >
+            <Milestone className="h-3 w-3 mr-1" />
+            Events
+          </Button>
+          <div className="flex gap-1">
+            {(["24h", "7d", "30d", "all"] as TimeRange[]).map((r) => (
+              <Button
+                key={r}
+                variant={range === r ? "default" : "outline"}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setRange(r)}
+              >
+                {r === "all" ? "All" : r}
+              </Button>
+            ))}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
