@@ -175,6 +175,7 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes::alert_targets::routes())
         .mount("/api/v1", routes::alert_rules::routes())
         .mount("/api/v1", routes::brew_events::routes())
+        .mount("/api/v1", routes::attachments::routes())
         .mount("/api/v1", routes::analytics::routes())
         .mount("/api/v1", routes::ota::routes())
         .mount("/api/v1", routes::tosna::routes())

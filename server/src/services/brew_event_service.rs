@@ -3,7 +3,10 @@ use sea_orm::*;
 use uuid::Uuid;
 
 use crate::models::entities::brew_events::{self, ActiveModel, Column, Entity as BrewEvent};
-use shared::{BrewEventResponse, BrewEventType, CreateBrewEvent, UpdateBrewEvent};
+use crate::services::attachment_service;
+use shared::{
+    BrewEventResponse, BrewEventType, CreateBrewEvent, EventAttachmentResponse, UpdateBrewEvent,
+};
 
 fn parse_event_type(s: &str) -> BrewEventType {
     serde_json::from_value::<BrewEventType>(serde_json::Value::String(s.to_string()))
@@ -17,7 +20,10 @@ fn enum_to_string<T: serde::Serialize>(val: T) -> String {
         .unwrap_or_default()
 }
 
-fn model_to_response(model: brew_events::Model) -> BrewEventResponse {
+fn model_to_response(
+    model: brew_events::Model,
+    attachments: Vec<EventAttachmentResponse>,
+) -> BrewEventResponse {
     BrewEventResponse {
         id: model.id,
         brew_id: model.brew_id,
@@ -28,7 +34,7 @@ fn model_to_response(model: brew_events::Model) -> BrewEventResponse {
         temp_at_event: model.temp_at_event,
         event_time: model.event_time.into(),
         created_at: model.created_at.into(),
-        attachments: vec![],
+        attachments,
     }
 }
 
@@ -46,17 +52,28 @@ pub async fn find_by_brew(
         query = query.filter(Column::EventTime.lte(u.fixed_offset()));
     }
     let models = query.order_by_asc(Column::EventTime).all(db).await?;
-    Ok(models.into_iter().map(model_to_response).collect())
+    let mut responses = Vec::with_capacity(models.len());
+    for m in models {
+        let id = m.id;
+        let attachments = attachment_service::find_by_event(db, id)
+            .await
+            .unwrap_or_default();
+        responses.push(model_to_response(m, attachments));
+    }
+    Ok(responses)
 }
 
 pub async fn find_by_id(
     db: &DatabaseConnection,
     id: Uuid,
 ) -> Result<Option<BrewEventResponse>, DbErr> {
-    BrewEvent::find_by_id(id)
-        .one(db)
+    let Some(model) = BrewEvent::find_by_id(id).one(db).await? else {
+        return Ok(None);
+    };
+    let attachments = attachment_service::find_by_event(db, model.id)
         .await
-        .map(|opt| opt.map(model_to_response))
+        .unwrap_or_default();
+    Ok(Some(model_to_response(model, attachments)))
 }
 
 pub async fn create(
@@ -75,7 +92,7 @@ pub async fn create(
         created_at: Set(Utc::now().fixed_offset()),
     };
     let inserted = model.insert(db).await?;
-    Ok(model_to_response(inserted))
+    Ok(model_to_response(inserted, vec![]))
 }
 
 pub async fn update(
@@ -104,7 +121,10 @@ pub async fn update(
         model.event_time = Set(event_time.fixed_offset());
     }
     let updated = model.update(db).await?;
-    Ok(Some(model_to_response(updated)))
+    let attachments = attachment_service::find_by_event(db, updated.id)
+        .await
+        .unwrap_or_default();
+    Ok(Some(model_to_response(updated, attachments)))
 }
 
 pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
