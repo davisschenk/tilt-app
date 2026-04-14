@@ -28,6 +28,7 @@ fn model_to_response(model: brew_events::Model) -> BrewEventResponse {
         temp_at_event: model.temp_at_event,
         event_time: model.event_time.into(),
         created_at: model.created_at.into(),
+        attachments: vec![],
     }
 }
 

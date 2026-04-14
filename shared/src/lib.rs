@@ -429,6 +429,18 @@ pub enum BrewEventType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EventAttachmentResponse {
+    pub id: Uuid,
+    pub event_id: Uuid,
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub created_at: DateTime<Utc>,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BrewEventResponse {
     pub id: Uuid,
     pub brew_id: Uuid,
@@ -439,6 +451,7 @@ pub struct BrewEventResponse {
     pub temp_at_event: Option<f64>,
     pub event_time: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
+    pub attachments: Vec<EventAttachmentResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1280,6 +1293,7 @@ mod tests {
             temp_at_event: Some(65.0),
             event_time: now,
             created_at: now,
+            attachments: vec![],
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"brewId\""));
@@ -1287,10 +1301,12 @@ mod tests {
         assert!(json.contains("\"yeast_pitch\""));
         assert!(json.contains("\"gravityAtEvent\""));
         assert!(json.contains("\"createdAt\""));
+        assert!(json.contains("\"attachments\""));
         let deserialized: BrewEventResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.event_type, BrewEventType::YeastPitch);
         assert_eq!(deserialized.label, "US-05 pitched");
         assert!((deserialized.gravity_at_event.unwrap() - 1.055).abs() < f64::EPSILON);
+        assert!(deserialized.attachments.is_empty());
     }
 
     #[test]
