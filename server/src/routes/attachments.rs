@@ -1,3 +1,4 @@
+use rocket::form::Form;
 use rocket::fs::TempFile;
 use rocket::http::{ContentType, Status};
 use rocket::serde::json::Json;
@@ -17,14 +18,15 @@ fn upload_dir() -> String {
     std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".to_string())
 }
 
-#[post("/brews/<brew_id>/events/<event_id>/attachments", data = "<file>")]
+#[post("/brews/<brew_id>/events/<event_id>/attachments", data = "<upload>")]
 async fn upload(
     _user: CurrentUser,
     db: &State<DatabaseConnection>,
     brew_id: &str,
     event_id: &str,
-    mut file: TempFile<'_>,
+    upload: Form<TempFile<'_>>,
 ) -> Result<(Status, Json<EventAttachmentResponse>), Status> {
+    let mut file = upload.into_inner();
     let _brew_id = Uuid::parse_str(brew_id).map_err(|_| Status::UnprocessableEntity)?;
     let event_id = Uuid::parse_str(event_id).map_err(|_| Status::UnprocessableEntity)?;
 
