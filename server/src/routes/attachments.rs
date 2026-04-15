@@ -17,11 +17,7 @@ fn upload_dir() -> String {
     std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".to_string())
 }
 
-#[post(
-    "/brews/<brew_id>/events/<event_id>/attachments",
-    data = "<file>",
-    format = "multipart/form-data"
-)]
+#[post("/brews/<brew_id>/events/<event_id>/attachments", data = "<file>")]
 async fn upload(
     _user: CurrentUser,
     db: &State<DatabaseConnection>,

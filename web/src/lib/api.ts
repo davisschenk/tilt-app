@@ -1,4 +1,4 @@
-const API_BASE_URL =
+export const API_BASE_URL =
   import.meta.env.VITE_API_URL ?? "/api/v1";
 
 export class ApiError extends Error {
@@ -85,9 +85,5 @@ export async function deleteAttachment(
   eventId: string,
   attachmentId: string,
 ): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/brews/${brewId}/events/${eventId}/attachments/${attachmentId}`,
-    { method: "DELETE", credentials: "include" },
-  );
-  return handleResponse(response);
+  return apiDelete(`/brews/${brewId}/events/${eventId}/attachments/${attachmentId}`);
 }

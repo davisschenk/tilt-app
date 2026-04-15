@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/select";
 import { useBrewEvents, useCreateBrewEvent, useUpdateBrewEvent, useDeleteBrewEvent } from "@/hooks/use-brew-events";
 import { useUploadAttachment, useDeleteAttachment } from "@/hooks/use-attachments";
+import { API_BASE_URL } from "@/lib/api";
 import * as toast from "@/lib/toast";
 import type { BrewEventResponse, BrewEventType, CreateBrewEvent, EventAttachmentResponse, UpdateBrewEvent } from "@/types";
 
@@ -362,8 +363,6 @@ function DeleteEventDialog({ brewId, event, open, onOpenChange }: DeleteEventDia
   );
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? "/api/v1";
-
 interface AttachmentStripProps {
   brewId: string;
   event: BrewEventResponse;
@@ -409,16 +408,18 @@ function AttachmentStrip({ brewId, event }: AttachmentStripProps) {
   return (
     <>
       <div className="flex items-center gap-1.5 flex-wrap mt-2">
-        {visible.map((att) => (
+        {visible.map((att) => {
+          const attUrl = `${API_BASE_URL}${att.url.replace("/api/v1", "")}`;
+          return (
           <div key={att.id} className="relative group">
             <button
               type="button"
-              onClick={() => setLightboxUrl(`${API_BASE_URL}${att.url.replace("/api/v1", "")}`)}
+              onClick={() => setLightboxUrl(attUrl)}
               className="block"
               title={att.filename}
             >
               <img
-                src={`${API_BASE_URL}${att.url.replace("/api/v1", "")}`}
+                src={attUrl}
                 alt={att.filename}
                 className="h-14 w-14 object-cover rounded-md border border-border"
               />
@@ -431,7 +432,8 @@ function AttachmentStrip({ brewId, event }: AttachmentStripProps) {
               <X className="h-2.5 w-2.5" />
             </button>
           </div>
-        ))}
+          );
+        })}
         {extra > 0 && (
           <span className="text-xs text-muted-foreground px-2">+{extra} more</span>
         )}
