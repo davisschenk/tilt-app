@@ -5,6 +5,7 @@ networks:
 
 volumes:
   pgdata:
+  uploads:
 
 services:
   db:
@@ -45,6 +46,9 @@ services:
       ROCKET_ADDRESS: "0.0.0.0"
       ROCKET_SECRET_KEY: ${ROCKET_SECRET_KEY}
       RUST_LOG: ${RUST_LOG:-info}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
     networks:
       - tilt-internal
       - cloudflare
