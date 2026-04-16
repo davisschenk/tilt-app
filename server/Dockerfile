@@ -42,5 +42,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY --from=builder /app/target/release/server /usr/local/bin/server
 COPY --from=web-builder /app/web/dist /app/web/dist
+COPY server/Rocket.toml /app/Rocket.toml
 ENV WEB_DIST_DIR=/app/web/dist
 ENTRYPOINT ["/usr/local/bin/server"]

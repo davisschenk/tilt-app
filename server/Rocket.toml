@@ -1,0 +1,5 @@
+[default.limits]
+data = "20 MiB"
+file = "20 MiB"
+form = "20 MiB"
+"multipart/form-data" = "20 MiB"
