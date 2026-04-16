@@ -48,6 +48,7 @@ services:
       ROCKET_SECRET_KEY: ${ROCKET_SECRET_KEY}
       RUST_LOG: ${RUST_LOG:-info}
       UPLOAD_DIR: /app/uploads
+      ROCKET_LIMITS: "{data=20MiB,file=20MiB,form=20MiB}"
     volumes:
       - uploads:/app/uploads
     networks:
