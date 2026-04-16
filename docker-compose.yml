@@ -19,6 +19,8 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
     depends_on:
       db:
         condition: service_healthy
