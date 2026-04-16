@@ -73,7 +73,7 @@ async fn upload(
         .map_err(|_| Status::InternalServerError)?;
 
     let dest = dir.join(&filename_on_disk);
-    file.persist_to(&dest)
+    file.copy_to(&dest)
         .await
         .map_err(|_| Status::InternalServerError)?;
 
