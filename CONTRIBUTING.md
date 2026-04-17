@@ -70,8 +70,7 @@ tilt-app/
 ├── web/             # React 19 + TypeScript frontend (Vite)
 ├── esp32-client/    # ESP32 BLE scanner firmware (separate toolchain)
 ├── docker-compose.yml           # Development
-├── docker-compose.prod.yml      # Generic production
-├── docker-compose.cloudflare.yml # Production with Cloudflare tunnel
+├── docker-compose.prod.yml      # Production (generic, exposes port 8000)
 └── justfile                     # Command runner
 ```
 

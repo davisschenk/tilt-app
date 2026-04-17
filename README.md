@@ -107,6 +107,8 @@ Copy `.env.example` to `.env` and fill in the required values:
 | `FRONTEND_URL` | Your public URL for CORS (e.g. `https://yourdomain.com`) |
 | `UPLOAD_DIR` | Path for photo attachment storage (default: `./uploads`) |
 
+> **Security note:** If `AUTHENTIK_ISSUER_URL` is left unset, the server starts with authentication **disabled** — all API routes are accessible without login. This is a convenience for local development only. Always configure OIDC before exposing the server on a network.
+
 ### Docker Compose
 
 ```bash
@@ -140,4 +142,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT
+[AGPL-3.0](LICENSE) — If you host a modified version of this software as a service, you must release your modifications under the same license.
