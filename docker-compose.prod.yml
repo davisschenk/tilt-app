@@ -10,13 +10,14 @@ volumes:
 services:
   db:
     image: postgres:16-alpine
+    container_name: tilt-db
     labels:
       komodo.stack: tilt
       komodo.service: tilt-db
     environment:
       POSTGRES_DB: tilt
       POSTGRES_USER: tilt
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${TILT_DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -29,6 +30,7 @@ services:
     restart: unless-stopped
 
   server:
+    container_name: tilt-server
     hostname: tilt
     build:
       context: .
@@ -39,13 +41,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    env_file:
-      - .env
     environment:
-      DATABASE_URL: postgres://tilt:${DB_PASSWORD}@db:5432/tilt
+      DATABASE_URL: postgres://tilt:${TILT_DB_PASSWORD}@db:5432/tilt
       ROCKET_PORT: "8000"
       ROCKET_ADDRESS: "0.0.0.0"
-      ROCKET_SECRET_KEY: ${ROCKET_SECRET_KEY}
+      ROCKET_SECRET_KEY: ${TILT_ROCKET_SECRET_KEY}
       RUST_LOG: ${RUST_LOG:-info}
       UPLOAD_DIR: /app/uploads
     volumes:
