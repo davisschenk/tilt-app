@@ -107,7 +107,7 @@ Copy `.env.example` to `.env` and fill in the required values:
 | `FRONTEND_URL` | Your public URL for CORS (e.g. `https://yourdomain.com`) |
 | `UPLOAD_DIR` | Path for photo attachment storage (default: `./uploads`) |
 
-### Generic Docker Compose
+### Docker Compose
 
 ```bash
 cp .env.example .env
@@ -115,20 +115,7 @@ cp .env.example .env
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-This exposes port `8000` (override with `PORT=` env var). Suitable for any reverse proxy (nginx, Caddy, Traefik, etc.).
-
-### With Cloudflare Tunnel
-
-If you're using Cloudflare Tunnel, use the Cloudflare-specific compose file which connects to an external `cloudflare` Docker network:
-
-```bash
-# Create the external network first (once per host)
-docker network create cloudflare
-
-cp .env.example .env
-# Edit .env with your values
-docker compose -f docker-compose.cloudflare.yml up -d --build
-```
+Exposes port `8000` (override with `PORT=` env var). Put any reverse proxy (nginx, Caddy, Traefik, Cloudflare Tunnel, etc.) in front of it.
 
 ## ESP32 Client
 
@@ -138,14 +125,13 @@ See [`esp32-client/README.md`](esp32-client/README.md) for full setup, flashing,
 
 ```
 tilt-app/
-├── server/                      # Rocket API server + SeaORM migrations
-├── shared/                      # Common types and DTOs
-├── web/                         # React 19 frontend (Vite + TypeScript)
-├── esp32-client/                # ESP32 BLE scanner firmware
-├── docker-compose.yml           # Development
-├── docker-compose.prod.yml      # Generic production
-├── docker-compose.cloudflare.yml # Production with Cloudflare tunnel
-└── justfile                     # Command runner recipes
+├── server/                 # Rocket API server + SeaORM migrations
+├── shared/                 # Common types and DTOs
+├── web/                    # React 19 frontend (Vite + TypeScript)
+├── esp32-client/           # ESP32 BLE scanner firmware
+├── docker-compose.yml      # Development
+├── docker-compose.prod.yml # Production
+└── justfile                # Command runner recipes
 ```
 
 ## Contributing
