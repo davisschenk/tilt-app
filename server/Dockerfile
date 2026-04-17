@@ -13,12 +13,11 @@ COPY Cargo.toml Cargo.lock ./
 COPY server/Cargo.toml server/Cargo.toml
 COPY server/migration/Cargo.toml server/migration/Cargo.toml
 COPY shared/Cargo.toml shared/Cargo.toml
-COPY client/Cargo.toml client/Cargo.toml
 # Cargo chef prepare only needs Cargo.toml files, not src — keeping src out
 # prevents source changes from invalidating the dependency cache layer
-RUN mkdir -p server/src server/migration/src shared/src client/src \
+RUN mkdir -p server/src server/migration/src shared/src \
     && echo 'fn main() {}' > server/src/main.rs \
-    && touch server/migration/src/lib.rs shared/src/lib.rs client/src/lib.rs
+    && touch server/migration/src/lib.rs shared/src/lib.rs
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
@@ -34,8 +33,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 COPY Cargo.toml Cargo.lock ./
 COPY server/ server/
 COPY shared/ shared/
-COPY client/Cargo.toml client/Cargo.toml
-COPY client/src/ client/src/
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     cargo build --release --bin server
@@ -44,6 +41,7 @@ FROM debian:trixie-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl3 \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/target/release/server /usr/local/bin/server

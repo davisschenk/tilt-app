@@ -1,4 +1,4 @@
 [workspace]
-members = ["server", "client", "shared", "server/migration"]
+members = ["server", "shared", "server/migration"]
 exclude = ["esp32-client"]
 resolver = "2"

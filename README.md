@@ -5,35 +5,39 @@ A full-stack application for monitoring fermentation with [Tilt Wireless Hydrome
 ## Features
 
 - **Real-time fermentation monitoring** — Gravity and temperature readings from Tilt hydrometers displayed on live charts
-- **Brew session management** — Create, track, and archive brew sessions with OG/FG, style, and markdown notes
+- **Brew session management** — Create, track, and archive brew sessions with OG/FG, style, and notes
 - **Multi-hydrometer support** — Monitor up to 8 Tilt colors simultaneously with per-color charts
+- **Fermentation event log** — Log events (dry hop, cold crash, etc.) with photo attachments
+- **TOSNA nutrient scheduling** — Automated nutrient addition schedule with reminders
+- **Alert system** — Gravity/temperature threshold alerts via webhook (Discord, Slack, etc.)
 - **Dark/light theme** — System-aware theme with manual toggle
-- **Single binary deployment** — Server, API, and web frontend all served from one Rocket binary
-- **Docker ready** — Multi-stage Dockerfile with Cloudflare tunnel support for homelab hosting
+- **Single binary deployment** — Server, API, and web frontend served from one Rocket binary
+- **Docker ready** — Multi-stage Dockerfile for easy self-hosting
 
 ## How It Works
 
 ```
-  Tilt Hydrometer          Raspberry Pi             Server + Web UI
-  (in fermenter)           (BLE scanner)            (your network)
- ┌──────────────┐        ┌──────────────┐        ┌──────────────────┐
- │  BLE iBeacon │───────►│    Client    │──HTTP──►│  Rocket API      │
- │  broadcast   │  BLE   │    binary    │  JSON   │  PostgreSQL      │
- └──────────────┘        └──────────────┘        │  React Dashboard │
+  Tilt Hydrometer        ESP32 / Scanner          Server + Web UI
+  (in fermenter)         (BLE scanner)            (your network)
+ ┌──────────────┐       ┌──────────────┐        ┌──────────────────┐
+ │  BLE iBeacon │──────►│  esp32-client│──HTTP──►│  Rocket API      │
+ │  broadcast   │  BLE  │  (firmware)  │  JSON   │  PostgreSQL      │
+ └──────────────┘       └──────────────┘         │  React Dashboard │
                                                   └──────────────────┘
 ```
 
-The **client** runs on a Raspberry Pi, scans for Tilt BLE advertisements, and uploads readings to the **server**. The server stores data in PostgreSQL and serves both the REST API and the React web dashboard.
+The **ESP32 client** is the recommended scanner — it runs on a cheap ESP32 board, scans for Tilt BLE advertisements, and uploads readings to the server over WiFi. See [`esp32-client/README.md`](esp32-client/README.md) for setup instructions.
 
 ## Tech Stack
 
-| Component    | Technology                                           |
-|--------------|------------------------------------------------------|
-| **Server**   | Rust, Rocket v0.5, SeaORM, PostgreSQL 16             |
-| **Client**   | Rust, btleplug (BLE), reqwest, clap                  |
-| **Frontend** | React 19, TypeScript, TailwindCSS v4, shadcn/ui      |
-| **Charts**   | Recharts                                             |
-| **Infra**    | Docker, cargo-chef, Cloudflare Tunnel                |
+| Component      | Technology                                           |
+|----------------|------------------------------------------------------|
+| **Server**     | Rust, Rocket v0.5, SeaORM, PostgreSQL 16             |
+| **Frontend**   | React 19, TypeScript, TailwindCSS v4, shadcn/ui      |
+| **Charts**     | Recharts                                             |
+| **ESP32 client** | Rust, esp-idf-svc, esp32-nimble                   |
+| **Auth**       | OIDC (tested with [Authentik](https://goauthentik.io/)) |
+| **Infra**      | Docker, cargo-chef                                   |
 
 ## Quick Start
 
@@ -41,90 +45,112 @@ The **client** runs on a Raspberry Pi, scans for Tilt BLE advertisements, and up
 
 - [Rust](https://rustup.rs/) (stable)
 - [Node.js](https://nodejs.org/) 22+
-- [Docker](https://docs.docker.com/get-docker/) (for PostgreSQL)
-- [just](https://github.com/casey/just) (command runner)
+- [Docker](https://docs.docker.com/get-docker/) with Compose
+- [just](https://github.com/casey/just) (`cargo install just`)
 - [sea-orm-cli](https://www.sea-ql.org/SeaORM/) (`cargo install sea-orm-cli`)
+- An OIDC provider (e.g. [Authentik](https://goauthentik.io/), Auth0, Keycloak)
 
 ### Development
 
 ```bash
-# Clone and enter the project
-git clone https://github.com/davisschenk/tilt-hydrometer-web.git
-cd tilt-hydrometer-web
+git clone https://github.com/davisschenk/tilt-app.git
+cd tilt-app
 
-# Copy and configure environment
-cp .env.example .env
+# Install git hooks and create .env from template
+just setup
+
+# Edit .env — configure AUTHENTIK_* (or equivalent OIDC) values
+nano .env
 
 # Start database and run migrations
 just db-up
 just db-migrate
 
-# Start the server (builds web frontend + serves everything)
-just serve
+# Start the server (terminal 1)
+just server
+
+# Start the web dev server with hot reload (terminal 2)
+just web
 ```
 
-Visit **http://localhost:8000** to see the dashboard.
-
-To simulate Tilt readings without hardware (in a separate terminal):
-
-```bash
-just client-sim
-```
+Visit **http://localhost:5173** for the dev frontend, or **http://localhost:8000** for the production-built version (after `just serve`).
 
 ### Available Commands
 
 | Command           | Description                                          |
 |-------------------|------------------------------------------------------|
-| `just serve`      | Build web + server, then run everything               |
+| `just setup`      | First-time setup: install hooks, create .env         |
+| `just serve`      | Build web + server, then run everything              |
 | `just server`     | Run just the Rocket server                           |
 | `just web`        | Run the Vite dev server (hot reload)                 |
-| `just client-sim` | Simulate Tilt readings (Red + Blue)                  |
 | `just db-up`      | Start PostgreSQL via Docker                          |
 | `just db-migrate` | Run database migrations                              |
 | `just db-reset`   | Reset database (down, up, migrate)                   |
 | `just test`       | Run all Rust + web tests                             |
 | `just build`      | Build everything for production                      |
+| `just ci`         | Full CI pipeline: fmt check + lint + tests           |
 
 ## Production Deployment
 
-### Docker Compose
+### Environment Variables
+
+Copy `.env.example` to `.env` and fill in the required values:
+
+| Variable | Description |
+|----------|-------------|
+| `DB_PASSWORD` | PostgreSQL password |
+| `ROCKET_SECRET_KEY` | Secret for signing cookies (`openssl rand -base64 32`) |
+| `AUTHENTIK_ISSUER_URL` | OIDC issuer URL |
+| `AUTHENTIK_CLIENT_ID` | OIDC client ID |
+| `AUTHENTIK_CLIENT_SECRET` | OIDC client secret |
+| `AUTHENTIK_REDIRECT_URL` | OAuth2 callback URL (e.g. `https://yourdomain.com/api/v1/auth/callback`) |
+| `FRONTEND_URL` | Your public URL for CORS (e.g. `https://yourdomain.com`) |
+| `UPLOAD_DIR` | Path for photo attachment storage (default: `./uploads`) |
+
+### Generic Docker Compose
 
 ```bash
 cp .env.example .env
-# Edit .env: set DB_PASSWORD and ROCKET_SECRET_KEY
+# Edit .env with your values
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-The production compose file (`docker-compose.prod.yml`) includes:
-- PostgreSQL on an internal network
-- The server exposed on the `cloudflare` external network for tunnel access
+This exposes port `8000` (override with `PORT=` env var). Suitable for any reverse proxy (nginx, Caddy, Traefik, etc.).
 
-### Client on Raspberry Pi
+### With Cloudflare Tunnel
 
-Cross-compile the client for the Pi:
+If you're using Cloudflare Tunnel, use the Cloudflare-specific compose file which connects to an external `cloudflare` Docker network:
 
 ```bash
-cross build --release --target arm-unknown-linux-gnueabihf -p client
+# Create the external network first (once per host)
+docker network create cloudflare
+
+cp .env.example .env
+# Edit .env with your values
+docker compose -f docker-compose.cloudflare.yml up -d --build
 ```
 
-Copy the binary to the Pi and run it as a systemd service:
+## ESP32 Client
 
-```bash
-tilt-client --server-url http://your-server:8000 --scan-interval 15
-```
+See [`esp32-client/README.md`](esp32-client/README.md) for full setup, flashing, and configuration instructions.
 
 ## Project Structure
 
 ```
-tilt-hydrometer-web/
-├── client/          # BLE scanner + uploader (Raspberry Pi)
-├── server/          # Rocket API server + migrations
-├── shared/          # Common types and DTOs
-├── web/             # React frontend (Vite + TypeScript)
-├── docker-compose.yml       # Development
-├── docker-compose.prod.yml  # Production (Cloudflare)
-└── justfile                 # Command runner recipes
+tilt-app/
+├── server/                      # Rocket API server + SeaORM migrations
+├── shared/                      # Common types and DTOs
+├── web/                         # React 19 frontend (Vite + TypeScript)
+├── esp32-client/                # ESP32 BLE scanner firmware
+├── docker-compose.yml           # Development
+├── docker-compose.prod.yml      # Generic production
+├── docker-compose.cloudflare.yml # Production with Cloudflare tunnel
+└── justfile                     # Command runner recipes
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

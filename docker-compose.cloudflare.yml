@@ -1,12 +1,22 @@
+networks:
+  cloudflare:
+    external: true
+  tilt-internal:
+
+volumes:
+  pgdata:
+  uploads:
+
 services:
   db:
     image: postgres:16-alpine
+    labels:
+      komodo.stack: tilt
+      komodo.service: tilt-db
     environment:
       POSTGRES_DB: tilt
       POSTGRES_USER: tilt
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -14,34 +24,33 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - tilt-internal
+    restart: unless-stopped
 
   server:
+    hostname: tilt
     build:
       context: .
       dockerfile: server/Dockerfile
-      args:
-        BUILDKIT_INLINE_CACHE: "1"
+    labels:
+      komodo.stack: tilt
+      komodo.service: tilt-server
     depends_on:
       db:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgres://tilt:${DB_PASSWORD:-password}@db:5432/tilt
+      DATABASE_URL: postgres://tilt:${DB_PASSWORD}@db:5432/tilt
       ROCKET_PORT: "8000"
       ROCKET_ADDRESS: "0.0.0.0"
-      ROCKET_SECRET_KEY: ${ROCKET_SECRET_KEY:-}
+      ROCKET_SECRET_KEY: ${ROCKET_SECRET_KEY}
       RUST_LOG: ${RUST_LOG:-info}
       UPLOAD_DIR: /app/uploads
-    ports:
-      - "8000:8000"
     volumes:
       - uploads:/app/uploads
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-
-volumes:
-  pgdata:
-  uploads:
+    networks:
+      - tilt-internal
+      - cloudflare
+    restart: unless-stopped

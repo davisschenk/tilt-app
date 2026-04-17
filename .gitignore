@@ -8,3 +8,4 @@ esp32-client/cfg.toml
 esp32-client/target/
 prd.json
 progress.md
+uploads/
