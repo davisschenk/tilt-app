@@ -462,7 +462,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         <CardTitle className="text-base">Readings Chart</CardTitle>
         <div className="flex flex-wrap gap-1 justify-end">
           <Button
-            variant={showEvents ? "secondary" : "outline"}
+            variant={showEvents ? "default" : "outline"}
             size="sm"
             className="h-7 px-2 text-xs"
             onClick={() => setShowEvents((v) => !v)}
