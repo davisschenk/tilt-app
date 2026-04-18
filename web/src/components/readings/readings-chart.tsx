@@ -309,7 +309,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       // Two grids: thin event strip at top / main chart below
       grid: containerWidth < 640
         ? [
-            { left: 46, right: 34, top: 36, bottom: 36 },
+            { left: 46, right: 34, top: 36, bottom: 56 },
             { left: 46, right: 34, top: 18, height: 12 },
           ]
         : [

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,20 @@ const BREW_COLORS: Record<string, string> = {
 
 export default function RecentReadingsChart() {
   const theme = useEChartsTheme();
+  const [containerWidth, setContainerWidth] = useState(800);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? el.clientWidth;
+      setContainerWidth(width);
+    });
+    ro.observe(el);
+    setContainerWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
 
   const { since, xMin, xMax } = useMemo(() => {
     const now = Date.now();
@@ -59,6 +73,8 @@ export default function RecentReadingsChart() {
     };
   }, [seriesData]);
 
+  const isMobile = containerWidth < 640;
+
   const option = useMemo((): EChartsOption => ({
     backgroundColor: "transparent",
     animation: false,
@@ -92,11 +108,13 @@ export default function RecentReadingsChart() {
     legend: {
       bottom: 5,
       icon: "circle",
-      itemGap: 16,
+      itemGap: isMobile ? 10 : 16,
       itemHeight: 10,
-      textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: 12, lineHeight: 18 },
+      textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: isMobile ? 10 : 12, lineHeight: 18 },
     },
-    grid: { left: 72, right: 20, top: 10, bottom: 60 },
+    grid: isMobile
+      ? { left: 44, right: 12, top: 10, bottom: 80 }
+      : { left: 72, right: 20, top: 10, bottom: 60 },
     xAxis: {
       type: "time",
       min: xMin,
@@ -104,7 +122,7 @@ export default function RecentReadingsChart() {
       axisLabel: {
         color: theme.mutedColor,
         fontFamily: theme.fontFamily,
-        fontSize: 11,
+        fontSize: isMobile ? 9 : 11,
         formatter: (val: number) => {
           const d = new Date(val);
           return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -120,7 +138,7 @@ export default function RecentReadingsChart() {
       axisLabel: {
         color: theme.mutedColor,
         fontFamily: theme.fontFamily,
-        fontSize: 11,
+        fontSize: isMobile ? 9 : 11,
         formatter: (val: number) => val.toFixed(3),
       },
       splitLine: { lineStyle: { color: theme.gridColor } },
@@ -135,7 +153,7 @@ export default function RecentReadingsChart() {
       showSymbol: false,
       smooth: true,
     })),
-  }), [theme, seriesData, xMin, xMax, gMin, gMax]);
+  }), [theme, seriesData, xMin, xMax, gMin, gMax, isMobile]);
 
   return (
     <Card className="mt-8">
@@ -150,7 +168,9 @@ export default function RecentReadingsChart() {
             No readings in the last 24 hours
           </div>
         ) : (
-          <ReactECharts option={option} style={{ height: 300 }} notMerge />
+          <div ref={containerRef}>
+            <ReactECharts option={option} style={{ height: 300 }} notMerge />
+          </div>
         )}
       </CardContent>
     </Card>
