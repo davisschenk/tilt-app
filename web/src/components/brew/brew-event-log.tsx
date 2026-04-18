@@ -553,25 +553,27 @@ export default function BrewEventLog({ brewId }: BrewEventLogProps) {
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {format(new Date(ev.eventTime), "MMM d, yyyy 'at' HH:mm")}
                     </p>
-                    <AttachmentStrip brewId={brewId} event={ev} />
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => setEditEvent(ev)}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={() => setDeleteEvent(ev)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setEditEvent(ev)}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteEvent(ev)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <AttachmentStrip brewId={brewId} event={ev} />
                   </div>
                 </CardContent>
               </Card>
