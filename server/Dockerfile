@@ -5,7 +5,7 @@ RUN npm ci
 COPY web/ .
 RUN npm run build
 
-FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1-bookworm AS chef
 WORKDIR /app
 
 FROM chef AS planner
