@@ -69,12 +69,22 @@ pub async fn find_filtered(
         select = select.filter(Column::RecordedAt.lte(until_tz));
     }
 
-    let limit = query.limit_or_default();
-    let models = select
-        .order_by_desc(Column::RecordedAt)
-        .limit(limit)
-        .all(db)
-        .await?;
+    let models = if let Some(limit) = query.limit {
+        select
+            .order_by_asc(Column::RecordedAt)
+            .limit(limit)
+            .all(db)
+            .await?
+    } else {
+        select.order_by_asc(Column::RecordedAt).all(db).await?
+    };
+
+    const DOWNSAMPLE_TARGET: usize = 5_000;
+    let models = if models.len() > DOWNSAMPLE_TARGET {
+        downsample(models, DOWNSAMPLE_TARGET)
+    } else {
+        models
+    };
 
     // Build a hydrometer_id -> TiltColor lookup
     let hydro_ids: Vec<Uuid> = models
@@ -102,4 +112,33 @@ pub async fn find_filtered(
             model_to_response(m, color)
         })
         .collect())
+}
+
+fn downsample(mut models: Vec<readings::Model>, target: usize) -> Vec<readings::Model> {
+    if models.len() <= target {
+        return models;
+    }
+    models.sort_by_key(|m| m.recorded_at);
+    let first = models.first().unwrap().recorded_at.timestamp_millis();
+    let last = models.last().unwrap().recorded_at.timestamp_millis();
+    let span = (last - first).max(1);
+    let bucket_ms = span / target as i64;
+
+    let mut result: Vec<readings::Model> = Vec::with_capacity(target);
+    let mut bucket_start = first;
+
+    let mut i = 0;
+    while i < models.len() {
+        let bucket_end = bucket_start + bucket_ms;
+        let mut bucket: Vec<&readings::Model> = Vec::new();
+        while i < models.len() && models[i].recorded_at.timestamp_millis() < bucket_end {
+            bucket.push(&models[i]);
+            i += 1;
+        }
+        if let Some(mid) = bucket.get(bucket.len() / 2) {
+            result.push((*mid).clone());
+        }
+        bucket_start = bucket_end;
+    }
+    result
 }
