@@ -19,17 +19,27 @@ cd tilt-app
 # Install git hooks and create .env
 just setup
 
-# Edit .env — at minimum set AUTHENTIK_* values for auth
-# For local dev you can use any OIDC provider or Authentik
+# Bring up the full stack — DB starts, migrations run, seed data loaded,
+# server prints a URL. Auth is disabled by default (AUTH_MODE=disabled).
+just up
 
-# Start Postgres and run migrations
-just db-up
-just db-migrate
-
-# Start server + web dev server in separate terminals
-just server   # terminal 1 — Rocket on :8000
-just web      # terminal 2 — Vite on :5173
+# For active development with hot reload, use this instead:
+just dev          # starts DB; then run `just server` and `just web` in separate terminals
 ```
+
+For OIDC-protected dev (testing the real auth flow), set `AUTH_MODE=oidc` in `.env` and fill in the `AUTHENTIK_*` block. See [`WORKTREES.md`](./WORKTREES.md) for the full mode reference.
+
+### Working on multiple branches at once
+
+This repo is worktree-aware — see [`WORKTREES.md`](./WORKTREES.md). Quick form:
+
+```bash
+just wt-add feat/my-thing
+cd ../tilt-feat_my_thing
+just up
+```
+
+Each worktree gets its own DB, port, and environment, so you can have multiple stacks running simultaneously.
 
 ### Running Tests
 

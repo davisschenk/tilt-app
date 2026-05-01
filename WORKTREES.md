@@ -1,85 +1,103 @@
-# Git Worktrees — Multi-Agent Development
+# Worktree-Native Development
 
-This repo is fully worktree-aware. Multiple AI agents (or humans) can work on independent branches simultaneously, each with its own isolated database, ports, and environment.
+This repo is fully worktree-aware. The same commands work in the main repo and in every linked worktree. Multiple AI agents (or humans) can work on independent branches in parallel — each with its own database, ports, environment, and build artifacts.
 
-## How isolation works
-
-| Resource | Isolation mechanism |
-|---|---|
-| Git branch | Each worktree checks out its own branch |
-| `.env` | Each worktree has its own `.env` with unique ports/DB |
-| PostgreSQL DB | Different `DB_NAME` per worktree (e.g. `tilt_feat1`) |
-| PostgreSQL port | Different `DB_PORT` per worktree (e.g. `5433`) |
-| API server port | Different `PORT` / `ROCKET_PORT` per worktree |
-| Build cache | Shared `target/` in the main worktree (via `.cargo/config.toml`) |
-| Git hooks | Installed to the common `.git/hooks/` — shared by all worktrees |
-
-## Quick start
-
-### Create a worktree for a new feature
+## TL;DR
 
 ```bash
-# From the main worktree
-just wt-add feat/my-feature ../tilt-feat 5433 8001
+# Spawn a new worktree.
+just wt-add feat/my-feature
+
+# Bring its stack up (auto port allocation, seeded DB).
+cd ../tilt-feat_my_feature
+just up               # host mode (DB in docker, server/web on host)
+just up --docker      # full docker (single container, web baked in)
+
+# Use it.
+curl http://localhost:<PORT>/api/v1/health     # PORT printed by `just up`
+
+# When done.
+just down --reset     # stops, removes volumes, clears ports
+cd -
+just wt-remove ../tilt-feat_my_feature
 ```
 
-This will:
-1. Create a new git worktree at `../tilt-feat` on branch `feat/my-feature`
-2. Copy `.env.example` → `../tilt-feat/.env` with unique `DB_NAME`, `DB_PORT`, `PORT`, `ROCKET_PORT`, and `DATABASE_URL`
+## The three modes
 
-### Start the stack in the new worktree
+| Mode            | Verb               | DB     | Server               | Web                  | Hot reload |
+|-----------------|--------------------|--------|----------------------|----------------------|-----------:|
+| Dev             | `just dev`         | docker | host (`cargo run`)   | host (`vite`)        | yes        |
+| Up (host)       | `just up`          | docker | host                 | served by Rocket     | no         |
+| Up (docker)     | `just up --docker` | docker | docker               | baked into binary    | no         |
 
-```bash
-cd ../tilt-feat
-just db-up          # starts postgres on port 5433 with DB tilt_feat_my_feature
-just db-migrate     # runs migrations against the isolated DB
-just server         # starts the API on port 8001
-# in another terminal:
-just web            # starts the Vite dev server (update VITE_API_URL if needed)
+- `just dev` is what you want for active coding — fastest iteration.
+- `just up` is what you want to sanity-check a branch before pushing.
+- `just up --docker` is what agents and demos use — fully isolated, prod-shaped.
+
+## What gets isolated per worktree
+
+| Resource           | Isolation                                                                                              |
+|--------------------|--------------------------------------------------------------------------------------------------------|
+| Git branch         | Each worktree on its own branch (`git worktree`).                                                      |
+| `.env`             | Each worktree has its own.                                                                             |
+| Compose project    | `tilt-<slug>` — `tilt-main` for primary repo, `tilt-wt_<branch>` for worktrees.                        |
+| Postgres DB        | Different `DB_NAME` (e.g., `tilt_wt_my_feat`) on a different `DB_PORT`.                                |
+| API host port      | Different `PORT` per worktree (auto-allocated by `just up`).                                           |
+| Volumes            | Compose project name namespaces them (`tilt-wt_my_feat_pgdata` vs `tilt-main_pgdata`).                 |
+| Host build cache   | Per-worktree `target/` directory via `CARGO_TARGET_DIR=./target` in `.env`.                            |
+| Docker build cache | **Shared** across worktrees via named BuildKit cache mounts (`tilt-cargo-*-v1`, `tilt-npm-v1`).        |
+
+## Auth
+
+`AUTH_MODE` controls auth — `disabled` (no auth, dev user injected) or `oidc` (enforced). Worktrees default to `disabled`. The server logs the active mode at startup:
+
+```
+auth: disabled (dev user injected — do NOT use in production)
+auth: oidc https://auth.example.com/...
 ```
 
-### List all active worktrees
+`AUTH_MODE=oidc` with missing `AUTHENTIK_*` env vars causes the server to refuse to start. Production compose defaults to `oidc`.
 
-```bash
-just wt-list
-# or: git worktree list
-```
+## Port allocation
 
-### Remove a worktree
+Worktrees get free ports automatically on first `just up`. Ports stick (recorded in `.env`) until you `just down --reset`. There's no manual port table.
 
-```bash
-just wt-remove ../tilt-feat
-```
+## Cross-worktree commands
 
-This stops its Docker stack (including the DB volume) and removes the worktree.
+| Command                | What it does                                           |
+|------------------------|--------------------------------------------------------|
+| `just wt-list`         | All worktrees + their allocated ports + running state. |
+| `just status --all`    | Every running tilt stack on this host.                 |
+| `just down --all`      | Stops every running tilt stack on this host.           |
+| `just wt-prune`        | Removes worktrees whose branch is gone from origin.    |
 
-## Port allocation convention
+## Seeded data
 
-Use this table to avoid conflicts when running multiple worktrees:
+`just up` runs `cargo run -p server --bin seed` after migrations. The minimal profile creates:
 
-| Worktree | DB_PORT | PORT / ROCKET_PORT |
-|---|---|---|
-| main (`tilt-app/`) | 5432 | 8000 |
-| worktree 1 | 5433 | 8001 |
-| worktree 2 | 5434 | 8002 |
-| worktree 3 | 5435 | 8003 |
+- 3 hydrometers (Red active, Black archived, Green nameless)
+- 1 active brew on Red (West Coast IPA, 24h of readings)
+- 1 completed brew on Black (Imperial Stout, 14d of readings)
+- 2 brew events on the active brew
+- 1 alert rule + 1 alert target stub
 
-## Shared build cache
+Stable seed UUIDs: see `server/src/seed/mod.rs::ids`. Re-running is a no-op unless you pass `--force` (or `just seed-force`).
 
-All worktrees share the `target/` directory of the main worktree (set in `.cargo/config.toml`). This means:
-- Rebuilds are fast — unchanged crates are not recompiled
-- Only one worktree should run `cargo build` at a time to avoid lock contention
+## Build cache hygiene
 
-To give a worktree its own isolated build cache, set `CARGO_TARGET_DIR` in its shell or `.env`:
+Symptoms → fix:
 
-```bash
-export CARGO_TARGET_DIR=/tmp/tilt-feat-target
-```
+| Symptom                                               | Fix                          |
+|-------------------------------------------------------|------------------------------|
+| `cargo: failed to load source for dependency`         | `just cache-purge rust`      |
+| `npm ERR! ... ENOTEMPTY`                              | `just cache-purge node`      |
+| Builds succeed but binary crashes oddly               | `just cache-purge hard`      |
+
+The cache mounts have stable IDs versioned `-v1`. To force a clean cut-over for the whole project (e.g., after upgrading the Rust toolchain), bump the suffix in `server/Dockerfile` to `-v2`.
 
 ## Notes for AI agents
 
-- Each agent should operate inside a single worktree directory
-- Never touch another worktree's `.env`, DB, or running server
-- `prd.json` and `progress.md` are gitignored — each worktree/agent maintains its own copy
-- Always run `just db-up && just db-migrate` before starting the server in a fresh worktree
-- The `VITE_API_URL` env var in the web dev server must point to the correct API port for that worktree
+- One agent per worktree. Don't touch another worktree's `.env`, DB, or running stack.
+- Agents default to `just up --docker` — fully isolated, prod-shaped.
+- `prd.json` and `progress.md` are gitignored — each worktree maintains its own.
+- The agent's golden path: `just wt-add <branch> && cd ../tilt-<slug> && just up && curl http://localhost:<PORT>/api/v1/health`.

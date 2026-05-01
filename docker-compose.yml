@@ -1,6 +1,10 @@
+name: tilt-${COMPOSE_PROJECT_NAME:-main}
+
 services:
   db:
     image: postgres:16-alpine
+    labels:
+      com.tilt.stack: "${COMPOSE_PROJECT_NAME:-main}"
     environment:
       POSTGRES_DB: ${DB_NAME:-tilt}
       POSTGRES_USER: ${DB_USER:-tilt}
@@ -21,10 +25,13 @@ services:
       dockerfile: server/Dockerfile
       args:
         BUILDKIT_INLINE_CACHE: "1"
+    labels:
+      com.tilt.stack: "${COMPOSE_PROJECT_NAME:-main}"
     depends_on:
       db:
         condition: service_healthy
     environment:
+      AUTH_MODE: ${AUTH_MODE:-disabled}
       DATABASE_URL: postgres://${DB_USER:-tilt}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-tilt}
       ROCKET_PORT: "8000"
       ROCKET_ADDRESS: "0.0.0.0"

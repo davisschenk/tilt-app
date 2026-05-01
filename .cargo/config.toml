@@ -3,8 +3,6 @@
 [target.arm-unknown-linux-gnueabihf]
 linker = "arm-linux-gnueabihf-gcc"
 
-# Shared build cache across git worktrees.
-# All worktrees write to the main worktree's target/ so incremental builds are fast.
-# Override per-worktree by setting CARGO_TARGET_DIR in the worktree's .env or shell.
-[build]
-target-dir = "/home/davis/tilt-app/target"
+# NOTE: target-dir is now per-worktree, set via CARGO_TARGET_DIR in each
+# worktree's .env (see WORKTREES.md). The previous hard-coded path was
+# user-specific and caused build-lock contention across worktrees.
