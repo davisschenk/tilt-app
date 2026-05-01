@@ -3,4 +3,4 @@
 
 pub mod auth_mode;
 pub mod models;
-// pub mod seed;  // re-enabled in Task 8
+pub mod seed;
