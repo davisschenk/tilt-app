@@ -214,6 +214,8 @@ _ensure-ports:
       echo "allocated PORT=${PORT}"
     fi
     sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgres://${DB_USER:-tilt}:${DB_PASSWORD:-password}@localhost:${DB_PORT}/${DB_NAME:-tilt}|" .env
+    set -a; . ./.env; set +a
+    echo "VITE_API_URL=http://localhost:${PORT}/api/v1" > web/.env.local
 
 # Bring up the full stack for this worktree.
 # Default: DB in docker, server + web on host.
@@ -395,6 +397,7 @@ wt-add branch path="":
     echo "  AUTH_MODE     : disabled"
     echo ""
     echo "Next: cd $path && just up [--docker]"
+    echo "(web/.env.local will be written by 'just up' once ports are allocated)"
 
 # Provision .env for an already-created worktree directory (called by Windsurf/Claude hooks).
 # Usage: just wt-provision <path>
