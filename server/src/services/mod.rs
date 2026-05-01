@@ -6,6 +6,7 @@ pub mod attachment_service;
 pub mod brew_event_service;
 pub mod brew_service;
 pub mod hydrometer_service;
+pub mod notebook_service;
 pub mod reading_service;
 pub mod sessions;
 pub mod tosna_service;

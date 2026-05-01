@@ -8,6 +8,7 @@ mod services;
 // and `crate::models::...` paths keep working.
 pub use server::{auth_mode, models};
 
+use crate::services::notebook_service::NotebookRegistry;
 use rocket::fs::{FileServer, NamedFile};
 use rocket::serde::json::Json;
 use rocket::{Build, Rocket, catch, catchers, get, options, routes};
@@ -181,9 +182,12 @@ async fn rocket() -> Rocket<Build> {
         .build()
         .expect("Failed to build HTTP client");
 
+    let notebook_registry = NotebookRegistry::new();
+
     let mut rocket = rocket::build()
         .manage(db)
         .manage(http_client)
+        .manage(notebook_registry)
         .attach(cors)
         .attach(fairings::rate_limit::RateLimit::new())
         .attach(fairings::request_logger::RequestLogger)
@@ -202,6 +206,7 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes::ota::routes())
         .mount("/api/v1", routes::tosna::routes())
         .mount("/api/v1", routes::yeast::routes())
+        .mount("/api/v1", routes::notebook::routes())
         .mount("/", FileServer::from(PathBuf::from(&web_dist)))
         .mount("/", routes![spa_fallback])
         .register(
