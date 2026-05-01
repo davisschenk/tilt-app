@@ -202,12 +202,23 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes::ota::routes())
         .mount("/api/v1", routes::tosna::routes())
         .mount("/api/v1", routes::yeast::routes())
-        .mount("/", FileServer::from(PathBuf::from(&web_dist)))
-        .mount("/", routes![spa_fallback])
         .register(
             "/",
             catchers![not_found, forbidden, unprocessable_entity, internal_error],
         );
+
+    let web_dist_path = PathBuf::from(&web_dist);
+    rocket = if web_dist_path.is_dir() {
+        tracing::info!("serving web frontend from {web_dist}");
+        rocket
+            .mount("/", FileServer::from(web_dist_path))
+            .mount("/", routes![spa_fallback])
+    } else {
+        tracing::warn!(
+            "web dist not found at {web_dist:?} — static files and SPA fallback disabled (run 'just web' or 'npm run build' for web)"
+        );
+        rocket
+    };
 
     rocket = rocket
         .manage(oidc_state)
