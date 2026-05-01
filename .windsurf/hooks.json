@@ -4,6 +4,24 @@
             {
                 "command": "if [[ '${command}' == *'rm -rf'* ]]; then echo 'BLOCKED: Destructive command'; exit 2; fi",
                 "show_output": true
+            },
+            {
+                "command": "if [[ '${command}' == *'just down --all'* ]]; then echo 'WARNING: This will stop ALL tilt stacks on this host. Confirm intentional.'; fi",
+                "show_output": true
+            },
+            {
+                "command": "if [[ '${command}' == *'just db-reset-hard'* ]]; then echo 'WARNING: db-reset-hard drops and recreates the database. All data will be lost.'; fi",
+                "show_output": true
+            }
+        ],
+        "post_run_command": [
+            {
+                "command": "if [[ '${command}' == *'just wt-add'* ]]; then just wt-list; fi",
+                "show_output": true
+            },
+            {
+                "command": "if [[ '${command}' == *'just wt-remove'* ]]; then just wt-list; fi",
+                "show_output": true
             }
         ]
     }
