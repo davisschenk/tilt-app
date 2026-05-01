@@ -396,6 +396,33 @@ wt-add branch path="":
     echo ""
     echo "Next: cd $path && just up [--docker]"
 
+# Provision .env for an already-created worktree directory (called by Windsurf/Claude hooks).
+# Usage: just wt-provision <path>
+wt-provision path:
+    #!/usr/bin/env bash
+    set -e
+    path="{{path}}"
+    [ -d "$path" ] || { echo "no such directory: $path" >&2; exit 1; }
+    if [ -f "$path/.env" ] && grep -q "^COMPOSE_PROJECT_NAME=" "$path/.env" 2>/dev/null; then
+      echo "already provisioned — skipping."
+      exit 0
+    fi
+    branch=$(cd "$path" && git symbolic-ref --short HEAD 2>/dev/null || basename "$path")
+    slug=$(echo "$branch" | tr '/-' '__' | tr '[:upper:]' '[:lower:]' | cut -c1-21)
+    cp .env.example "$path/.env"
+    sed -i "s|^DB_PORT=.*|DB_PORT=|"                       "$path/.env"
+    sed -i "s|^PORT=.*|PORT=|"                             "$path/.env"
+    sed -i "s|^ROCKET_PORT=.*|ROCKET_PORT=|"               "$path/.env"
+    sed -i "s|^DB_NAME=.*|DB_NAME=tilt_${slug}|"           "$path/.env"
+    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgres://tilt:password@localhost:0/tilt_${slug}|" "$path/.env"
+    sed -i "s|^AUTH_MODE=.*|AUTH_MODE=disabled|"            "$path/.env"
+    grep -q "^COMPOSE_PROJECT_NAME=" "$path/.env" || echo "COMPOSE_PROJECT_NAME=wt_${slug}" >> "$path/.env"
+    grep -q "^AUTH_MODE=" "$path/.env"             || echo "AUTH_MODE=disabled"              >> "$path/.env"
+    echo "Provisioned $path"
+    echo "  DB name   : tilt_${slug}"
+    echo "  Ports     : (auto-allocated on first 'just up')"
+    echo "  AUTH_MODE : disabled"
+
 # Remove a worktree (stops its stack and removes volumes first).
 wt-remove path:
     #!/usr/bin/env bash
