@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'set -euo pipefail; INPUT=$(cat); NAME=$(echo \"$INPUT\" | jq -r .name); CWD=$(echo \"$INPUT\" | jq -r .cwd); WT_PATH=\"$CWD/.claude/worktrees/$NAME\"; mkdir -p \"$WT_PATH\"; cd \"$CWD\" && just wt-provision \"$WT_PATH\" >&2; echo \"$WT_PATH\"'"
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'set -euo pipefail; INPUT=$(cat); WT_PATH=$(echo \"$INPUT\" | jq -r .worktree_path); CWD=$(echo \"$INPUT\" | jq -r .cwd); cd \"$CWD\" && just wt-remove \"$WT_PATH\" >&2'"
+          }
+        ]
+      }
+    ]
+  }
+}

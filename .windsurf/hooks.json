@@ -23,6 +23,12 @@
                 "command": "if [[ '${command}' == *'just wt-remove'* ]]; then just wt-list; fi",
                 "show_output": true
             }
+        ],
+        "post_setup_worktree": [
+            {
+                "command": "cd $ROOT_WORKSPACE_PATH && just wt-provision $(pwd)",
+                "show_output": true
+            }
         ]
     }
 }
