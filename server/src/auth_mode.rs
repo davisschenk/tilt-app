@@ -14,10 +14,18 @@ impl AuthMode {
     /// Returns Err on an unrecognized value.
     pub fn from_env() -> Result<Self, String> {
         let raw = std::env::var("AUTH_MODE").unwrap_or_else(|_| "disabled".to_string());
-        Self::from_str(&raw)
+        raw.parse()
     }
 
-    pub fn from_str(s: &str) -> Result<Self, String> {
+    pub fn is_disabled(self) -> bool {
+        matches!(self, AuthMode::Disabled)
+    }
+}
+
+impl std::str::FromStr for AuthMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.trim().to_ascii_lowercase().as_str() {
             "disabled" | "off" | "none" => Ok(AuthMode::Disabled),
             "oidc" => Ok(AuthMode::Oidc),
@@ -25,10 +33,6 @@ impl AuthMode {
                 "AUTH_MODE must be one of: disabled, oidc — got: {other:?}"
             )),
         }
-    }
-
-    pub fn is_disabled(self) -> bool {
-        matches!(self, AuthMode::Disabled)
     }
 }
 
@@ -58,25 +62,25 @@ mod tests {
 
     #[test]
     fn parses_disabled_variants() {
-        assert_eq!(AuthMode::from_str("disabled").unwrap(), AuthMode::Disabled);
-        assert_eq!(AuthMode::from_str("DISABLED").unwrap(), AuthMode::Disabled);
-        assert_eq!(AuthMode::from_str("off").unwrap(), AuthMode::Disabled);
-        assert_eq!(AuthMode::from_str("none").unwrap(), AuthMode::Disabled);
+        assert_eq!("disabled".parse::<AuthMode>().unwrap(), AuthMode::Disabled);
+        assert_eq!("DISABLED".parse::<AuthMode>().unwrap(), AuthMode::Disabled);
+        assert_eq!("off".parse::<AuthMode>().unwrap(), AuthMode::Disabled);
+        assert_eq!("none".parse::<AuthMode>().unwrap(), AuthMode::Disabled);
         assert_eq!(
-            AuthMode::from_str("  disabled  ").unwrap(),
+            "  disabled  ".parse::<AuthMode>().unwrap(),
             AuthMode::Disabled
         );
     }
 
     #[test]
     fn parses_oidc() {
-        assert_eq!(AuthMode::from_str("oidc").unwrap(), AuthMode::Oidc);
-        assert_eq!(AuthMode::from_str("OIDC").unwrap(), AuthMode::Oidc);
+        assert_eq!("oidc".parse::<AuthMode>().unwrap(), AuthMode::Oidc);
+        assert_eq!("OIDC".parse::<AuthMode>().unwrap(), AuthMode::Oidc);
     }
 
     #[test]
     fn rejects_unknown() {
-        assert!(AuthMode::from_str("bogus").is_err());
-        assert!(AuthMode::from_str("").is_err());
+        assert!("bogus".parse::<AuthMode>().is_err());
+        assert!("".parse::<AuthMode>().is_err());
     }
 }

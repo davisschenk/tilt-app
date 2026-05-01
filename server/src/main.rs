@@ -1,10 +1,12 @@
-mod auth_mode;
 mod fairings;
 mod guards;
-mod models;
 mod oidc;
 mod routes;
 mod services;
+
+// Re-export library modules so the binary's existing `crate::auth_mode::...`
+// and `crate::models::...` paths keep working.
+pub use server::{auth_mode, models};
 
 use rocket::fs::{FileServer, NamedFile};
 use rocket::serde::json::Json;
