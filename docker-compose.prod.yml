@@ -26,6 +26,7 @@ services:
     env_file:
       - .env
     environment:
+      AUTH_MODE: ${AUTH_MODE:-oidc}
       DATABASE_URL: postgres://tilt:${DB_PASSWORD}@db:5432/tilt
       ROCKET_PORT: "8000"
       ROCKET_ADDRESS: "0.0.0.0"
