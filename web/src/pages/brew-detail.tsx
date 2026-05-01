@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
-import { Pencil, CheckCircle, Archive, Trash2, PartyPopper, Bell, ChevronDown, ChevronUp, Plus, Table2, MoreHorizontal } from "lucide-react";
+import { Pencil, CheckCircle, Archive, Trash2, PartyPopper, Bell, ChevronDown, ChevronUp, Plus, Table2, MoreHorizontal, BookOpen } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,7 @@ import BrewEventLog from "@/components/brew/brew-event-log";
 import NutrientSetupPanel from "@/components/brew/nutrient-setup-panel";
 import * as toast from "@/lib/toast";
 import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
+import { apiGet } from "@/lib/api";
 import type { AlertMetric, AlertOperator } from "@/types";
 
 const METRIC_LABELS: Record<AlertMetric, string> = {
@@ -75,6 +76,7 @@ export default function BrewDetail() {
   const [alertsExpanded, setAlertsExpanded] = useState(false);
   const [readingsExpanded, setReadingsExpanded] = useState(false);
   const [addAlertOpen, setAddAlertOpen] = useState(false);
+  const [notebookLoading, setNotebookLoading] = useState(false);
   const { data: alertRules } = useAlertRules(id);
   const { data: alertTargets } = useAlertTargets();
   const { data: analytics } = useBrewAnalytics(id!);
@@ -87,6 +89,18 @@ export default function BrewDetail() {
         onError: () => toast.error(`Failed to update brew status`),
       },
     );
+  }
+
+  async function handleOpenNotebook() {
+    setNotebookLoading(true);
+    try {
+      const result = await apiGet<{ url: string; port: number }>(`/brews/${id}/notebook`);
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    } catch {
+      toast.error("Failed to open notebook — is marimo installed? (pip install marimo)");
+    } finally {
+      setNotebookLoading(false);
+    }
   }
 
   function handleFinishBrew() {
@@ -149,6 +163,10 @@ export default function BrewDetail() {
                     <Pencil className="mr-2 h-4 w-4" />
                     Edit
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleOpenNotebook} disabled={notebookLoading}>
+                    <BookOpen className="mr-2 h-4 w-4" />
+                    {notebookLoading ? "Opening..." : "Open Notebook"}
+                  </DropdownMenuItem>
                   {brew.status === "Active" && (
                     <DropdownMenuItem onClick={handleFinishBrew} disabled={updateBrew.isPending}>
                       <CheckCircle className="mr-2 h-4 w-4" />
@@ -173,6 +191,10 @@ export default function BrewDetail() {
               <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Edit
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleOpenNotebook} disabled={notebookLoading}>
+                <BookOpen className="mr-2 h-4 w-4" />
+                {notebookLoading ? "Opening..." : "Open Notebook"}
               </Button>
               {brew.status === "Active" && (
                 <Button
