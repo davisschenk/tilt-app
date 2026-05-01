@@ -2,15 +2,15 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: tilt
-      POSTGRES_USER: tilt
+      POSTGRES_DB: ${DB_NAME:-tilt}
+      POSTGRES_USER: ${DB_USER:-tilt}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tilt -d tilt"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-tilt} -d ${DB_NAME:-tilt}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -25,14 +25,14 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://tilt:${DB_PASSWORD:-password}@db:5432/tilt
+      DATABASE_URL: postgres://${DB_USER:-tilt}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-tilt}
       ROCKET_PORT: "8000"
       ROCKET_ADDRESS: "0.0.0.0"
       ROCKET_SECRET_KEY: ${ROCKET_SECRET_KEY:-}
       RUST_LOG: ${RUST_LOG:-info}
       UPLOAD_DIR: /app/uploads
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
     volumes:
       - uploads:/app/uploads
     healthcheck:

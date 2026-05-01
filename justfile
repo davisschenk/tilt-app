@@ -4,11 +4,15 @@ set dotenv-load
 default:
     @just --list
 
-# Install git hooks (run once after cloning)
+# Install git hooks (works in main worktree and linked worktrees)
 install-hooks:
-    cp .githooks/pre-commit .git/hooks/pre-commit
-    chmod +x .git/hooks/pre-commit
-    @echo "Git hooks installed."
+    #!/usr/bin/env bash
+    set -e
+    HOOKS_DIR=$(git rev-parse --git-common-dir)/hooks
+    mkdir -p "$HOOKS_DIR"
+    cp .githooks/pre-commit "$HOOKS_DIR/pre-commit"
+    chmod +x "$HOOKS_DIR/pre-commit"
+    echo "Git hooks installed to $HOOKS_DIR."
 
 # Start the Postgres database container
 db-up:
@@ -125,3 +129,47 @@ esp32-clean:
 
 # Full CI pipeline: format check, lint, and test
 ci: fmt-check lint test
+
+# ---------------------------------------------------------------------------
+# Git worktree helpers
+# Each worktree gets its own branch, .env, Docker project, and DB.
+# ---------------------------------------------------------------------------
+
+# Add a new worktree and generate a ready-to-use .env for it.
+# Usage: just wt-add <branch> <path> [db_port] [api_port]
+# Example: just wt-add feat/my-feature ../tilt-feat 5433 8001
+wt-add branch path db_port="5433" api_port="8001":
+    #!/usr/bin/env bash
+    set -e
+    git worktree add "{{path}}" -b "{{branch}}"
+    SLUG=$(echo "{{branch}}" | tr '/' '_' | tr '-' '_' | cut -c1-20)
+    ENV_FILE="{{path}}/.env"
+    cp .env.example "$ENV_FILE"
+    sed -i "s|^DB_NAME=.*|DB_NAME=tilt_${SLUG}|"   "$ENV_FILE"
+    sed -i "s|^DB_PORT=.*|DB_PORT={{db_port}}|"     "$ENV_FILE"
+    sed -i "s|^PORT=.*|PORT={{api_port}}|"           "$ENV_FILE"
+    sed -i "s|^ROCKET_PORT=.*|ROCKET_PORT={{api_port}}|" "$ENV_FILE"
+    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgres://tilt:password@localhost:{{db_port}}/tilt_${SLUG}|" "$ENV_FILE"
+    echo ""
+    echo "Worktree created at {{path}} on branch {{branch}}"
+    echo "  DB name : tilt_${SLUG}"
+    echo "  DB port : {{db_port}}"
+    echo "  API port: {{api_port}}"
+    echo ""
+    echo "Next steps:"
+    echo "  cd {{path}} && just db-up && just db-migrate && just server"
+
+# Remove a worktree cleanly (stops its Docker stack first).
+# Usage: just wt-remove <path>
+wt-remove path:
+    #!/usr/bin/env bash
+    set -e
+    if [ -f "{{path}}/.env" ]; then
+        docker compose --project-directory "{{path}}" down --volumes 2>/dev/null || true
+    fi
+    git worktree remove --force "{{path}}"
+    echo "Worktree at {{path}} removed."
+
+# List all active worktrees.
+wt-list:
+    git worktree list
