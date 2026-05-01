@@ -6,6 +6,7 @@ use rocket::{
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
+use crate::auth_mode::{AuthMode, dev_user};
 use crate::services::sessions;
 
 #[derive(Debug, Clone)]
@@ -23,16 +24,16 @@ impl<'r> FromRequest<'r> for CurrentUser {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        // When auth is not configured, allow all requests through as an anonymous user.
-        if std::env::var("AUTHENTIK_ISSUER_URL")
-            .unwrap_or_default()
-            .is_empty()
+        // Auth disabled: inject a fixed dev user. All requests succeed.
+        if AuthMode::from_env()
+            .map(|m| m.is_disabled())
+            .unwrap_or(true)
         {
             return Outcome::Success(CurrentUser {
-                session_id: Uuid::nil(),
-                user_sub: "anonymous".to_string(),
-                email: "anonymous@local".to_string(),
-                name: "Anonymous".to_string(),
+                session_id: dev_user::SESSION_ID,
+                user_sub: dev_user::SUB.to_string(),
+                email: dev_user::EMAIL.to_string(),
+                name: dev_user::NAME.to_string(),
             });
         }
 

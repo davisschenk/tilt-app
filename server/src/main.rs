@@ -1,3 +1,4 @@
+mod auth_mode;
 mod fairings;
 mod guards;
 mod models;
@@ -119,33 +120,52 @@ async fn rocket() -> Rocket<Build> {
 
     let cors = setup_cors();
 
-    let oidc_issuer = std::env::var("AUTHENTIK_ISSUER_URL").unwrap_or_default();
-    let oidc_client_id = std::env::var("AUTHENTIK_CLIENT_ID").unwrap_or_default();
-    let oidc_client_secret = std::env::var("AUTHENTIK_CLIENT_SECRET").unwrap_or_default();
-    let oidc_redirect_url = std::env::var("AUTHENTIK_REDIRECT_URL")
-        .unwrap_or_else(|_| "http://localhost:8000/api/v1/auth/callback".to_string());
+    let auth_mode = match auth_mode::AuthMode::from_env() {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::error!("Invalid AUTH_MODE: {e}");
+            std::process::exit(1);
+        }
+    };
 
-    let oidc_state = if !oidc_issuer.is_empty() {
-        match oidc::OidcState::discover(
-            &oidc_issuer,
-            &oidc_client_id,
-            &oidc_client_secret,
-            &oidc_redirect_url,
-        )
-        .await
-        {
-            Ok(state) => {
-                tracing::info!("OIDC discovery successful");
-                Some(state)
+    let oidc_state = match auth_mode {
+        auth_mode::AuthMode::Disabled => {
+            tracing::warn!("auth: disabled (dev user injected — do NOT use in production)");
+            None
+        }
+        auth_mode::AuthMode::Oidc => {
+            let oidc_issuer = std::env::var("AUTHENTIK_ISSUER_URL").unwrap_or_default();
+            let oidc_client_id = std::env::var("AUTHENTIK_CLIENT_ID").unwrap_or_default();
+            let oidc_client_secret = std::env::var("AUTHENTIK_CLIENT_SECRET").unwrap_or_default();
+            let oidc_redirect_url = std::env::var("AUTHENTIK_REDIRECT_URL")
+                .unwrap_or_else(|_| "http://localhost:8000/api/v1/auth/callback".to_string());
+
+            if oidc_issuer.is_empty() || oidc_client_id.is_empty() || oidc_client_secret.is_empty()
+            {
+                tracing::error!(
+                    "AUTH_MODE=oidc requires AUTHENTIK_ISSUER_URL, AUTHENTIK_CLIENT_ID, and AUTHENTIK_CLIENT_SECRET to be set"
+                );
+                std::process::exit(1);
             }
-            Err(e) => {
-                tracing::warn!("OIDC discovery failed: {e} — auth routes will be unavailable");
-                None
+
+            match oidc::OidcState::discover(
+                &oidc_issuer,
+                &oidc_client_id,
+                &oidc_client_secret,
+                &oidc_redirect_url,
+            )
+            .await
+            {
+                Ok(state) => {
+                    tracing::info!("auth: oidc {oidc_issuer}");
+                    Some(state)
+                }
+                Err(e) => {
+                    tracing::error!("OIDC discovery failed: {e}");
+                    std::process::exit(1);
+                }
             }
         }
-    } else {
-        tracing::warn!("AUTHENTIK_ISSUER_URL not set — auth routes will be unavailable");
-        None
     };
 
     let web_dist = std::env::var("WEB_DIST_DIR")

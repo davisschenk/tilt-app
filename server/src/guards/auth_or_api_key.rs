@@ -21,10 +21,10 @@ impl<'r> FromRequest<'r> for AuthOrApiKey {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        // When auth is not configured, allow all requests through.
-        if std::env::var("AUTHENTIK_ISSUER_URL")
-            .unwrap_or_default()
-            .is_empty()
+        // Auth disabled: allow all requests through.
+        if crate::auth_mode::AuthMode::from_env()
+            .map(|m| m.is_disabled())
+            .unwrap_or(true)
         {
             return Outcome::Success(AuthOrApiKey);
         }
