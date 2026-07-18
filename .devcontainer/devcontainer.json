@@ -1,0 +1,18 @@
+{
+  "name": "tilt-app",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  // esp32-client excluded — needs physical USB access to flash hardware.
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": {
+      "profile": "default"
+    },
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  // pkg-config + libssl-dev: sea-orm-cli's sqlx-postgres backend needs them.
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev && cargo install sea-orm-cli && cd web && npm install",
+  "forwardPorts": [8000, 5173, 5432],
+  "remoteUser": "vscode"
+}
