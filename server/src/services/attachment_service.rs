@@ -77,6 +77,34 @@ pub async fn find_owned_raw(
     Ok(Some(att))
 }
 
+/// Total bytes of attachments across every brew `owner` owns (for quotas).
+pub async fn total_bytes_for_owner(db: &DatabaseConnection, owner: Uuid) -> Result<i64, DbErr> {
+    use crate::models::entities::{brew_events, brews};
+    use sea_orm::sea_query::Query;
+
+    let owned_events = Query::select()
+        .column(brew_events::Column::Id)
+        .from(brew_events::Entity)
+        .and_where(
+            brew_events::Column::BrewId.in_subquery(
+                Query::select()
+                    .column(brews::Column::Id)
+                    .from(brews::Entity)
+                    .and_where(brews::Column::OwnerId.eq(owner))
+                    .to_owned(),
+            ),
+        )
+        .to_owned();
+    let sizes: Vec<i64> = EventAttachment::find()
+        .select_only()
+        .column(Column::SizeBytes)
+        .filter(Column::EventId.in_subquery(owned_events))
+        .into_tuple()
+        .all(db)
+        .await?;
+    Ok(sizes.iter().sum())
+}
+
 pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
     let result = EventAttachment::delete_by_id(id).exec(db).await?;
     Ok(result.rows_affected > 0)

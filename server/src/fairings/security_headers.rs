@@ -31,9 +31,12 @@ impl Fairing for SecurityHeaders {
             "Strict-Transport-Security",
             "max-age=31536000; includeSubDomains",
         ));
-        res.set_header(Header::new(
-            "Content-Security-Policy",
-            "default-src 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://cloudflareinsights.com",
-        ));
+        // Routes that serve user content set their own, stricter policy; keep it.
+        if !res.headers().contains("Content-Security-Policy") {
+            res.set_header(Header::new(
+                "Content-Security-Policy",
+                "default-src 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://cloudflareinsights.com",
+            ));
+        }
     }
 }

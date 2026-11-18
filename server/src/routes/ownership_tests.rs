@@ -5,7 +5,7 @@
 //! Needs Postgres via `DATABASE_URL` (CI provides one). Each run migrates into
 //! its own throwaway schema, so it never touches real tables.
 
-use rocket::http::{Cookie, Header, Method, Status};
+use rocket::http::{ContentType, Cookie, Header, Method, Status};
 use rocket::local::asynchronous::Client;
 use sea_orm::{
     ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Set,
@@ -550,4 +550,88 @@ async fn scenario(h: &Harness) {
         .dispatch()
         .await;
     assert_eq!(resp.status(), Status::Unauthorized, "unknown API key");
+
+    // --- Upload hardening ---------------------------------------------------------
+    let upload = |who: &Cookie<'static>,
+                  brew: &str,
+                  ev: &str,
+                  name: &str,
+                  claimed: &str,
+                  bytes: &[u8]| {
+        let mut body = format!(
+            "--XBOUND\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\nContent-Type: {claimed}\r\n\r\n"
+        )
+        .into_bytes();
+        body.extend_from_slice(bytes);
+        body.extend_from_slice(b"\r\n--XBOUND--\r\n");
+        h.client
+            .post(format!("/api/v1/brews/{brew}/events/{ev}/attachments"))
+            .private_cookie(who.clone())
+            .header(ContentType::new("multipart", "form-data").with_params(("boundary", "XBOUND")))
+            .body(body)
+            .dispatch()
+    };
+
+    let svg = b"<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'/>";
+    let resp = upload(a, &brew, &ev, "evil.png", "image/png", svg).await;
+    assert_eq!(
+        resp.status(),
+        Status::UnprocessableEntity,
+        "SVG labelled image/png is rejected"
+    );
+    let resp = upload(a, &brew, &ev, "evil.svg", "image/svg+xml", svg).await;
+    assert_eq!(
+        resp.status(),
+        Status::UnprocessableEntity,
+        "SVG labelled image/svg+xml is rejected"
+    );
+
+    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+    png.extend_from_slice(&[0u8; 32]);
+    let resp = upload(b, &brew, &ev, "x.png", "image/png", &png).await;
+    assert_eq!(
+        resp.status(),
+        Status::NotFound,
+        "B cannot upload to A's event"
+    );
+
+    let resp = upload(a, &brew, &ev, "photo.svg", "image/svg+xml", &png).await;
+    assert_eq!(
+        resp.status(),
+        Status::Created,
+        "real PNG is accepted whatever it is called"
+    );
+    let saved: Value = resp.into_json().await.unwrap();
+    assert_eq!(
+        saved["contentType"], "image/png",
+        "stored type comes from the bytes"
+    );
+    assert_eq!(
+        saved["filename"], "photo.png",
+        "extension follows the detected type"
+    );
+
+    let resp = h
+        .client
+        .get(format!(
+            "/api/v1/attachments/{}/file",
+            saved["id"].as_str().unwrap()
+        ))
+        .private_cookie(a.clone())
+        .dispatch()
+        .await;
+    assert_eq!(resp.status(), Status::Ok);
+    assert_eq!(resp.content_type(), Some(ContentType::PNG));
+    assert_eq!(
+        resp.headers().get_one("X-Content-Type-Options"),
+        Some("nosniff")
+    );
+    let csp = resp
+        .headers()
+        .get_one("Content-Security-Policy")
+        .unwrap_or_default();
+    assert!(
+        csp.contains("sandbox") && csp.contains("default-src 'none'"),
+        "attachment CSP: {csp}"
+    );
 }
