@@ -32,6 +32,7 @@ services:
         condition: service_healthy
     environment:
       AUTH_MODE: ${AUTH_MODE:-disabled}
+      AUTH_DISABLED_ACK: ${AUTH_DISABLED_ACK:-true}
       DATABASE_URL: postgres://${DB_USER:-tilt}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-tilt}
       ROCKET_PORT: "8000"
       ROCKET_ADDRESS: "0.0.0.0"

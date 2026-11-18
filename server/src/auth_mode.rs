@@ -10,11 +10,24 @@ pub enum AuthMode {
 }
 
 impl AuthMode {
-    /// Parse `AUTH_MODE` from the environment. Defaults to `Disabled` if unset.
+    /// Parse `AUTH_MODE` from the environment. Defaults to `Oidc` if unset, so a
+    /// deployment that forgets to configure auth fails closed instead of open.
     /// Returns Err on an unrecognized value.
     pub fn from_env() -> Result<Self, String> {
-        let raw = std::env::var("AUTH_MODE").unwrap_or_else(|_| "disabled".to_string());
-        raw.parse()
+        Self::parse_or_default(std::env::var("AUTH_MODE").ok().as_deref())
+    }
+
+    fn parse_or_default(raw: Option<&str>) -> Result<Self, String> {
+        raw.unwrap_or("oidc").parse()
+    }
+
+    /// The mode this server was started in, from managed state. Fails closed:
+    /// if state is somehow missing, auth is enforced.
+    pub fn of(req: &rocket::Request<'_>) -> Self {
+        req.rocket()
+            .state::<AuthMode>()
+            .copied()
+            .unwrap_or(AuthMode::Oidc)
     }
 
     pub fn is_disabled(self) -> bool {
@@ -76,6 +89,15 @@ mod tests {
     fn parses_oidc() {
         assert_eq!("oidc".parse::<AuthMode>().unwrap(), AuthMode::Oidc);
         assert_eq!("OIDC".parse::<AuthMode>().unwrap(), AuthMode::Oidc);
+    }
+
+    #[test]
+    fn unset_defaults_to_enforced_auth() {
+        assert_eq!(AuthMode::parse_or_default(None).unwrap(), AuthMode::Oidc);
+        assert_eq!(
+            AuthMode::parse_or_default(Some("disabled")).unwrap(),
+            AuthMode::Disabled
+        );
     }
 
     #[test]

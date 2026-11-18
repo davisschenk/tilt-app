@@ -3,6 +3,7 @@ mod guards;
 mod oidc;
 mod routes;
 mod services;
+mod startup;
 
 // Re-export library modules so the binary's existing `crate::auth_mode::...`
 // and `crate::models::...` paths keep working.
@@ -130,6 +131,18 @@ async fn rocket() -> Rocket<Build> {
         }
     };
 
+    let secret_key_configured = rocket::Config::figment()
+        .extract::<rocket::Config>()
+        .map(|c| !c.secret_key.is_zero())
+        .unwrap_or(false);
+    let problems = startup::problems(auth_mode, |k| std::env::var(k).ok(), secret_key_configured);
+    if !problems.is_empty() {
+        for p in &problems {
+            tracing::error!("refusing to start: {p}");
+        }
+        std::process::exit(1);
+    }
+
     let oidc_state = match auth_mode {
         auth_mode::AuthMode::Disabled => {
             tracing::warn!("auth: disabled (dev user injected — do NOT use in production)");
@@ -200,6 +213,7 @@ async fn rocket() -> Rocket<Build> {
 
     let mut rocket = rocket::build()
         .manage(db)
+        .manage(auth_mode)
         .manage(http_client)
         .manage(fairings::rate_limit::TestFireLimiter::new())
         .manage(firmware_dir)
