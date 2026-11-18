@@ -47,3 +47,35 @@ export const brew = (over: Partial<BrewResponse> = {}): BrewResponse => ({
   nutrientAlertTargetId: null,
   ...over,
 })
+
+import type { AlertRuleResponse, AlertTargetResponse } from "@/types"
+
+export const alertTarget = (over: Partial<AlertTargetResponse> = {}): AlertTargetResponse => ({
+  id: "t1",
+  name: "Discord Alerts",
+  url: "https://discord.com/api/webhooks/123/abc",
+  format: "discord",
+  secretHeader: null,
+  enabled: true,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+  ...over,
+})
+
+export const alertRule = (over: Partial<AlertRuleResponse> = {}): AlertRuleResponse => ({
+  id: "r1",
+  name: "FG Reached",
+  brewId: null,
+  hydrometerId: null,
+  metric: "gravity",
+  operator: "lte",
+  threshold: 1.01,
+  alertTargetId: "t1",
+  enabled: true,
+  cooldownMinutes: 60,
+  windowHours: 24,
+  lastTriggeredAt: null,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+  ...over,
+})

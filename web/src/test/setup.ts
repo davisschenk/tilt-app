@@ -3,9 +3,12 @@ import { afterAll, afterEach, beforeAll, vi } from "vitest"
 import { cleanup } from "@testing-library/react"
 import { server } from "./msw/server"
 
+const originalLocation = Object.getOwnPropertyDescriptor(window, "location")!
+
 beforeAll(() => server.listen({ onUnhandledFrame: "error" }))
 afterEach(() => {
   cleanup()
+  Object.defineProperty(window, "location", originalLocation)
   server.resetHandlers()
 })
 afterAll(() => server.close())
