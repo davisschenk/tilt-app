@@ -115,15 +115,40 @@ TiltBrew delegates accounts to your OpenID Connect provider, so who can sign up 
 
 With Authentik, for example: create an *enrollment flow* (prompt stage for username/email/password, an email-verification stage, and a user-write stage), then select it as the **Enrollment flow** on your login page's identification stage. Authentik then shows a "Sign up" link, and the landing page's **Sign in or create an account** button takes people there. Add a captcha stage to the enrollment flow before opening it to the internet. Other providers (Auth0, Keycloak, ...) have equivalent self-registration settings. Set `FRONTEND_URL`, `ROCKET_SECRET_KEY` and https `OIDC_REDIRECT_URL` first; the server refuses to start in `oidc` mode without them.
 
-### Docker Compose
+### Docker Compose (production)
 
 ```bash
 cp .env.example .env
-# Edit .env with your values
-docker compose -f docker-compose.prod.yml up -d --build
+# Edit .env: set DB_PASSWORD, ROCKET_SECRET_KEY, FRONTEND_URL, the OIDC_* values,
+# and TILT_VERSION (a release tag; the compose file refuses to start without one).
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-Exposes port `8000` (override with `PORT=` env var). Put any reverse proxy (nginx, Caddy, Traefik, Cloudflare Tunnel, etc.) in front of it.
+Runs the server, Postgres, and a nightly backup job. The server listens on port `8000` (`PORT=`; set `BIND_ADDR=127.0.0.1` to keep it off the network when a proxy on the same host fronts it). The compose file pins nothing to `latest`: upgrade by changing `TILT_VERSION` and running `up -d` again. Migrations run automatically at startup, so back up first (below) and run a single server replica.
+
+**TLS and client IPs.** Put any reverse proxy in front, or use the bundled Caddy (automatic HTTPS):
+
+```bash
+# in .env:  SITE_ADDRESS=tilt.example.com   ROCKET_IP_HEADER=X-Real-IP   BIND_ADDR=127.0.0.1
+docker compose -f docker-compose.prod.yml --profile proxy up -d
+```
+
+`ROCKET_IP_HEADER` must name a header your proxy *overwrites* with the real client address (the bundled Caddy sets `X-Real-IP`). Leave it unset when the server is exposed directly: no client-supplied address header is trusted, so rate limits cannot be dodged by spoofing one. If you use a proxy and don't set it, all users share the proxy's address.
+
+**Backups.** The `backup` service writes a verified Postgres dump and a photo archive to the `backups` volume every night (`BACKUP_HOUR_UTC`, default 03:00) and keeps `BACKUP_KEEP_DAYS` days (default 14). By default these live on the same machine, so they protect against mistakes and corruption but **not against losing the host**. To copy them off-host, set `BACKUP_RCLONE_REMOTE` (for example `s3remote:my-bucket/tilt`) and configure the remote with [rclone environment variables](https://rclone.org/docs/#environment-variables) in `.env` (`RCLONE_CONFIG_S3REMOTE_TYPE=s3`, ...).
+
+To restore (this replaces the database; stop the server first):
+
+```bash
+docker compose -f docker-compose.prod.yml stop server
+docker compose -f docker-compose.prod.yml run --rm --no-deps backup \
+  sh /scripts/restore.sh /backups/db-<timestamp>.dump /backups/uploads-<timestamp>.tar.gz
+docker compose -f docker-compose.prod.yml start server
+```
+
+The scripts in `deploy/backup/` were tested with a dump, a restore into an empty database, and a row-count comparison. Try a restore on a scratch copy before you need one.
+
+**Logs.** Set `LOG_FORMAT=json` for one JSON object per line, for a log shipper.
 
 ## ESP32 Client
 

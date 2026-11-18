@@ -1,6 +1,9 @@
 volumes:
   pgdata:
   uploads:
+  backups:
+  caddy_data:
+  caddy_config:
 
 services:
   db:
@@ -19,7 +22,9 @@ services:
     restart: unless-stopped
 
   server:
-    image: ghcr.io/davisschenk/tilt-app:latest
+    # Pin a release (see the repository's Releases / packages for tags). `latest` moves
+    # on every release, so an unattended `pull` could upgrade you at a bad moment.
+    image: ghcr.io/davisschenk/tilt-app:${TILT_VERSION:?Set TILT_VERSION in .env to a release tag, e.g. 1.2.3}
     depends_on:
       db:
         condition: service_healthy
@@ -36,7 +41,9 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
       UPLOAD_DIR: /app/uploads
     ports:
-      - "${PORT:-8000}:8000"
+      # Set BIND_ADDR=127.0.0.1 when a reverse proxy on this host (or the proxy
+      # profile below) is the only thing that should reach the server.
+      - "${BIND_ADDR:-0.0.0.0}:${PORT:-8000}:8000"
     volumes:
       - uploads:/app/uploads
     healthcheck:
@@ -46,3 +53,53 @@ services:
       retries: 5
       start_period: 15s
     restart: unless-stopped
+
+  # Nightly Postgres dump + photo archive, verified and rotated. Add
+  # BACKUP_RCLONE_REMOTE (see README) to also copy them off this host; without it
+  # they protect against mistakes and corruption but not against losing the machine.
+  backup:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: tilt
+      PGDATABASE: tilt
+      PGPASSWORD: ${DB_PASSWORD}
+      UPLOAD_DIR: /uploads
+      BACKUP_DIR: /backups
+      BACKUP_HOUR_UTC: ${BACKUP_HOUR_UTC:-3}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:-}
+    env_file:
+      - .env
+    volumes:
+      - backups:/backups
+      - uploads:/uploads:ro
+      - ./deploy/backup:/scripts:ro
+    entrypoint: ["/bin/sh", "/scripts/backup-loop.sh"]
+    restart: unless-stopped
+
+  # Optional TLS-terminating reverse proxy: `docker compose --profile proxy up -d`.
+  # Set SITE_ADDRESS (your domain) in .env (the default, localhost, only gets a
+  # self-signed certificate), and ROCKET_IP_HEADER=X-Real-IP so the
+  # server's rate limits see real client addresses. Pair with BIND_ADDR=127.0.0.1.
+  caddy:
+    profiles: ["proxy"]
+    image: caddy:2-alpine
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      # Compose reads this even when the profile is off, so it cannot be required.
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+

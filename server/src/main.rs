@@ -107,9 +107,14 @@ async fn rocket() -> Rocket<Build> {
 
     let log_filter = std::env::var("RUST_LOG")
         .unwrap_or_else(|_| "info,rocket::response::debug=off".to_string());
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::new(log_filter))
-        .init();
+    // LOG_FORMAT=json emits one JSON object per line for log shippers (Loki, Datadog...).
+    let builder =
+        tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::new(log_filter));
+    if std::env::var("LOG_FORMAT").is_ok_and(|v| v.eq_ignore_ascii_case("json")) {
+        builder.json().init();
+    } else {
+        builder.init();
+    }
 
     tracing::info!("Starting Tilt Hydrometer Platform server");
 
