@@ -1,3 +1,4 @@
+pub mod account_service;
 pub mod alert_rule_service;
 pub mod alert_target_service;
 pub mod analytics_service;

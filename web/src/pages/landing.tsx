@@ -1,6 +1,7 @@
 import { Beer, Bell, Camera, FlaskConical, LineChart, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LegalFooterLinks } from "@/components/legal-layout";
 import { useAuth } from "@/lib/auth";
 
 const FEATURES = [
@@ -59,6 +60,10 @@ export default function Landing() {
             <Button size="lg" onClick={login}>
               Sign in or create an account
             </Button>
+            <p className="text-xs text-muted-foreground">
+              By continuing you agree to the <a className="underline" href="/terms">terms</a> and{" "}
+              <a className="underline" href="/privacy">privacy policy</a>.
+            </p>
           </div>
         </section>
 
@@ -75,6 +80,10 @@ export default function Landing() {
           ))}
         </section>
       </main>
+
+      <footer className="mx-auto max-w-5xl px-4 pb-10">
+        <LegalFooterLinks className="justify-center" />
+      </footer>
     </div>
   );
 }

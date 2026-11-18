@@ -30,6 +30,7 @@ const navItems = [
   { to: "/alert-targets", label: "Alert Targets", icon: Bell },
   { to: "/alert-rules", label: "Alert Rules", icon: ShieldAlert },
   { to: "/settings/api-keys", label: "API Keys", icon: Key },
+  { to: "/settings/account", label: "Account", icon: User },
 ];
 
 function NavLinks({ onClick }: { onClick?: () => void }) {
