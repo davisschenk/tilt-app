@@ -44,10 +44,48 @@ Each worktree gets its own DB, port, and environment, so you can have multiple s
 ### Running Tests
 
 ```bash
-just test          # Rust workspace + web type-check
+just test          # Rust workspace + web type-check + web unit tests
 just test-rust     # Rust only
-just test-web      # Web type-check only
+just test-web      # Web type-check and Vitest unit tests
+just coverage      # Rust + web tests with the coverage gates CI enforces
+just e2e           # Playwright E2E + accessibility suite against the real stack
 ```
+
+**Coverage gates (CI fails below these):**
+
+| Area | Gate | Where |
+|------|------|-------|
+| Rust (server + shared) | 60% lines | `just coverage-rust` (`cargo-llvm-cov`; needs `DATABASE_URL`) |
+| Web | 70% lines/statements, 65% functions, 60% branches | `web/vitest.config.ts` (`just coverage-web`) |
+
+Generated SeaORM entities, `src/bin/`, migrations, and the shadcn `components/ui` primitives are excluded. If a new
+file genuinely can't be exercised in jsdom, exclude it narrowly in `vitest.config.ts` with a comment — don't lower the
+global floors.
+
+**Web unit/component tests** live next to the code (`*.test.ts(x)`) and use Vitest, Testing Library and
+[MSW](https://mswjs.io). Network calls are intercepted by MSW with `onUnhandledFrame: "error"`, so any request without a
+handler fails the test. Helpers:
+
+- `renderWithProviders(ui, { route })` (`src/test/render.tsx`) wraps a fresh `QueryClient`, router, theme and auth provider.
+- `src/test/fixtures.ts` builds typed brews, hydrometers, readings, alert rules/targets.
+- `server.use(http.get("/api/v1/...", ...))` (`src/test/msw/server.ts`) overrides handlers per test.
+- `src/test/mocks/echarts-for-react.tsx` stands in for the canvas charts; assert on `chart.props.option` / `series()`.
+- `mockNavigation()` (`src/test/navigation.ts`) records `window.location.href` assignments without breaking relative fetches.
+
+**E2E and accessibility** (`web/e2e`) run Playwright against the real stack: Rocket with `AUTH_MODE=disabled` serving
+the built `web/dist`, on a Postgres that is reseeded (`seed --profile minimal --force`) before every run.
+
+```bash
+just e2e-db-up                         # throwaway Postgres on 127.0.0.1:55432 (or set E2E_DATABASE_URL)
+cd web && npx playwright install chromium   # once
+just e2e                               # build web, boot the server, run everything
+just e2e e2e/accessibility.spec.ts     # a single spec
+just e2e-db-down
+```
+
+`e2e/accessibility.spec.ts` runs [axe-core](https://github.com/dequelabs/axe-core) (WCAG 2.0/2.1 A + AA) on every page in
+light and dark themes, on the main dialogs and menus, and checks keyboard focus handling. Serious and critical
+violations fail the test. Webhook targets must be public addresses in E2E too (the SSRF guard rejects loopback).
 
 ### Code Style
 

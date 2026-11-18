@@ -80,9 +80,44 @@ clean:
 test-rust:
     cargo test --workspace
 
-# Type-check the web frontend (build)
+# Type-check and unit-test the web frontend (Vitest)
 test-web:
-    cd web && npm run build
+    cd web && npm run build && npm test
+
+# Web unit tests with coverage; fails below the thresholds in web/vitest.config.ts
+coverage-web:
+    cd web && npm run test:coverage
+
+# Rust tests with coverage; fails below 60% line coverage. Needs DATABASE_URL (Postgres) and
+# cargo-llvm-cov (`cargo install cargo-llvm-cov`, plus `rustup component add llvm-tools-preview`).
+coverage-rust:
+    cargo llvm-cov --workspace --ignore-filename-regex 'models/entities|src/bin/|migration/' --fail-under-lines 60
+
+# Coverage gates for both Rust and web (what CI enforces)
+coverage: coverage-rust coverage-web
+
+# Start a throwaway Postgres for the Playwright E2E suite on 127.0.0.1:55432
+e2e-db-up:
+    #!/usr/bin/env bash
+    set -e
+    if docker ps -a --format '{{{{.Names}}' | grep -qx tilt-e2e-pg; then
+      docker start tilt-e2e-pg >/dev/null
+    else
+      docker run -d --name tilt-e2e-pg -e POSTGRES_DB=tilt_e2e -e POSTGRES_USER=tilt \
+        -e POSTGRES_PASSWORD=password -p 127.0.0.1:55432:5432 postgres:16-alpine >/dev/null
+    fi
+    until docker exec tilt-e2e-pg pg_isready -U tilt -d tilt_e2e >/dev/null 2>&1; do sleep 1; done
+    echo "E2E Postgres ready on 127.0.0.1:55432"
+
+# Remove the E2E Postgres container
+e2e-db-down:
+    -docker rm -f tilt-e2e-pg
+
+# Playwright E2E + accessibility suite against the real stack (builds web, boots Rocket, reseeds).
+# Needs `just e2e-db-up` (or E2E_DATABASE_URL) and `cd web && npx playwright install chromium` once.
+# Pass args through, e.g. `just e2e e2e/accessibility.spec.ts`.
+e2e *args:
+    cd web && npm run build && npx playwright test {{args}}
 
 # Run all tests (Rust + web)
 test: test-rust test-web

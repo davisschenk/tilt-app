@@ -7,8 +7,16 @@ on:
   pull_request:
     branches: [master]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  ci:
+  # fmt + clippy + Rust tests under coverage. Fails below 60% line coverage (see `just coverage-rust`).
+  rust:
     runs-on: ubuntu-latest
 
     services:
@@ -35,7 +43,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -47,6 +55,35 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      - name: Install just and cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-llvm-cov
+
+      - name: Format check
+        run: just fmt-check
+
+      - name: Clippy
+        run: just lint
+
+      - name: Tests + coverage gate
+        run: just coverage-rust
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo "### Rust coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --ignore-filename-regex 'models/entities|src/bin/|migration/' --summary-only 2>/dev/null | tail -n 1 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # Type-check + production build, then Vitest with coverage thresholds (web/vitest.config.ts).
+  web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -57,11 +94,134 @@ jobs:
       - name: Install web dependencies
         run: cd web && npm ci
 
-      - name: Install just
-        uses: taiki-e/install-action@just
+      - name: Type-check and build
+        run: cd web && npm run build
 
-      - name: Run CI (fmt-check + lint + tests)
-        run: just ci
+      - name: Unit tests + coverage gate
+        run: cd web && npm run test:coverage
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, os
+          path = "web/coverage/coverage-summary.json"
+          if not os.path.exists(path):
+              raise SystemExit
+          total = json.load(open(path))["total"]
+          print("### Web coverage\n\n| Metric | Covered |\n|---|---|")
+          for k in ("lines", "statements", "functions", "branches"):
+              print(f"| {k} | {total[k]['pct']}% ({total[k]['covered']}/{total[k]['total']}) |")
+          PY
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: web/coverage/
+          if-no-files-found: ignore
+
+  # Playwright against the real stack: Rocket (AUTH_MODE=disabled) serving web/dist, seeded Postgres.
+  # Includes the axe accessibility checks (e2e/accessibility.spec.ts).
+  e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: tilt_e2e
+          POSTGRES_USER: tilt
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      E2E_DATABASE_URL: postgres://tilt:password@127.0.0.1:5432/tilt_e2e
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-e2e-
+            ${{ runner.os }}-cargo-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: cd web && npm ci
+
+      - name: Build web
+        run: cd web && npm run build
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install Playwright browser
+        run: |
+          cd web
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: Run Playwright
+        run: cd web && npx playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          if-no-files-found: ignore
+
+  esp32-host:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-esp32-${{ hashFiles('esp32-client/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-esp32-
 
       - name: Run ESP32 host tests
         run: ./esp32-client/test-host.sh
