@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches: [master]
   pull_request:
@@ -61,3 +62,6 @@ jobs:
 
       - name: Run CI (fmt-check + lint + tests)
         run: just ci
+
+      - name: Run ESP32 host tests
+        run: ./esp32-client/test-host.sh

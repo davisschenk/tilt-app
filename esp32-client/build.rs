@@ -1,4 +1,6 @@
 fn main() {
+    println!("cargo:rerun-if-env-changed=TILT_RELEASE_VERSION");
+    println!("cargo:rerun-if-env-changed=OTA_PUBLIC_KEY");
     // cfg.toml is optional: it supplies compile-time defaults for development.
     // Production images are generic and get their config over serial (web setup).
     if !std::path::Path::new("cfg.toml").exists() {

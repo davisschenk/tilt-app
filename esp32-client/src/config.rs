@@ -8,7 +8,10 @@ pub const CONSECUTIVE_ERROR_WARN_THRESHOLD: u32 = 10;
 
 /// Firmware version, taken from Cargo.toml so it always matches the built image.
 /// Compared against the server's OTA manifest.
-pub const FIRMWARE_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const FIRMWARE_VERSION: &str = match option_env!("TILT_RELEASE_VERSION") {
+    Some(version) if !version.is_empty() => version,
+    _ => env!("CARGO_PKG_VERSION"),
+};
 
 /// Hex Ed25519 public key that OTA manifests must be signed with. Injected at build
 /// time by `scripts/release.sh` (`OTA_PUBLIC_KEY`). When absent, OTA is refused.
