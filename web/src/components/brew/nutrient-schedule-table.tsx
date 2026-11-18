@@ -73,7 +73,7 @@ function AdditionRow({
     >
       <div className="mt-0.5 shrink-0">
         {completed ? (
-          <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+          <CheckCircle2 className="h-5 w-5 text-green-700 dark:text-green-400" />
         ) : current ? (
           <Droplets className="h-5 w-5 text-blue-600 dark:text-blue-400" />
         ) : (
@@ -232,7 +232,7 @@ export default function NutrientScheduleTable({ brew }: Props) {
             {completedCount > 0 && (
               <>
                 <span>·</span>
-                <span className="text-green-600 dark:text-green-400 font-medium">
+                <span className="text-green-700 dark:text-green-400 font-medium">
                   {completedCount}/{schedule.additions.length} done
                 </span>
               </>

@@ -49,15 +49,16 @@ export default function BrewList() {
         }
       />
 
+      {/* Filter-only tabs: there are no tab panels, so don't reference one via aria-controls. */}
       <Tabs
         value={statusFilter}
         onValueChange={(v) => setStatusFilter(v as BrewStatus)}
         className="mb-4"
       >
         <TabsList>
-          <TabsTrigger value="Active">Active</TabsTrigger>
-          <TabsTrigger value="Completed">Completed</TabsTrigger>
-          <TabsTrigger value="Archived">Archived</TabsTrigger>
+          <TabsTrigger value="Active" aria-controls={undefined}>Active</TabsTrigger>
+          <TabsTrigger value="Completed" aria-controls={undefined}>Completed</TabsTrigger>
+          <TabsTrigger value="Archived" aria-controls={undefined}>Archived</TabsTrigger>
         </TabsList>
       </Tabs>
 

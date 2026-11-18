@@ -2,6 +2,7 @@ import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useRestoreFocus } from "@/lib/restore-focus"
 import { Button } from "@/components/ui/button"
 
 function AlertDialog({
@@ -45,10 +46,13 @@ function AlertDialogOverlay({
 function AlertDialogContent({
   className,
   size = "default",
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
   size?: "default" | "sm"
 }) {
+  const focus = useRestoreFocus(onOpenAutoFocus, onCloseAutoFocus)
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
@@ -60,6 +64,7 @@ function AlertDialogContent({
           className
         )}
         {...props}
+        {...focus}
       />
     </AlertDialogPortal>
   )

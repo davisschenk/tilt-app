@@ -60,6 +60,7 @@ export default function BrewNotes({ brewId, notes }: BrewNotesProps) {
             variant="ghost"
             size="icon"
             className="h-8 w-8"
+            aria-label="Edit notes"
             onClick={() => {
               setDraft(notes ?? "");
               setEditing(true);
