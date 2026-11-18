@@ -101,21 +101,24 @@ pub async fn find_filtered(
         select = select.filter(Column::RecordedAt.lte(until_tz));
     }
 
-    let models = if let Some(limit) = query.limit {
-        select
-            .order_by_asc(Column::RecordedAt)
-            .limit(limit)
-            .all(db)
-            .await?
-    } else {
-        select.order_by_asc(Column::RecordedAt).all(db).await?
-    };
-
     const DOWNSAMPLE_TARGET: usize = 5_000;
-    let models = if models.len() > DOWNSAMPLE_TARGET {
-        downsample(models, DOWNSAMPLE_TARGET)
-    } else {
-        models
+    let models = match query.limit {
+        // A caller-supplied limit already bounds the rows we load.
+        Some(limit) => {
+            let models = select
+                .order_by_asc(Column::RecordedAt)
+                .limit(limit)
+                .all(db)
+                .await?;
+            if models.len() > DOWNSAMPLE_TARGET {
+                downsample(models, DOWNSAMPLE_TARGET)
+            } else {
+                models
+            }
+        }
+        // Otherwise a long brew could be hundreds of thousands of rows; stream and
+        // downsample as they arrive instead of materialising them all.
+        None => load_downsampled(db, select, DOWNSAMPLE_TARGET).await?,
     };
 
     // Build a hydrometer_id -> TiltColor lookup
@@ -146,6 +149,67 @@ pub async fn find_filtered(
         .collect())
 }
 
+type TimeBounds = (
+    Option<chrono::DateTime<chrono::FixedOffset>>,
+    Option<chrono::DateTime<chrono::FixedOffset>>,
+);
+
+/// Load matching readings in time order, reduced to about `target` points by
+/// taking the middle reading of each equal-width time bucket (the same result as
+/// [`downsample`]) while holding only one bucket in memory at a time.
+async fn load_downsampled(
+    db: &DatabaseConnection,
+    select: Select<Reading>,
+    target: usize,
+) -> Result<Vec<readings::Model>, DbErr> {
+    use rocket::futures::TryStreamExt;
+
+    let total = select.clone().count(db).await?;
+    if total as usize <= target {
+        return select.order_by_asc(Column::RecordedAt).all(db).await;
+    }
+
+    let bounds: Option<TimeBounds> = select
+        .clone()
+        .select_only()
+        .column_as(Column::RecordedAt.min(), "first")
+        .column_as(Column::RecordedAt.max(), "last")
+        .into_tuple()
+        .one(db)
+        .await?;
+    let Some((Some(first), Some(last))) = bounds else {
+        return Ok(Vec::new());
+    };
+    let first_ms = first.timestamp_millis();
+    let span = (last.timestamp_millis() - first_ms).max(1);
+    // At least 1ms: a zero-width bucket would never advance past rows that share a timestamp.
+    let bucket_ms = (span / target as i64).max(1);
+
+    let mut stream = select.order_by_asc(Column::RecordedAt).stream(db).await?;
+    let mut out: Vec<readings::Model> = Vec::with_capacity(target + 1);
+    let mut bucket: Vec<readings::Model> = Vec::new();
+    let mut bucket_end = first_ms + bucket_ms;
+
+    let flush = |bucket: &mut Vec<readings::Model>, out: &mut Vec<readings::Model>| {
+        if !bucket.is_empty() {
+            let mid = bucket.len() / 2;
+            out.push(bucket.swap_remove(mid));
+            bucket.clear();
+        }
+    };
+
+    while let Some(m) = stream.try_next().await? {
+        let ms = m.recorded_at.timestamp_millis();
+        while ms >= bucket_end {
+            flush(&mut bucket, &mut out);
+            bucket_end += bucket_ms;
+        }
+        bucket.push(m);
+    }
+    flush(&mut bucket, &mut out);
+    Ok(out)
+}
+
 fn downsample(mut models: Vec<readings::Model>, target: usize) -> Vec<readings::Model> {
     if models.len() <= target {
         return models;
@@ -154,7 +218,8 @@ fn downsample(mut models: Vec<readings::Model>, target: usize) -> Vec<readings::
     let first = models.first().unwrap().recorded_at.timestamp_millis();
     let last = models.last().unwrap().recorded_at.timestamp_millis();
     let span = (last - first).max(1);
-    let bucket_ms = span / target as i64;
+    // At least 1ms so rows sharing a timestamp cannot stall the loop below.
+    let bucket_ms = (span / target as i64).max(1);
 
     let mut result: Vec<readings::Model> = Vec::with_capacity(target);
     let mut bucket_start = first;
