@@ -178,8 +178,17 @@ async fn rocket() -> Rocket<Build> {
     let http_client = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(5))
         .timeout(std::time::Duration::from_secs(10))
+        // Webhook targets are user-supplied: never follow redirects to somewhere
+        // internal, and only connect to public addresses (see webhook_guard).
+        .redirect(reqwest::redirect::Policy::none())
+        .dns_resolver(std::sync::Arc::new(services::webhook_guard::SafeResolver))
         .build()
         .expect("Failed to build HTTP client");
+    if services::webhook_guard::allow_private() {
+        tracing::warn!(
+            "WEBHOOK_ALLOW_PRIVATE is set: webhooks may reach private addresses (dev only)"
+        );
+    }
 
     let firmware_dir = services::firmware_service::FirmwareDir::from_env();
     if !firmware_dir.path().join("manifest.json").is_file() {
@@ -192,6 +201,7 @@ async fn rocket() -> Rocket<Build> {
     let mut rocket = rocket::build()
         .manage(db)
         .manage(http_client)
+        .manage(fairings::rate_limit::TestFireLimiter::new())
         .manage(firmware_dir)
         .attach(cors)
         .attach(fairings::rate_limit::RateLimit::new())

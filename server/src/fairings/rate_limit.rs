@@ -83,3 +83,22 @@ impl<'r> rocket::request::FromRequest<'r> for RateLimitGuard {
         }
     }
 }
+
+/// Per-user limiter for endpoints that make the server send a request on the
+/// user's behalf (webhook test-fire), so one account cannot use them as a cannon.
+pub struct TestFireLimiter(
+    RateLimiter<uuid::Uuid, DefaultKeyedStateStore<uuid::Uuid>, DefaultClock>,
+);
+
+impl TestFireLimiter {
+    pub fn new() -> Self {
+        Self(RateLimiter::keyed(Quota::per_minute(
+            NonZeroU32::new(10).unwrap(),
+        )))
+    }
+
+    /// True if `user` may fire another test right now.
+    pub fn allow(&self, user: uuid::Uuid) -> bool {
+        self.0.check_key(&user).is_ok()
+    }
+}

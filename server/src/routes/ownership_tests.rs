@@ -69,6 +69,7 @@ impl Harness {
         let rocket = rocket::build()
             .manage(db.clone())
             .manage(reqwest::Client::new())
+            .manage(crate::fairings::rate_limit::TestFireLimiter::new())
             .mount("/api/v1", routes::hydrometers::routes())
             .mount("/api/v1", routes::brews::routes())
             .mount("/api/v1", routes::readings::routes())
@@ -90,6 +91,14 @@ impl Harness {
             a,
             b,
         }
+    }
+
+    async fn owner_of(&self, sub: &str) -> Uuid {
+        user_service::find_by_sub(&self.db, sub)
+            .await
+            .unwrap()
+            .unwrap()
+            .id
     }
 
     async fn cleanup(self) {
@@ -634,4 +643,77 @@ async fn scenario(h: &Harness) {
         csp.contains("sandbox") && csp.contains("default-src 'none'"),
         "attachment CSP: {csp}"
     );
+
+    // --- Webhook SSRF ---------------------------------------------------------------
+    let target_body = |url: &str| json!({"name": "ssrf", "url": url, "format": "generic_json"});
+    for url in [
+        "http://example.com/hook",
+        "https://127.0.0.1/hook",
+        "https://169.254.169.254/latest/meta-data/",
+        "https://localhost/hook",
+        "https://db/hook",
+        "https://[::1]/hook",
+    ] {
+        assert_eq!(
+            h.post("/alert-targets", a, target_body(url)).await.0,
+            Status::UnprocessableEntity,
+            "create rejects {url}"
+        );
+        assert_eq!(
+            h.put(
+                &format!("/alert-targets/{target}"),
+                a,
+                json!({ "url": url })
+            )
+            .await
+            .0,
+            Status::UnprocessableEntity,
+            "update rejects {url}"
+        );
+    }
+    // A target saved before validation existed is still blocked when fired.
+    let legacy = Uuid::new_v4();
+    crate::models::entities::alert_targets::ActiveModel {
+        id: Set(legacy),
+        owner_id: Set(h.owner_of("sub-user-a").await),
+        name: Set("legacy".into()),
+        url: Set("https://169.254.169.254/latest/meta-data/".into()),
+        format: Set("generic_json".into()),
+        secret_header: Set(None),
+        enabled: Set(true),
+        created_at: Set(chrono::Utc::now().fixed_offset()),
+        updated_at: Set(chrono::Utc::now().fixed_offset()),
+    }
+    .insert(&h.db)
+    .await
+    .unwrap();
+    let (_, fired) = h
+        .post(&format!("/alert-targets/{legacy}/test"), a, json!(null))
+        .await;
+    assert_eq!(fired["ok"], false, "legacy internal target must not fire");
+    assert!(
+        fired["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Blocked webhook URL"),
+        "blocked, not merely failed to connect: {fired}"
+    );
+
+    // Test-fire is limited per user (10/min); we have used 3 for A already above.
+    let mut limited = false;
+    for _ in 0..12 {
+        if h.post(&format!("/alert-targets/{legacy}/test"), a, json!(null))
+            .await
+            .0
+            == Status::TooManyRequests
+        {
+            limited = true;
+            break;
+        }
+    }
+    assert!(limited, "test-fire is rate limited per user");
+    let (s, _) = h
+        .post(&format!("/alert-targets/{b_target}/test"), b, json!(null))
+        .await;
+    assert_eq!(s, Status::Ok, "B's limit is independent of A's");
 }
