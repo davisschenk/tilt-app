@@ -65,7 +65,7 @@ const EVENT_ICONS: Record<BrewEventType, React.ReactNode> = {
 };
 
 const EVENT_COLORS: Record<BrewEventType, string> = {
-  yeast_pitch: "text-green-600",
+  yeast_pitch: "text-green-700 dark:text-green-500",
   dry_hop: "text-orange-500",
   fermentation_complete: "text-emerald-600",
   diacetyl_rest: "text-yellow-600",
@@ -560,6 +560,7 @@ export default function BrewEventLog({ brewId }: BrewEventLogProps) {
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7"
+                        aria-label={`Edit event ${ev.label}`}
                         onClick={() => setEditEvent(ev)}
                       >
                         <Pencil className="h-3 w-3" />
@@ -568,6 +569,7 @@ export default function BrewEventLog({ brewId }: BrewEventLogProps) {
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-destructive hover:text-destructive"
+                        aria-label={`Delete event ${ev.label}`}
                         onClick={() => setDeleteEvent(ev)}
                       >
                         <Trash2 className="h-3 w-3" />

@@ -75,7 +75,7 @@ export default function HydrometerList() {
             const colorInfo = (TILT_COLOR_MAP as Record<string, typeof TILT_COLOR_MAP.Red>)[h.color];
             const activeBrew = getActiveBrew(h.id);
             return (
-              <Card key={h.id} className={h.isDisabled ? "opacity-60" : ""} style={{ borderTopColor: colorInfo?.hex ?? "#868E96", borderTopWidth: 3 }}>
+              <Card key={h.id} className={h.isDisabled ? "border-dashed bg-muted/30" : ""} style={{ borderTopColor: colorInfo?.hex ?? "#868E96", borderTopWidth: 3 }}>
                 <CardContent className="pt-5 space-y-3">
                   <div className="flex items-center gap-3">
                     <ColorDot color={h.color} size="lg" />
@@ -85,9 +85,9 @@ export default function HydrometerList() {
                         {h.isDisabled ? (
                           <Badge variant="secondary" className="text-xs px-1.5 py-0.5">Disabled</Badge>
                         ) : h.latestReading && isStale(h.latestReading.recordedAt) ? (
-                          <Badge className="bg-red-500 text-white text-xs px-1.5 py-0.5">Offline</Badge>
+                          <Badge className="bg-red-700 text-white text-xs px-1.5 py-0.5">Offline</Badge>
                         ) : h.latestReading ? (
-                          <Badge className="bg-green-500 text-white text-xs px-1.5 py-0.5">Live</Badge>
+                          <Badge className="bg-green-700 text-white text-xs px-1.5 py-0.5">Live</Badge>
                         ) : null}
                       </div>
                       {h.name && (

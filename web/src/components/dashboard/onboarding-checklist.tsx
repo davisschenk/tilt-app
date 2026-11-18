@@ -82,12 +82,12 @@ export default function OnboardingChecklist() {
           {steps.map((s) => (
             <li key={s.title} className="flex items-start gap-3">
               {s.done ? (
-                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-700 dark:text-green-500" />
               ) : (
                 <Circle className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
               )}
               <div className="flex-1">
-                <p className={s.done ? "font-medium line-through opacity-60" : "font-medium"}>
+                <p className={s.done ? "font-medium line-through text-muted-foreground" : "font-medium"}>
                   {s.title}
                 </p>
                 <p className="text-sm text-muted-foreground">{s.body}</p>

@@ -73,7 +73,7 @@ function Check({ done, failed, label }: { done: boolean; failed?: boolean; label
   return (
     <li className="flex items-center gap-2 text-sm">
       {done ? (
-        <CheckCircle2 className="h-4 w-4 text-green-600" />
+        <CheckCircle2 className="h-4 w-4 text-green-700 dark:text-green-500" />
       ) : failed ? (
         <AlertTriangle className="h-4 w-4 text-destructive" />
       ) : (

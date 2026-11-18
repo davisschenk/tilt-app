@@ -14,9 +14,9 @@ export default function Breadcrumbs() {
   if (segments.length === 0) return null;
 
   return (
-    <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-4">
-      <Link to="/" className="hover:text-foreground transition-colors">
-        <Home className="h-4 w-4" />
+    <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-sm text-muted-foreground mb-4">
+      <Link to="/" aria-label="Home" className="hover:text-foreground transition-colors">
+        <Home className="h-4 w-4" aria-hidden="true" />
       </Link>
       {segments.map((segment, index) => {
         const path = "/" + segments.slice(0, index + 1).join("/");

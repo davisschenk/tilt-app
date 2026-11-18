@@ -75,7 +75,7 @@ export default function AlertTargets() {
       ) : targets && targets.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {targets.map((t: AlertTargetResponse) => (
-            <Card key={t.id} className={!t.enabled ? "opacity-60" : ""}>
+            <Card key={t.id} className={!t.enabled ? "border-dashed bg-muted/30" : ""}>
               <CardContent className="pt-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -98,7 +98,7 @@ export default function AlertTargets() {
                     <p className="text-muted-foreground">Status</p>
                     <p className="font-medium">
                       {t.enabled ? (
-                        <span className="text-green-600 dark:text-green-400">Enabled</span>
+                        <span className="text-green-700 dark:text-green-400">Enabled</span>
                       ) : (
                         <span className="text-red-600 dark:text-red-400">Disabled</span>
                       )}

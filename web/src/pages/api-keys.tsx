@@ -130,6 +130,7 @@ export default function ApiKeysPage() {
                     variant="ghost"
                     size="icon"
                     className="text-destructive hover:text-destructive"
+                    aria-label={`Delete API key ${key.name}`}
                     onClick={() => setDeleteId(key.id)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -206,7 +207,7 @@ export default function ApiKeysPage() {
                 value={createdKey?.key ?? ""}
                 className="font-mono text-sm"
               />
-              <Button variant="outline" size="icon" onClick={handleCopy}>
+              <Button variant="outline" size="icon" onClick={handleCopy} aria-label="Copy API key">
                 {copied ? (
                   <Check className="h-4 w-4 text-green-500" />
                 ) : (

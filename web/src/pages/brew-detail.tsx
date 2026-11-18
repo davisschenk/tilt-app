@@ -220,7 +220,7 @@ export default function BrewDetail() {
               May be offline
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-xs text-green-600">
+            <span className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-500">
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
               Live
             </span>
@@ -296,7 +296,7 @@ export default function BrewDetail() {
                         />
                       </div>
                     ) : analytics.currentGravity != null && analytics.currentGravity <= brew.targetFg ? (
-                      <p className="text-sm text-green-600 font-medium">Fermentation complete</p>
+                      <p className="text-sm text-green-700 dark:text-green-500 font-medium">Fermentation complete</p>
                     ) : (
                       <p className="text-sm text-muted-foreground">Insufficient data for prediction</p>
                     )}
@@ -315,7 +315,7 @@ export default function BrewDetail() {
               brew.latestReading &&
               brew.latestReading.gravity <= brew.targetFg && (
                 <div className="flex items-center gap-3 rounded-md border border-green-300 bg-green-50 p-4 mb-6 dark:border-green-800 dark:bg-green-950">
-                  <PartyPopper className="h-5 w-5 text-green-600 shrink-0" />
+                  <PartyPopper className="h-5 w-5 text-green-700 dark:text-green-500 shrink-0" />
                   <div className="flex-1">
                     <p className="font-medium text-green-800 dark:text-green-200">Target gravity reached!</p>
                     <p className="text-sm text-green-700 dark:text-green-300">Consider completing this brew.</p>
@@ -461,7 +461,7 @@ export default function BrewDetail() {
                   />
                 </div>
               ) : analytics.currentGravity != null && analytics.currentGravity <= brew.targetFg ? (
-                <p className="text-sm text-green-600 font-medium">Fermentation complete</p>
+                <p className="text-sm text-green-700 dark:text-green-500 font-medium">Fermentation complete</p>
               ) : (
                 <p className="text-sm text-muted-foreground">Insufficient data for prediction</p>
               )}
@@ -483,7 +483,7 @@ export default function BrewDetail() {
             brew.latestReading &&
             brew.latestReading.gravity <= brew.targetFg && (
               <div className="flex items-center gap-3 rounded-md border border-green-300 bg-green-50 p-4 mb-6 dark:border-green-800 dark:bg-green-950">
-                <PartyPopper className="h-5 w-5 text-green-600 shrink-0" />
+                <PartyPopper className="h-5 w-5 text-green-700 dark:text-green-500 shrink-0" />
                 <div className="flex-1">
                   <p className="font-medium text-green-800 dark:text-green-200">
                     Target gravity reached!

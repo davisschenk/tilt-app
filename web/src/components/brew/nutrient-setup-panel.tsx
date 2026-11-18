@@ -98,7 +98,7 @@ export default function NutrientSetupPanel({ brew }: Props) {
           <CardTitle className="text-base flex-1">
             Nutrient Schedule
             {isConfigured && (
-              <span className="ml-2 text-xs font-normal text-green-600 dark:text-green-400">
+              <span className="ml-2 text-xs font-normal text-green-700 dark:text-green-400">
                 Configured ({PROTOCOL_LABELS[brew.nutrientProtocol ?? "tosna_2"] ?? brew.nutrientProtocol})
               </span>
             )}

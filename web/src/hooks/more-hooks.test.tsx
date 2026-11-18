@@ -163,7 +163,7 @@ describe("firmware", () => {
     expect(hits).toBe(1)
   })
 
-  async function sha(bytes: Uint8Array) {
+  async function sha(bytes: Uint8Array<ArrayBuffer>) {
     const d = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))
     return Array.from(d).map((b) => b.toString(16).padStart(2, "0")).join("")
   }

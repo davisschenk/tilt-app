@@ -124,10 +124,10 @@ export default function AlertRules() {
                   </TableCell>
                   <TableCell className="py-3">
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditTarget(r)}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Edit rule ${r.name}`} onClick={() => setEditTarget(r)}>
                         <Pencil className="h-3 w-3" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDeleteTarget(r)}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Delete rule ${r.name}`} onClick={() => setDeleteTarget(r)}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>

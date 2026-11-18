@@ -46,7 +46,7 @@ describe("AlertTargets page", () => {
 
   it("test-fires a target and reports success or failure", async () => {
     server.use(http.get("/api/v1/alert-targets", () => HttpResponse.json([alertTarget()])))
-    let result: unknown = { ok: true, statusCode: 204 }
+    let result: { ok: boolean; statusCode?: number; error?: string } = { ok: true, statusCode: 204 }
     server.use(http.post("/api/v1/alert-targets/t1/test", () => HttpResponse.json(result)))
     renderWithProviders(<AlertTargets />)
     await userEvent.click(await screen.findByRole("button", { name: /Test/ }))
