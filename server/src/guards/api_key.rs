@@ -42,7 +42,10 @@ impl<'r> FromRequest<'r> for ApiKeyGuard {
             Ok(key) => Outcome::Success(ApiKeyGuard { key }),
             Err(ApiKeyError::Expired) => Outcome::Error((Status::Unauthorized, ())),
             Err(ApiKeyError::Invalid) => Outcome::Error((Status::Unauthorized, ())),
-            Err(ApiKeyError::Db(_)) => Outcome::Error((Status::InternalServerError, ())),
+            // LimitReached only comes from creating keys, never from validating one.
+            Err(ApiKeyError::Db(_) | ApiKeyError::LimitReached) => {
+                Outcome::Error((Status::InternalServerError, ()))
+            }
         }
     }
 }

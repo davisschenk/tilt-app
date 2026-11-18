@@ -6,6 +6,7 @@ use rocket::{
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
+use crate::fairings::rate_limit::ApiUserLimiter;
 use crate::guards::current_user::CurrentUser;
 use crate::services::api_keys::{ApiKeyError, validate_api_key};
 
@@ -39,13 +40,17 @@ impl<'r> FromRequest<'r> for AuthOrApiKey {
             };
             match validate_api_key(db, &raw_key).await {
                 Ok(key) => {
+                    if !ApiUserLimiter::allow(req, key.owner_id) {
+                        return Outcome::Error((Status::TooManyRequests, ()));
+                    }
                     return Outcome::Success(AuthOrApiKey {
                         owner_id: key.owner_id,
                     });
                 }
                 Err(ApiKeyError::Expired) => return Outcome::Error((Status::Unauthorized, ())),
                 Err(ApiKeyError::Invalid) => {} // fall through to session check
-                Err(ApiKeyError::Db(_)) => {
+                // LimitReached only comes from creating keys, never from validating one.
+                Err(ApiKeyError::Db(_) | ApiKeyError::LimitReached) => {
                     return Outcome::Error((Status::InternalServerError, ()));
                 }
             }

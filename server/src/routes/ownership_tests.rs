@@ -189,6 +189,7 @@ fn reading(color: &str) -> Value {
 async fn users_cannot_see_or_touch_each_others_data() {
     let h = Harness::new().await;
     scenario(&h).await;
+    limits_scenario(&h).await;
     h.cleanup().await;
 }
 
@@ -880,4 +881,191 @@ async fn scenario(h: &Harness) {
     let (_, rs) = h.get(&format!("/readings?hydrometer_id={ha}"), a).await;
     assert_eq!(rs.as_array().unwrap().len(), 1, "A's reading survives");
     assert!(h.upload_dir.join(&ev).exists(), "A's files survive");
+}
+
+/// Per-user request limiting and per-account resource caps, on a fresh user so
+/// the counts above are not disturbed.
+async fn limits_scenario(h: &Harness) {
+    use crate::fairings::rate_limit::ApiUserLimiter;
+    use crate::services::{WriteError, alert_target_service, api_keys, brew_service, limits};
+    use shared::{CreateAlertTarget, CreateBrew, WebhookFormat};
+
+    let c = login(&h.db, "sub-user-c", "c@example.com").await;
+    let c_id = h.owner_of("sub-user-c").await;
+
+    // --- Per-user request limit: follows the account, not the address ---------------
+    let limited = rocket::build()
+        .manage(h.db.clone())
+        .manage(crate::auth_mode::AuthMode::Oidc)
+        .manage(ApiUserLimiter::new(5))
+        .mount("/api/v1", routes::hydrometers::routes());
+    let limited = Client::tracked(limited).await.unwrap();
+    let hit = |who: &Cookie<'static>| {
+        limited
+            .get("/api/v1/hydrometers")
+            .private_cookie(who.clone())
+            .dispatch()
+    };
+    for i in 0..5 {
+        assert_eq!(
+            hit(&c).await.status(),
+            Status::Ok,
+            "request {i} is within the limit"
+        );
+    }
+    assert_eq!(
+        hit(&c).await.status(),
+        Status::TooManyRequests,
+        "sixth request in a minute"
+    );
+    assert_eq!(
+        hit(&h.a).await.status(),
+        Status::Ok,
+        "another user is not affected"
+    );
+
+    // --- Resource caps ----------------------------------------------------------------
+    let (_, hc) = h.post("/hydrometers", &c, json!({"color": "Red"})).await;
+    let hc = id(&hc);
+    let hc_uuid: Uuid = hc.parse().unwrap();
+
+    let target = |n: u64| CreateAlertTarget {
+        name: format!("t{n}"),
+        url: "https://example.com/hook".into(),
+        format: WebhookFormat::GenericJson,
+        secret_header: None,
+        enabled: None,
+    };
+    for n in 0..limits::MAX_ALERT_TARGETS {
+        alert_target_service::create(&h.db, c_id, target(n))
+            .await
+            .expect("under the cap");
+    }
+    assert!(
+        matches!(
+            alert_target_service::create(&h.db, c_id, target(99)).await,
+            Err(WriteError::LimitReached(_))
+        ),
+        "alert target cap"
+    );
+    assert_eq!(
+        h.post(
+            "/alert-targets",
+            &c,
+            json!({"name": "x", "url": "https://example.com/h", "format": "generic_json"})
+        )
+        .await
+        .0,
+        Status::Forbidden,
+        "cap surfaces as 403 over HTTP"
+    );
+    let (s, _) = h
+        .post(
+            "/alert-targets",
+            &h.b,
+            json!({"name": "x", "url": "https://example.com/h", "format": "generic_json"}),
+        )
+        .await;
+    assert_ne!(s, Status::Forbidden, "another user's cap is independent");
+
+    for n in 0..limits::MAX_API_KEYS {
+        api_keys::create_api_key(&h.db, c_id, format!("k{n}"), "sub-user-c".into(), None)
+            .await
+            .expect("under the cap");
+    }
+    assert!(
+        matches!(
+            api_keys::create_api_key(
+                &h.db,
+                c_id,
+                "one too many".into(),
+                "sub-user-c".into(),
+                None
+            )
+            .await,
+            Err(api_keys::ApiKeyError::LimitReached)
+        ),
+        "API key cap"
+    );
+    assert_eq!(
+        h.post("/api-keys", &c, json!({"name": "x"})).await.0,
+        Status::Forbidden,
+        "key cap over HTTP"
+    );
+
+    let brew = || CreateBrew {
+        name: "b".into(),
+        hydrometer_id: hc_uuid,
+        style: None,
+        og: None,
+        target_fg: None,
+        notes: None,
+        batch_size_gallons: None,
+        yeast_nitrogen_requirement: None,
+        pitch_time: None,
+        nutrient_protocol: None,
+        yeast_strain: None,
+        nutrient_alert_target_id: None,
+    };
+    for _ in 0..limits::MAX_BREWS {
+        brew_service::create(&h.db, c_id, brew())
+            .await
+            .expect("under the cap");
+    }
+    assert!(
+        matches!(
+            brew_service::create(&h.db, c_id, brew()).await,
+            Err(WriteError::LimitReached(_))
+        ),
+        "brew cap"
+    );
+    assert_eq!(
+        h.post("/brews", &c, json!({"name": "x", "hydrometerId": hc}))
+            .await
+            .0,
+        Status::Forbidden,
+        "brew cap over HTTP"
+    );
+
+    // --- Reading ingest caps ------------------------------------------------------------
+    let big: Vec<Value> = (0..=limits::MAX_READINGS_PER_BATCH)
+        .map(|_| reading("Red")[0].clone())
+        .collect();
+    assert_eq!(
+        h.post("/readings", &c, json!(big)).await.0,
+        Status::PayloadTooLarge,
+        "oversized batch"
+    );
+
+    assert_eq!(
+        h.post("/readings", &c, reading("Red")).await.0,
+        Status::Created,
+        "under the daily cap"
+    );
+    h.db.execute_unprepared(&format!(
+        "INSERT INTO readings (id, hydrometer_id, temperature_f, gravity, recorded_at, created_at) \
+         SELECT gen_random_uuid(), '{hc}', 68, 1.05, now(), now() FROM generate_series(1, {})",
+        limits::MAX_READINGS_PER_DAY
+    ))
+    .await
+    .unwrap();
+    assert_eq!(
+        h.post("/readings", &c, reading("Red")).await.0,
+        Status::TooManyRequests,
+        "daily ingest cap"
+    );
+    // Backdated timestamps do not dodge it: the cap counts arrival time.
+    let mut old = reading("Red");
+    old[0]["recordedAt"] = json!("2020-01-01T00:00:00Z");
+    assert_eq!(
+        h.post("/readings", &c, old).await.0,
+        Status::TooManyRequests,
+        "backdated reading"
+    );
+    // Other accounts still ingest.
+    assert_eq!(
+        h.post("/readings", &h.a, reading("Red")).await.0,
+        Status::Created,
+        "A is unaffected"
+    );
 }

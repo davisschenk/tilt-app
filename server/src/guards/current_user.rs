@@ -7,6 +7,7 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::auth_mode::{AuthMode, dev_user};
+use crate::fairings::rate_limit::ApiUserLimiter;
 use crate::services::{sessions, user_service};
 
 #[derive(Debug, Clone)]
@@ -35,6 +36,9 @@ impl<'r> FromRequest<'r> for CurrentUser {
             return match user_service::resolve(db, dev_user::SUB, dev_user::EMAIL, dev_user::NAME)
                 .await
             {
+                Ok(u) if !ApiUserLimiter::allow(req, u.id) => {
+                    Outcome::Error((Status::TooManyRequests, ()))
+                }
                 Ok(u) => Outcome::Success(CurrentUser {
                     user_id: u.id,
                     session_id: dev_user::SESSION_ID,
@@ -80,6 +84,9 @@ impl<'r> FromRequest<'r> for CurrentUser {
                     Ok(u) => u,
                     Err(_) => return Outcome::Error((Status::InternalServerError, ())),
                 };
+                if !ApiUserLimiter::allow(req, user.id) {
+                    return Outcome::Error((Status::TooManyRequests, ()));
+                }
                 Outcome::Success(CurrentUser {
                     user_id: user.id,
                     session_id,

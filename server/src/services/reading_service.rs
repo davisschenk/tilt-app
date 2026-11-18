@@ -48,6 +48,28 @@ pub async fn batch_create(
     Ok(count)
 }
 
+/// Readings stored for `owner` since `since` (by arrival time, which a device
+/// cannot backdate), for the daily ingest cap.
+pub async fn count_since(
+    db: &DatabaseConnection,
+    owner: Uuid,
+    since: chrono::DateTime<chrono::FixedOffset>,
+) -> Result<u64, DbErr> {
+    Reading::find()
+        .filter(
+            Column::HydrometerId.in_subquery(
+                sea_orm::sea_query::Query::select()
+                    .column(crate::models::entities::hydrometers::Column::Id)
+                    .from(crate::models::entities::hydrometers::Entity)
+                    .and_where(crate::models::entities::hydrometers::Column::OwnerId.eq(owner))
+                    .to_owned(),
+            ),
+        )
+        .filter(Column::CreatedAt.gte(since))
+        .count(db)
+        .await
+}
+
 pub async fn find_filtered(
     db: &DatabaseConnection,
     owner: Uuid,

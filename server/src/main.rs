@@ -216,6 +216,9 @@ async fn rocket() -> Rocket<Build> {
         .manage(auth_mode)
         .manage(http_client)
         .manage(fairings::rate_limit::TestFireLimiter::new())
+        .manage(fairings::rate_limit::ApiUserLimiter::new(
+            fairings::rate_limit::ApiUserLimiter::DEFAULT_PER_MINUTE,
+        ))
         .manage(firmware_dir)
         .attach(cors)
         .attach(fairings::rate_limit::RateLimit::new())

@@ -2,6 +2,7 @@ use sea_orm::*;
 use uuid::Uuid;
 
 use crate::models::entities::alert_targets::{self, ActiveModel, Column, Entity as AlertTarget};
+use crate::services::{WriteError, limits};
 use shared::{AlertTargetResponse, CreateAlertTarget, UpdateAlertTarget, WebhookFormat};
 
 fn model_to_response(model: alert_targets::Model) -> AlertTargetResponse {
@@ -57,7 +58,15 @@ pub async fn create(
     db: &DatabaseConnection,
     owner: Uuid,
     input: CreateAlertTarget,
-) -> Result<AlertTargetResponse, DbErr> {
+) -> Result<AlertTargetResponse, WriteError> {
+    if AlertTarget::find()
+        .filter(Column::OwnerId.eq(owner))
+        .count(db)
+        .await?
+        >= limits::MAX_ALERT_TARGETS
+    {
+        return Err(WriteError::LimitReached("alert targets"));
+    }
     let now = chrono::Utc::now().into();
     let format_str = serde_json::to_value(input.format).map_or_else(
         |_| "generic_json".to_string(),

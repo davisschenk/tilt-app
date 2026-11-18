@@ -44,6 +44,7 @@ async fn create(
     match brew_service::create(db.inner(), user.user_id, input.into_inner()).await {
         Ok(b) => Ok((Status::Created, Json(b))),
         Err(WriteError::BadReference | WriteError::NotFound) => Err(Status::UnprocessableEntity),
+        Err(WriteError::LimitReached(_)) => Err(Status::Forbidden),
         Err(WriteError::Db(_)) => Err(Status::InternalServerError),
     }
 }
@@ -60,6 +61,7 @@ async fn update(
         Ok(b) => Ok(Json(b)),
         Err(WriteError::NotFound) => Err(Status::NotFound),
         Err(WriteError::BadReference) => Err(Status::UnprocessableEntity),
+        Err(WriteError::LimitReached(_)) => Err(Status::Forbidden),
         Err(WriteError::Db(_)) => Err(Status::InternalServerError),
     }
 }

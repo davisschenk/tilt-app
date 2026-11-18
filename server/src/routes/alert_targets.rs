@@ -8,7 +8,7 @@ use shared::{AlertTargetResponse, CreateAlertTarget, UpdateAlertTarget};
 
 use crate::fairings::rate_limit::TestFireLimiter;
 use crate::guards::current_user::CurrentUser;
-use crate::services::{alert_target_service, webhook_dispatcher, webhook_guard};
+use crate::services::{WriteError, alert_target_service, webhook_dispatcher, webhook_guard};
 
 #[get("/alert-targets")]
 async fn list(
@@ -48,7 +48,10 @@ async fn create(
     alert_target_service::create(db.inner(), user.user_id, input)
         .await
         .map(|t| (Status::Created, Json(t)))
-        .map_err(|_| Status::UnprocessableEntity)
+        .map_err(|e| match e {
+            WriteError::LimitReached(_) => Status::Forbidden,
+            _ => Status::UnprocessableEntity,
+        })
 }
 
 #[put("/alert-targets/<id>", data = "<input>")]
