@@ -72,10 +72,12 @@ pub fn problems(
                 );
             }
 
-            let redirect = get("AUTHENTIK_REDIRECT_URL").unwrap_or_default();
+            let redirect = get("OIDC_REDIRECT_URL")
+                .or_else(|| get("AUTHENTIK_REDIRECT_URL"))
+                .unwrap_or_default();
             if redirect.starts_with("http://") && !is_local_host(&redirect) {
                 out.push(format!(
-                    "AUTHENTIK_REDIRECT_URL must be https outside localhost (got {redirect:?})"
+                    "OIDC_REDIRECT_URL must be https outside localhost (got {redirect:?})"
                 ));
             }
         }
@@ -103,7 +105,7 @@ mod tests {
             "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LXNlY3JldA==",
         ),
         (
-            "AUTHENTIK_REDIRECT_URL",
+            "OIDC_REDIRECT_URL",
             "https://tilt.example.com/api/v1/auth/callback",
         ),
     ];
@@ -183,10 +185,10 @@ mod tests {
         let with = |r: &'static str| -> Vec<(&'static str, &'static str)> {
             let mut e: Vec<_> = GOOD
                 .iter()
-                .filter(|(k, _)| *k != "AUTHENTIK_REDIRECT_URL")
+                .filter(|(k, _)| *k != "OIDC_REDIRECT_URL")
                 .copied()
                 .collect();
-            e.push(("AUTHENTIK_REDIRECT_URL", r));
+            e.push(("OIDC_REDIRECT_URL", r));
             e
         };
         assert_eq!(
@@ -199,6 +201,17 @@ mod tests {
             1
         );
         assert!(problems(AuthMode::Oidc, env(&with("http://localhost:8000/cb")), true).is_empty());
+    }
+
+    #[test]
+    fn legacy_authentik_redirect_name_is_still_checked() {
+        let e: Vec<(&str, &str)> = GOOD
+            .iter()
+            .filter(|(k, _)| *k != "OIDC_REDIRECT_URL")
+            .copied()
+            .chain([("AUTHENTIK_REDIRECT_URL", "http://tilt.example.com/cb")])
+            .collect();
+        assert_eq!(problems(AuthMode::Oidc, env(&e), true).len(), 1);
     }
 
     #[test]

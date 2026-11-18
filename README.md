@@ -59,7 +59,7 @@ cd tilt-app
 # Install git hooks and create .env from template
 just setup
 
-# Edit .env — configure AUTHENTIK_* (or equivalent OIDC) values
+# Edit .env — configure the OIDC_* values (any OpenID Connect provider)
 nano .env
 
 # Start database and run migrations
@@ -100,14 +100,20 @@ Copy `.env.example` to `.env` and fill in the required values:
 |----------|-------------|
 | `DB_PASSWORD` | PostgreSQL password |
 | `ROCKET_SECRET_KEY` | Secret for signing cookies (`openssl rand -base64 32`) |
-| `AUTHENTIK_ISSUER_URL` | OIDC issuer URL |
-| `AUTHENTIK_CLIENT_ID` | OIDC client ID |
-| `AUTHENTIK_CLIENT_SECRET` | OIDC client secret |
-| `AUTHENTIK_REDIRECT_URL` | OAuth2 callback URL (e.g. `https://yourdomain.com/api/v1/auth/callback`) |
+| `OIDC_ISSUER_URL` | OIDC issuer URL |
+| `OIDC_CLIENT_ID` | OIDC client ID |
+| `OIDC_CLIENT_SECRET` | OIDC client secret |
+| `OIDC_REDIRECT_URL` | OAuth2 callback URL (e.g. `https://yourdomain.com/api/v1/auth/callback`) |
 | `FRONTEND_URL` | Your public URL for CORS (e.g. `https://yourdomain.com`) |
 | `UPLOAD_DIR` | Path for photo attachment storage (default: `./uploads`) |
 
-> **Security note:** If `AUTHENTIK_ISSUER_URL` is left unset, the server starts with authentication **disabled** — all API routes are accessible without login. This is a convenience for local development only. Always configure OIDC before exposing the server on a network.
+> **Security note:** `AUTH_MODE` defaults to `oidc`, so an unconfigured server refuses to start rather than running open. `AUTH_MODE=disabled` (local development only) also requires `AUTH_DISABLED_ACK=true`. The older `AUTHENTIK_*` variable names still work as fallbacks for the `OIDC_*` ones.
+
+### Running a public instance (self-service sign-up)
+
+TiltBrew delegates accounts to your OpenID Connect provider, so who can sign up is configured there, not in the app. Each account gets its own private brews, devices, alerts and API keys.
+
+With Authentik, for example: create an *enrollment flow* (prompt stage for username/email/password, an email-verification stage, and a user-write stage), then select it as the **Enrollment flow** on your login page's identification stage. Authentik then shows a "Sign up" link, and the landing page's **Sign in or create an account** button takes people there. Add a captcha stage to the enrollment flow before opening it to the internet. Other providers (Auth0, Keycloak, ...) have equivalent self-registration settings. Set `FRONTEND_URL`, `ROCKET_SECRET_KEY` and https `OIDC_REDIRECT_URL` first; the server refuses to start in `oidc` mode without them.
 
 ### Docker Compose
 

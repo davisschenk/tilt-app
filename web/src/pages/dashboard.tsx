@@ -15,6 +15,7 @@ import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
 import { useAlertRules } from "@/hooks/use-alert-rules";
 import type { BrewResponse } from "@/types";
 import RecentReadingsChart from "@/components/dashboard/recent-readings-chart";
+import OnboardingChecklist from "@/components/dashboard/onboarding-checklist";
 import ColorDot from "@/components/ui/color-dot";
 import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
 
@@ -216,6 +217,8 @@ export default function Dashboard() {
           </div>
         }
       />
+
+      <OnboardingChecklist />
 
       {/* Quick-stats summary chips */}
       <div className="flex flex-wrap gap-2 mb-6">
