@@ -11,7 +11,61 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Builds the ESP32 firmware once; the server image bakes it in at /app/firmware
+  # so the web flasher and OTA updates always match the server version.
+  firmware:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # attach images to GitHub releases
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libusb-1.0-0 libudev-dev python3-venv ccache
+
+      - name: Install ESP Rust toolchain
+        uses: esp-rs/xtensa-toolchain@v1.6.0
+        with:
+          version: "1.93.0.0"
+          ldproxy: true
+          buildtargets: esp32
+
+      - name: Cache ESP-IDF and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.espressif
+            ~/.cargo/bin/espflash
+            esp32-client/target
+            esp32-client/.embuild
+          key: esp32-${{ runner.os }}-${{ hashFiles('esp32-client/Cargo.lock', 'esp32-client/.cargo/config.toml', 'esp32-client/sdkconfig.defaults') }}
+          restore-keys: esp32-${{ runner.os }}-
+
+      - name: Install espflash
+        run: command -v espflash >/dev/null || cargo install espflash --locked --version 3.2.0
+
+      - name: Build firmware images
+        run: ./esp32-client/scripts/release.sh
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-dist
+          path: |
+            firmware-dist/*.bin
+            firmware-dist/manifest.json
+          if-no-files-found: error
+
+      - name: Attach firmware to GitHub release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" firmware-dist/*.bin firmware-dist/manifest.json --clobber
+
   build-and-push:
+    needs: firmware
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,6 +74,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download firmware
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-dist
+          path: firmware-dist
 
       - name: Log in to GHCR
         uses: docker/login-action@v3

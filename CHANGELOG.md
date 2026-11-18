@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- **Web flasher & device setup** — New *Device Setup* page flashes and configures an ESP32 over Web Serial: pick a WiFi network, save, and the device joins automatically. An API key is created per device.
+- **Serial provisioning** — The ESP32 firmware now stores WiFi, server URL and API key in NVS and accepts config over serial, so one generic image works for everyone (`cfg.toml` is optional).
+- **Bundled firmware** — CI builds the firmware and the Docker image ships it (`FIRMWARE_DIR`); the server exposes `/api/v1/firmware/manifest` and serves it for OTA, with a relative URL.
+
+### Changes
+
+- Firmware version now comes from `esp32-client/Cargo.toml`; `firmware_version` was removed from `cfg.toml`.
+- `just esp32-release` produces the merged and OTA images plus a manifest (the old `make release` copied the ELF, which could not be used for OTA).
+
 ## [1.0.0] — 2026-04-16
 
 First public release.

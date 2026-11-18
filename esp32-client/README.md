@@ -2,6 +2,19 @@
 
 A Rust-based ESP32 client that scans for Tilt hydrometer BLE iBeacon advertisements and uploads readings to the Tilt server API.
 
+## Quick start (web setup)
+
+No toolchain needed. In the web UI open **Device Setup** (Chrome, Edge or another Chromium browser; the site must be served over HTTPS or from `localhost`):
+
+1. Plug the ESP32 in over USB and click **Select serial port**.
+2. **Flash** the firmware bundled with your server (skip this if the board already runs Tilt firmware).
+3. Pick your WiFi network, check the server URL, and save. An API key is created for the device automatically.
+4. The device restarts, joins WiFi, and the page confirms each step from the serial log.
+
+Settings live in the device's NVS, so you can come back to **Device Setup** at any time to reconfigure without reflashing. The server must have firmware installed: the official Docker image includes it, or build it yourself with `just esp32-release` and point `FIRMWARE_DIR` at `firmware-dist/`.
+
+The sections below cover building from source for development.
+
 ## Prerequisites
 
 - **espup** — ESP32 Rust toolchain installer
@@ -42,6 +55,8 @@ Copy the example configuration and fill in your values:
 cp cfg.toml.example cfg.toml
 ```
 
+`cfg.toml` is **optional**: it only supplies compile-time defaults. Anything saved from the web UI (stored in NVS) takes priority. Without it, the build produces a generic image that waits for configuration over serial.
+
 Edit `cfg.toml` with your settings:
 
 | Field | Description | Default |
@@ -56,7 +71,8 @@ Edit `cfg.toml` with your settings:
 | `watchdog_timeout_secs` | Watchdog reboot timeout | `120` |
 | `health_report_interval_cycles` | Health log frequency | `60` |
 | `ota_check_interval_cycles` | OTA check frequency (cycles) | `60` |
-| `firmware_version` | Current firmware version string | `0.1.0` |
+
+The firmware version comes from `Cargo.toml`.
 
 **WARNING:** `cfg.toml` contains WiFi credentials. It is gitignored and must never be committed.
 
@@ -108,6 +124,7 @@ src/
   http.rs    — HTTP client for batch reading uploads
   buffer.rs  — Bounded reading buffer + exponential backoff
   config.rs  — Compile-time config (toml-cfg) + NVS runtime overrides
+  provision.rs / protocol.rs — Serial provisioning (web setup)
 ```
 
 ## OTA Firmware Updates
@@ -117,46 +134,53 @@ The ESP32 client supports over-the-air firmware updates. The device periodically
 ### How It Works
 
 1. Every `ota_check_interval_cycles` scan cycles (default: every 60 cycles ≈ 15 minutes), the device calls `GET /api/v1/ota/firmware` on the server.
-2. The server returns `{ "version": "x.y.z", "url": "http://..." }`.
-3. If the server version differs from the device's compiled `firmware_version`, the device downloads the `.bin` from `url`, flashes it to the inactive OTA slot, and reboots.
+2. The server returns `{ "version": "x.y.z", "url": "..." }`. By default this is the firmware bundled in `FIRMWARE_DIR`, with a path relative to the server (`/api/v1/firmware/files/...`) that the device resolves against its configured server URL.
+3. If the server version differs from the device's version (from `Cargo.toml`), the device downloads the app image from `url`, flashes it to the inactive OTA slot, and reboots.
 4. On failure the device logs the error and continues normal operation — no reboot.
 
 ### Server Setup
 
-Set these environment variables on the server (in `.env` or Docker):
+Firmware is served from `FIRMWARE_DIR` (default `/app/firmware` in Docker), which contains `manifest.json` plus the images it lists. Build them with:
+
+```bash
+. $HOME/export-esp.sh
+just esp32-release   # writes firmware-dist/ (merged image, OTA app image, manifest.json)
+```
+
+To host the image elsewhere instead, set these optional overrides on the server:
 
 | Variable | Description |
 |---|---|
 | `OTA_FIRMWARE_VERSION` | Firmware version string to serve to devices (e.g. `0.2.0`) |
-| `OTA_FIRMWARE_URL` | Full URL to the firmware `.bin` file |
+| `OTA_FIRMWARE_URL` | Full URL to the OTA app `.bin` file |
 
-Leave `OTA_FIRMWARE_URL` empty to disable OTA (the endpoint returns 404).
+With neither firmware installed nor an override, the endpoint returns 404 and OTA is effectively off.
 
-### Building and Hosting a Firmware Update
+### Releasing an Update
 
-```bash
-# 1. Bump firmware_version in cfg.toml before building
-# 2. Build and copy the binary to build/esp32-client.bin
-. $HOME/export-esp.sh
-make release
-
-# 3. Host the .bin file — options:
-#    a) Copy to the server's web/dist/firmware/ directory (served as static files)
-#    b) Use any HTTP server accessible to the ESP32
-
-# 4. Update the server environment and restart
-OTA_FIRMWARE_VERSION=0.2.0
-OTA_FIRMWARE_URL=http://your-server:8000/firmware/esp32-client.bin
-```
+1. Bump `version` in `esp32-client/Cargo.toml`.
+2. Run `just esp32-release` (or let CI build it and bake it into the Docker image).
+3. Restart the server; devices pick up the new version at their next check.
 
 ### Device Configuration
 
 | cfg.toml field | NVS key | Default | Description |
 |---|---|---|---|
 | `ota_check_interval_cycles` | `ota_check_interval` | `60` | Check every N scan cycles (0 = disabled) |
-| `firmware_version` | *(compile-time only)* | `0.1.0` | Current firmware version |
 
 To disable OTA checks at runtime, set NVS key `ota_check_interval` to `0`.
+
+## Serial provisioning protocol
+
+The web UI configures the device over the USB serial port. Requests are single lines `TILT>{json}`; replies are `TILT<{json}`. Everything else on the port is normal log output.
+
+| `cmd` | Description |
+|---|---|
+| `info` | Version, chip, MAC, whether configured |
+| `get_config` | Current config (`wifiPass` and `apiKey` are masked) |
+| `set_config` | Validate and save a partial config (`{"config":{"wifiSsid":…}}`), then reboot |
+| `wifi_scan` | List nearby networks (only before the device is configured) |
+| `factory_reset` | Erase saved settings and reboot |
 
 ## Troubleshooting
 
@@ -194,13 +218,3 @@ You forgot to source the ESP environment. Run:
 ```bash
 . $HOME/export-esp.sh
 ```
-
-### `cfg.toml not found` build error
-
-Copy the example config:
-
-```bash
-cp cfg.toml.example cfg.toml
-```
-
-Then edit it with your WiFi credentials and server URL.

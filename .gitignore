@@ -9,3 +9,7 @@ esp32-client/target/
 prd.json
 progress.md
 uploads/
+
+# Built firmware images (produced by `just esp32-release`)
+firmware-dist/*
+!firmware-dist/.gitkeep

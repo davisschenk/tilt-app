@@ -181,9 +181,18 @@ async fn rocket() -> Rocket<Build> {
         .build()
         .expect("Failed to build HTTP client");
 
+    let firmware_dir = services::firmware_service::FirmwareDir::from_env();
+    if !firmware_dir.path().join("manifest.json").is_file() {
+        tracing::warn!(
+            "no firmware manifest at {:?} — web flasher and OTA fallback disabled (run 'just esp32-release')",
+            firmware_dir.path()
+        );
+    }
+
     let mut rocket = rocket::build()
         .manage(db)
         .manage(http_client)
+        .manage(firmware_dir)
         .attach(cors)
         .attach(fairings::rate_limit::RateLimit::new())
         .attach(fairings::request_logger::RequestLogger)
@@ -199,7 +208,7 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes::brew_events::routes())
         .mount("/api/v1", routes::attachments::routes())
         .mount("/api/v1", routes::analytics::routes())
-        .mount("/api/v1", routes::ota::routes())
+        .mount("/api/v1", routes::firmware::routes())
         .mount("/api/v1", routes::tosna::routes())
         .mount("/api/v1", routes::yeast::routes())
         .register(

@@ -51,5 +51,7 @@ WORKDIR /app
 COPY --from=builder /usr/local/bin/server /usr/local/bin/server
 COPY --from=web-builder /app/web/dist /app/web/dist
 COPY server/Rocket.toml /app/Rocket.toml
+COPY firmware-dist/ /app/firmware/
 ENV WEB_DIST_DIR=/app/web/dist
+ENV FIRMWARE_DIR=/app/firmware
 ENTRYPOINT ["/usr/local/bin/server"]
