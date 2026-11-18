@@ -79,3 +79,18 @@ export const alertRule = (over: Partial<AlertRuleResponse> = {}): AlertRuleRespo
   updatedAt: "2026-01-01T00:00:00Z",
   ...over,
 })
+
+import type { ReadingResponse } from "@/types"
+
+export const readingRow = (i: number, over: Partial<ReadingResponse> = {}): ReadingResponse => ({
+  id: `rd${i}`,
+  brewId: "b1",
+  hydrometerId: "h1",
+  color: "Red",
+  temperatureF: 68 + i * 0.1,
+  gravity: 1.05 - i * 0.001,
+  rssi: i % 2 ? -60 : null,
+  recordedAt: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString(),
+  createdAt: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString(),
+  ...over,
+})
