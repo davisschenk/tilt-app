@@ -8,7 +8,7 @@ use shared::{BrewEventResponse, CreateBrewEvent, UpdateBrewEvent};
 
 use crate::guards::current_user::CurrentUser;
 use crate::routes::require_brew;
-use crate::services::{brew_event_service, brew_service};
+use crate::services::{WriteError, brew_event_service, brew_service};
 
 #[get("/brews/<brew_id>/events?<since>&<until>")]
 async fn list(
@@ -66,7 +66,10 @@ async fn create(
 
     let event = brew_event_service::create(db.inner(), payload)
         .await
-        .map_err(|_| Status::UnprocessableEntity)?;
+        .map_err(|e| match e {
+            WriteError::LimitReached(_) => Status::Forbidden,
+            _ => Status::UnprocessableEntity,
+        })?;
 
     if event.event_type == shared::BrewEventType::YeastPitch {
         let _ = brew_service::update_pitch_time(

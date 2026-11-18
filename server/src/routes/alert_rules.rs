@@ -54,6 +54,7 @@ async fn create(
     match alert_rule_service::create(db.inner(), user.user_id, input.into_inner()).await {
         Ok(r) => Ok((Status::Created, Json(r))),
         Err(WriteError::BadReference | WriteError::NotFound) => Err(Status::UnprocessableEntity),
+        Err(WriteError::LimitReached(_)) => Err(Status::Forbidden),
         Err(WriteError::Db(_)) => Err(Status::InternalServerError),
     }
 }
@@ -70,6 +71,7 @@ async fn update(
         Ok(r) => Ok(Json(r)),
         Err(WriteError::NotFound) => Err(Status::NotFound),
         Err(WriteError::BadReference) => Err(Status::UnprocessableEntity),
+        Err(WriteError::LimitReached(_)) => Err(Status::Forbidden),
         Err(WriteError::Db(_)) => Err(Status::InternalServerError),
     }
 }

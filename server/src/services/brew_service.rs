@@ -5,7 +5,7 @@ use crate::models::entities::alert_targets;
 use crate::models::entities::brews::{self, ActiveModel, Column, Entity as Brew};
 use crate::models::entities::hydrometers::Entity as Hydrometer;
 use crate::models::entities::readings::{self, Entity as Reading};
-use crate::services::{analytics_service, hydrometer_service};
+use crate::services::{analytics_service, hydrometer_service, limits};
 use shared::{BrewResponse, BrewStatus, CreateBrew, TiltColor, TiltReading, UpdateBrew};
 
 fn model_to_response(model: brews::Model, latest: Option<TiltReading>) -> BrewResponse {
@@ -141,6 +141,14 @@ pub async fn create(
     owner: Uuid,
     input: CreateBrew,
 ) -> Result<BrewResponse, WriteError> {
+    if Brew::find()
+        .filter(Column::OwnerId.eq(owner))
+        .count(db)
+        .await?
+        >= limits::MAX_BREWS
+    {
+        return Err(WriteError::LimitReached("brews"));
+    }
     if hydrometer_service::find_owned(db, owner, input.hydrometer_id)
         .await?
         .is_none()

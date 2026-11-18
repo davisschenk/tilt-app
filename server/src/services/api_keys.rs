@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DbErr, EntityTrait,
-    QueryFilter,
+    PaginatorTrait, QueryFilter,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -12,6 +12,7 @@ use crate::models::entities::api_keys::{self, ActiveModel, Entity as ApiKey};
 pub enum ApiKeyError {
     Expired,
     Invalid,
+    LimitReached,
     #[allow(dead_code)]
     Db(DbErr),
 }
@@ -103,7 +104,15 @@ pub async fn create_api_key(
     name: String,
     created_by: String,
     expires_at: Option<chrono::DateTime<chrono::FixedOffset>>,
-) -> Result<ApiKeyCreated, DbErr> {
+) -> Result<ApiKeyCreated, ApiKeyError> {
+    if ApiKey::find()
+        .filter(api_keys::Column::OwnerId.eq(owner))
+        .count(db)
+        .await?
+        >= crate::services::limits::MAX_API_KEYS
+    {
+        return Err(ApiKeyError::LimitReached);
+    }
     let (raw, hash, prefix) = generate_api_key();
     let now = Utc::now().fixed_offset();
 

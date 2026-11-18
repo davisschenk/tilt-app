@@ -3,7 +3,7 @@ use sea_orm::*;
 use uuid::Uuid;
 
 use crate::models::entities::brew_events::{self, ActiveModel, Column, Entity as BrewEvent};
-use crate::services::attachment_service;
+use crate::services::{WriteError, attachment_service, limits};
 use shared::{
     BrewEventResponse, BrewEventType, CreateBrewEvent, EventAttachmentResponse, UpdateBrewEvent,
 };
@@ -94,7 +94,15 @@ pub async fn find_by_id(
 pub async fn create(
     db: &DatabaseConnection,
     payload: CreateBrewEvent,
-) -> Result<BrewEventResponse, DbErr> {
+) -> Result<BrewEventResponse, WriteError> {
+    if BrewEvent::find()
+        .filter(Column::BrewId.eq(payload.brew_id))
+        .count(db)
+        .await?
+        >= limits::MAX_EVENTS_PER_BREW
+    {
+        return Err(WriteError::LimitReached("events for this brew"));
+    }
     let model = ActiveModel {
         id: Set(Uuid::new_v4()),
         brew_id: Set(payload.brew_id),

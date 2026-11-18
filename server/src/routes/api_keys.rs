@@ -43,7 +43,10 @@ pub async fn create(
     )
     .await
     .map(|created| (Status::Created, Json(serde_json::json!(created))))
-    .map_err(|_| Status::InternalServerError)
+    .map_err(|e| match e {
+        ApiKeyError::LimitReached => Status::Forbidden,
+        _ => Status::InternalServerError,
+    })
 }
 
 #[delete("/api-keys/<id>")]

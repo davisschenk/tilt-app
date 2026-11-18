@@ -1,3 +1,11 @@
+# Do not trust any client-IP header by default. Rocket otherwise believes
+# X-Real-IP from anyone, so on a directly exposed server a client could pick its
+# own IP and dodge the per-IP rate limits. Behind a reverse proxy, set
+# ROCKET_IP_HEADER to the header your proxy *overwrites* (e.g. X-Real-IP) so
+# real client addresses are used instead of the proxy's.
+[default]
+ip_header = false
+
 [default.limits]
 data = "20 MiB"
 file = "20 MiB"

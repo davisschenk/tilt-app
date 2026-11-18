@@ -10,8 +10,8 @@ use crate::fairings::rate_limit::RateLimitGuard;
 use crate::guards::auth_or_api_key::AuthOrApiKey;
 use crate::guards::current_user::CurrentUser;
 use crate::services::{
-    alert_rule_service, alert_target_service, brew_service, hydrometer_service, reading_service,
-    tosna_service, webhook_dispatcher,
+    alert_rule_service, alert_target_service, brew_service, hydrometer_service, limits,
+    reading_service, tosna_service, webhook_dispatcher,
 };
 
 #[post("/readings", data = "<batch>")]
@@ -26,6 +26,20 @@ async fn create_batch(
     let readings: Vec<TiltReading> = batch.into_inner().0;
     if readings.is_empty() {
         return Ok((Status::Created, Json(serde_json::json!({ "count": 0 }))));
+    }
+    if readings.len() > limits::MAX_READINGS_PER_BATCH {
+        return Err(Status::PayloadTooLarge);
+    }
+    let since = (chrono::Utc::now() - chrono::Duration::hours(24)).fixed_offset();
+    let recent = reading_service::count_since(db.inner(), owner, since)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to count recent readings");
+            Status::InternalServerError
+        })?;
+    if recent + readings.len() as u64 > limits::MAX_READINGS_PER_DAY {
+        tracing::warn!(owner = %owner, recent, "daily reading cap reached");
+        return Err(Status::TooManyRequests);
     }
 
     let mut total_count: u64 = 0;

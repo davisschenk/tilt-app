@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::models::entities::alert_rules::{self, ActiveModel, Column, Entity as AlertRule};
 use crate::models::entities::alert_targets;
-use crate::services::{WriteError, alert_target_service, brew_service, hydrometer_service};
+use crate::services::{WriteError, alert_target_service, brew_service, hydrometer_service, limits};
 use sea_orm::sea_query::Query;
 use shared::{AlertMetric, AlertOperator, AlertRuleResponse, CreateAlertRule, UpdateAlertRule};
 
@@ -120,6 +120,9 @@ pub async fn create(
     owner: Uuid,
     input: CreateAlertRule,
 ) -> Result<AlertRuleResponse, WriteError> {
+    if AlertRule::find().filter(owned_by(owner)).count(db).await? >= limits::MAX_ALERT_RULES {
+        return Err(WriteError::LimitReached("alert rules"));
+    }
     if !refs_are_owned(
         db,
         owner,
