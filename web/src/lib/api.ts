@@ -87,3 +87,22 @@ export async function deleteAttachment(
 ): Promise<void> {
   return apiDelete(`/brews/${brewId}/events/${eventId}/attachments/${attachmentId}`);
 }
+
+/** Fetch a file from the API and hand it to the browser as a download. */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { credentials: "include" });
+  if (!response.ok) {
+    throw new ApiError(response.status, response.statusText, null);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}

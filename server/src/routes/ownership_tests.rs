@@ -8,7 +8,8 @@
 use rocket::http::{ContentType, Cookie, Header, Method, Status};
 use rocket::local::asynchronous::Client;
 use sea_orm::{
-    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Set,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    EntityTrait, PaginatorTrait, QueryFilter, Set,
 };
 use sea_orm_migration::MigratorTrait;
 use serde_json::{Value, json};
@@ -79,7 +80,8 @@ impl Harness {
             .mount("/api/v1", routes::attachments::routes())
             .mount("/api/v1", routes::analytics::routes())
             .mount("/api/v1", routes::tosna::routes())
-            .mount("/api/v1", routes::api_keys::routes());
+            .mount("/api/v1", routes::api_keys::routes())
+            .mount("/api/v1", routes::account::routes());
         let client = Client::tracked(rocket).await.expect("rocket builds");
 
         Harness {
@@ -91,6 +93,13 @@ impl Harness {
             a,
             b,
         }
+    }
+
+    async fn owner_of_opt(&self, sub: &str) -> Option<Uuid> {
+        user_service::find_by_sub(&self.db, sub)
+            .await
+            .unwrap()
+            .map(|u| u.id)
     }
 
     async fn owner_of(&self, sub: &str) -> Uuid {
@@ -716,4 +725,159 @@ async fn scenario(h: &Harness) {
         .post(&format!("/alert-targets/{b_target}/test"), b, json!(null))
         .await;
     assert_eq!(s, Status::Ok, "B's limit is independent of A's");
+
+    // --- Account export and deletion ----------------------------------------------
+    // Give B a full footprint: brew, event, uploaded file (plus the reading, target
+    // and API key from above).
+    let (s, b_brew) = h
+        .post("/brews", b, json!({"name": "B brew", "hydrometerId": hb}))
+        .await;
+    assert_eq!(s, Status::Created, "B creates a brew");
+    let b_brew = id(&b_brew);
+    let (_, b_ev) = h
+        .post(&format!("/brews/{b_brew}/events"), b, event_body(&b_brew))
+        .await;
+    let b_ev = id(&b_ev);
+    let resp = upload(b, &b_brew, &b_ev, "b.png", "image/png", &png).await;
+    assert_eq!(resp.status(), Status::Created, "B uploads a photo");
+    assert!(h.upload_dir.join(&b_ev).exists(), "B's upload is on disk");
+    let (s, _) = h.post("/api-keys", b, json!({"name": "b-key"})).await;
+    assert_eq!(s, Status::Created);
+
+    // Export: A gets only A's data, and no secrets.
+    let resp = h
+        .client
+        .get("/api/v1/account/export")
+        .private_cookie(a.clone())
+        .dispatch()
+        .await;
+    assert_eq!(resp.status(), Status::Ok, "A exports");
+    assert!(
+        resp.headers()
+            .get_one("Content-Disposition")
+            .unwrap_or_default()
+            .starts_with("attachment"),
+        "export downloads as a file"
+    );
+    let export: Value = resp.into_json().await.unwrap();
+    assert_eq!(export["account"]["email"], "a@example.com");
+    assert_eq!(
+        export["hydrometers"].as_array().unwrap().len(),
+        1,
+        "export has A's hydrometer"
+    );
+    assert_eq!(
+        export["readings"].as_array().unwrap().len(),
+        1,
+        "export has A's reading"
+    );
+    let text = export.to_string();
+    for leak in [
+        hb.as_str(),
+        b_brew.as_str(),
+        "B brew",
+        "b-key",
+        "key_hash",
+        "storage_path",
+        raw_key.as_str(),
+    ] {
+        assert!(!text.contains(leak), "export must not contain {leak}");
+    }
+    assert!(
+        export["alertTargets"][0].get("secret_header").is_none(),
+        "webhook secrets are not exported"
+    );
+    assert_eq!(
+        h.call(Method::Get, "/account/export", None, None).await.0,
+        Status::Unauthorized,
+        "anonymous export"
+    );
+
+    // Deletion needs the account email, then removes everything of B's and nothing of A's.
+    let (s, _) = h
+        .post(
+            "/account/delete",
+            b,
+            json!({"confirmEmail": "wrong@example.com"}),
+        )
+        .await;
+    assert_eq!(s, Status::UnprocessableEntity, "wrong confirmation email");
+    assert!(
+        h.get("/hydrometers", b).await.0 == Status::Ok,
+        "B still exists after a refused delete"
+    );
+    let (s, _) = h
+        .post(
+            "/account/delete",
+            b,
+            json!({"confirmEmail": " B@Example.com "}),
+        )
+        .await;
+    assert_eq!(s, Status::NoContent, "B deletes their account");
+
+    assert_eq!(
+        h.get("/hydrometers", b).await.0,
+        Status::Unauthorized,
+        "B's session is gone"
+    );
+    let b_id = h.owner_of_opt("sub-user-b").await;
+    assert!(b_id.is_none(), "B's user row is gone");
+    let db = &h.db;
+    use crate::models::entities::{alert_targets, api_keys, brews, hydrometers, readings};
+    assert_eq!(
+        hydrometers::Entity::find()
+            .filter(hydrometers::Column::Id.eq(hb.parse::<Uuid>().unwrap()))
+            .count(db)
+            .await
+            .unwrap(),
+        0,
+        "B's hydrometer deleted"
+    );
+    assert_eq!(
+        brews::Entity::find()
+            .filter(brews::Column::Id.eq(b_brew.parse::<Uuid>().unwrap()))
+            .count(db)
+            .await
+            .unwrap(),
+        0,
+        "B's brew deleted"
+    );
+    assert_eq!(
+        alert_targets::Entity::find()
+            .filter(alert_targets::Column::Id.eq(b_target.parse::<Uuid>().unwrap()))
+            .count(db)
+            .await
+            .unwrap(),
+        0,
+        "B's target deleted"
+    );
+    assert_eq!(
+        readings::Entity::find()
+            .filter(readings::Column::HydrometerId.eq(hb.parse::<Uuid>().unwrap()))
+            .count(db)
+            .await
+            .unwrap(),
+        0,
+        "B's readings deleted"
+    );
+    assert_eq!(
+        api_keys::Entity::find().count(db).await.unwrap(),
+        1,
+        "only A's API key remains"
+    );
+    assert!(
+        !h.upload_dir.join(&b_ev).exists(),
+        "B's uploaded files are removed from disk"
+    );
+
+    // A is untouched.
+    let (_, list) = h.get("/hydrometers", a).await;
+    assert_eq!(
+        list.as_array().unwrap().len(),
+        1,
+        "A's hydrometer survives B's deletion"
+    );
+    let (_, rs) = h.get(&format!("/readings?hydrometer_id={ha}"), a).await;
+    assert_eq!(rs.as_array().unwrap().len(), 1, "A's reading survives");
+    assert!(h.upload_dir.join(&ev).exists(), "A's files survive");
 }

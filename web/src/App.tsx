@@ -10,9 +10,12 @@ import DeviceSetup from "@/pages/device-setup";
 import AlertTargets from "@/pages/alert-targets";
 import AlertRules from "@/pages/alert-rules";
 import ApiKeysPage from "@/pages/api-keys";
+import AccountPage from "@/pages/account";
+import Privacy from "@/pages/privacy";
+import Terms from "@/pages/terms";
 import NotFound from "@/pages/not-found";
 
-export default function App() {
+function AuthedApp() {
   return (
     <ProtectedRoute>
       <Routes>
@@ -26,9 +29,21 @@ export default function App() {
           <Route path="/alert-targets" element={<AlertTargets />} />
           <Route path="/alert-rules" element={<AlertRules />} />
           <Route path="/settings/api-keys" element={<ApiKeysPage />} />
+          <Route path="/settings/account" element={<AccountPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
     </ProtectedRoute>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      {/* Public: readable without an account, so the policies can be linked from sign-up. */}
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="*" element={<AuthedApp />} />
+    </Routes>
   );
 }

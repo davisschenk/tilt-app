@@ -61,7 +61,7 @@ impl<'r> rocket::response::Responder<'r, 'static> for AttachmentFile {
     }
 }
 
-fn upload_dir() -> String {
+pub(crate) fn upload_dir() -> String {
     std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".to_string())
 }
 

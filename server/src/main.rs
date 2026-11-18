@@ -256,7 +256,8 @@ async fn rocket() -> Rocket<Build> {
     rocket = rocket
         .manage(oidc_state)
         .mount("/api/v1", routes::auth::routes())
-        .mount("/api/v1", routes::api_keys::routes());
+        .mount("/api/v1", routes::api_keys::routes())
+        .mount("/api/v1", routes::account::routes());
 
     rocket
 }
