@@ -16,6 +16,19 @@ pub type DiscoveredClient = CoreClient<
     EndpointMaybeSet,
 >;
 
+/// Read an OIDC setting by suffix: `OIDC_<NAME>`, falling back to the legacy
+/// `AUTHENTIK_<NAME>` so existing deployments keep working.
+pub fn env(name: &str) -> Option<String> {
+    for prefix in ["OIDC", "AUTHENTIK"] {
+        if let Ok(v) = std::env::var(format!("{prefix}_{name}"))
+            && !v.is_empty()
+        {
+            return Some(v);
+        }
+    }
+    None
+}
+
 #[derive(Clone)]
 pub struct OidcState {
     pub client: DiscoveredClient,

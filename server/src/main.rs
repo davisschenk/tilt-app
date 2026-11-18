@@ -149,16 +149,16 @@ async fn rocket() -> Rocket<Build> {
             None
         }
         auth_mode::AuthMode::Oidc => {
-            let oidc_issuer = std::env::var("AUTHENTIK_ISSUER_URL").unwrap_or_default();
-            let oidc_client_id = std::env::var("AUTHENTIK_CLIENT_ID").unwrap_or_default();
-            let oidc_client_secret = std::env::var("AUTHENTIK_CLIENT_SECRET").unwrap_or_default();
-            let oidc_redirect_url = std::env::var("AUTHENTIK_REDIRECT_URL")
-                .unwrap_or_else(|_| "http://localhost:8000/api/v1/auth/callback".to_string());
+            let oidc_issuer = oidc::env("ISSUER_URL").unwrap_or_default();
+            let oidc_client_id = oidc::env("CLIENT_ID").unwrap_or_default();
+            let oidc_client_secret = oidc::env("CLIENT_SECRET").unwrap_or_default();
+            let oidc_redirect_url = oidc::env("REDIRECT_URL")
+                .unwrap_or_else(|| "http://localhost:8000/api/v1/auth/callback".to_string());
 
             if oidc_issuer.is_empty() || oidc_client_id.is_empty() || oidc_client_secret.is_empty()
             {
                 tracing::error!(
-                    "AUTH_MODE=oidc requires AUTHENTIK_ISSUER_URL, AUTHENTIK_CLIENT_ID, and AUTHENTIK_CLIENT_SECRET to be set"
+                    "AUTH_MODE=oidc requires OIDC_ISSUER_URL, OIDC_CLIENT_ID, and OIDC_CLIENT_SECRET to be set (legacy AUTHENTIK_* names also work)"
                 );
                 std::process::exit(1);
             }
