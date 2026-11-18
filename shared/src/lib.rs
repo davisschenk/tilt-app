@@ -539,6 +539,35 @@ pub struct NutrientAddition {
     pub due_at: Option<DateTime<Utc>>,
 }
 
+/// One file listed in a firmware manifest.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareFile {
+    pub name: String,
+    pub sha256: String,
+    pub size: u64,
+}
+
+/// The two images produced per firmware build.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareFiles {
+    /// Bootloader + partition table + app, flashed at offset 0 by the web flasher.
+    pub merged: FirmwareFile,
+    /// App image only, used for OTA updates.
+    pub app: FirmwareFile,
+}
+
+/// `manifest.json` describing the firmware bundled with the server.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareManifest {
+    pub version: String,
+    pub chip: String,
+    pub built_at: String,
+    pub files: FirmwareFiles,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

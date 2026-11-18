@@ -295,3 +295,19 @@ export interface NutrientScheduleResponse {
   pitchTime: string;
   resolvedFromStrain: boolean;
 }
+
+export interface FirmwareFile {
+  name: string;
+  sha256: string;
+  size: number;
+}
+
+export interface FirmwareManifest {
+  version: string;
+  chip: string;
+  builtAt: string;
+  files: {
+    merged: FirmwareFile;
+    app: FirmwareFile;
+  };
+}

@@ -112,6 +112,35 @@ impl WifiManager {
         Ok(())
     }
 
+    /// Scan for nearby access points. Used while unprovisioned so the web UI can
+    /// offer an SSID picker. Starts the radio in STA mode without associating.
+    pub fn scan(&mut self) -> Result<Vec<(String, i8, String)>> {
+        if !self.wifi.is_started().unwrap_or(false) {
+            self.wifi
+                .set_configuration(&Configuration::Client(ClientConfiguration::default()))
+                .context("Failed to set WiFi configuration for scan")?;
+            self.wifi.start().context("Failed to start WiFi for scan")?;
+        }
+        crate::suspend_watchdog();
+        let result = self.wifi.scan().context("WiFi scan failed");
+        crate::resume_watchdog();
+        let mut aps = result?;
+        aps.sort_by(|a, b| b.signal_strength.cmp(&a.signal_strength));
+        let mut seen = std::collections::HashSet::new();
+        Ok(aps
+            .into_iter()
+            .filter(|ap| !ap.ssid.is_empty() && seen.insert(ap.ssid.to_string()))
+            .map(|ap| {
+                let auth = match ap.auth_method {
+                    Some(AuthMethod::None) => "open".to_string(),
+                    Some(m) => format!("{:?}", m),
+                    None => "unknown".to_string(),
+                };
+                (ap.ssid.to_string(), ap.signal_strength, auth)
+            })
+            .collect())
+    }
+
     /// Return `true` if the station is currently associated to an access point.
     pub fn is_connected(&self) -> bool {
         self.wifi.is_connected().unwrap_or(false)

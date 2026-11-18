@@ -6,6 +6,10 @@
 /// Number of consecutive errors before logging an elevated error-level warning.
 pub const CONSECUTIVE_ERROR_WARN_THRESHOLD: u32 = 10;
 
+/// Firmware version, taken from Cargo.toml so it always matches the built image.
+/// Compared against the server's OTA manifest.
+pub const FIRMWARE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[toml_cfg::toml_config]
 pub struct Config {
     /// WiFi network SSID to connect to.
@@ -36,9 +40,9 @@ pub struct Config {
     /// How often to check for OTA firmware updates, in scan cycles. 0 disables OTA checks.
     #[default(60)]
     ota_check_interval_cycles: u32,
-    /// Firmware version string reported to the server for OTA version comparison.
-    #[default("0.1.0")]
-    firmware_version: &'static str,
+    /// Human-friendly device name (set via web setup; informational).
+    #[default("")]
+    device_name: &'static str,
     /// Maximum duration of a single BLE scan chunk in seconds.
     /// Long scans are split into chunks of this size so the watchdog can be fed between them.
     #[default(30)]
@@ -107,6 +111,18 @@ pub fn apply_nvs_overrides(
         }
     };
 
+    if let Some(val) = nvs_get_string(&nvs, "wifi_ssid") {
+        log::info!("NVS override: wifi_ssid = '{}'", val);
+        cfg.wifi_ssid = Box::leak(val.into_boxed_str());
+    }
+    if let Some(val) = nvs_get_string(&nvs, "wifi_pass") {
+        log::info!("NVS override: wifi_password = ***");
+        cfg.wifi_password = Box::leak(val.into_boxed_str());
+    }
+    if let Some(val) = nvs_get_string(&nvs, "device_name") {
+        log::info!("NVS override: device_name = '{}'", val);
+        cfg.device_name = Box::leak(val.into_boxed_str());
+    }
     if let Some(val) = nvs_get_string(&nvs, "server_url") {
         log::info!("NVS override: server_url = '{}'", val);
         cfg.server_url = Box::leak(val.into_boxed_str());
@@ -199,5 +215,94 @@ pub fn log_config(cfg: &Config) {
     log::info!("  ota_check_interval     = {} cycles", cfg.ota_check_interval_cycles);
     log::info!("  min_samples_per_color  = {}", cfg.min_samples_per_color);
     log::info!("  ewa_alpha              = {} (α={:.2})", cfg.ewa_alpha_percent, cfg.ewa_alpha_percent as f64 / 100.0);
-    log::info!("  firmware_version       = '{}'", cfg.firmware_version);
+    log::info!("  device_name            = '{}'", cfg.device_name);
+    log::info!("  firmware_version       = '{}'", FIRMWARE_VERSION);
+}
+
+/// Apply a provisioning patch on top of `cfg`. Absent fields are left untouched.
+/// String values are leaked (the process reboots right after a successful save).
+pub fn apply_patch(cfg: &mut Config, patch: &crate::protocol::ConfigPatch) {
+    fn leak(s: &str) -> &'static str {
+        Box::leak(s.to_string().into_boxed_str())
+    }
+    if let Some(v) = &patch.wifi_ssid {
+        cfg.wifi_ssid = leak(v);
+    }
+    if let Some(v) = &patch.wifi_pass {
+        cfg.wifi_password = leak(v);
+    }
+    if let Some(v) = &patch.server_url {
+        cfg.server_url = leak(v);
+    }
+    if let Some(v) = &patch.api_key {
+        cfg.api_key = leak(v);
+    }
+    if let Some(v) = &patch.device_name {
+        cfg.device_name = leak(v);
+    }
+    if let Some(v) = patch.scan_interval_secs {
+        cfg.scan_interval_secs = v;
+    }
+    if let Some(v) = patch.min_samples {
+        cfg.min_samples_per_color = v;
+    }
+    if let Some(v) = patch.ewa_alpha {
+        cfg.ewa_alpha_percent = v;
+    }
+    if let Some(v) = patch.ota_check_interval_cycles {
+        cfg.ota_check_interval_cycles = v;
+    }
+}
+
+/// Persist the fields present in `patch` to NVS. Call only after the merged
+/// config has passed `validate_config`.
+pub fn save_patch(
+    nvs_partition: &esp_idf_svc::nvs::EspDefaultNvsPartition,
+    patch: &crate::protocol::ConfigPatch,
+) -> anyhow::Result<()> {
+    let mut nvs = esp_idf_svc::nvs::EspNvs::new(nvs_partition.clone(), NVS_NAMESPACE, true)
+        .map_err(|e| anyhow::anyhow!("failed to open NVS namespace: {:?}", e))?;
+
+    let strings: [(&str, &Option<String>); 5] = [
+        ("wifi_ssid", &patch.wifi_ssid),
+        ("wifi_pass", &patch.wifi_pass),
+        ("server_url", &patch.server_url),
+        ("api_key", &patch.api_key),
+        ("device_name", &patch.device_name),
+    ];
+    for (key, val) in strings {
+        if let Some(v) = val {
+            if v.is_empty() {
+                // nvs_get_string treats empty as unset, so remove the key outright.
+                let _ = nvs.remove(key);
+            } else {
+                nvs_set_string(&mut nvs, key, v)?;
+            }
+        }
+    }
+    let numbers: [(&str, Option<u32>); 4] = [
+        ("scan_interval", patch.scan_interval_secs),
+        ("min_samples", patch.min_samples),
+        ("ewa_alpha", patch.ewa_alpha),
+        ("ota_check_interval", patch.ota_check_interval_cycles),
+    ];
+    for (key, val) in numbers {
+        if let Some(v) = val {
+            nvs_set_u32(&mut nvs, key, v)?;
+        }
+    }
+    Ok(())
+}
+
+/// Erase every provisioned value (revert to compile-time defaults).
+pub fn clear_nvs(nvs_partition: &esp_idf_svc::nvs::EspDefaultNvsPartition) -> anyhow::Result<()> {
+    let nvs = esp_idf_svc::nvs::EspNvs::new(nvs_partition.clone(), NVS_NAMESPACE, true)
+        .map_err(|e| anyhow::anyhow!("failed to open NVS namespace: {:?}", e))?;
+    for key in [
+        "wifi_ssid", "wifi_pass", "device_name", "server_url", "api_key",
+        "scan_interval", "min_samples", "ewa_alpha", "ota_check_interval",
+    ] {
+        let _ = nvs.remove(key);
+    }
+    Ok(())
 }

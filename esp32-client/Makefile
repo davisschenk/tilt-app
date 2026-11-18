@@ -3,20 +3,16 @@
 # Source the environment first: . $HOME/export-esp.sh
 
 BINARY := target/xtensa-esp32-espidf/release/esp32-client
-BUILD_DIR := build
 
 # Build the firmware in release mode
 .PHONY: build
 build:
 	cargo build --release
 
-# Build release binary and copy to build/esp32-client.bin for OTA hosting
+# Build firmware images + manifest into ../firmware-dist (web flasher and OTA)
 .PHONY: release
-release: build
-	mkdir -p $(BUILD_DIR)
-	cp $(BINARY) $(BUILD_DIR)/esp32-client.bin
-	@echo "Firmware binary: $(BUILD_DIR)/esp32-client.bin"
-	@ls -lh $(BUILD_DIR)/esp32-client.bin
+release:
+	./scripts/release.sh
 
 # Flash the firmware and open serial monitor (full flash including partition table)
 .PHONY: flash
@@ -42,7 +38,6 @@ version:
 .PHONY: clean
 clean:
 	cargo clean
-	rm -rf $(BUILD_DIR)
 
 # Run unit tests on host (tilt.rs, buffer.rs)
 .PHONY: test

@@ -111,6 +111,10 @@ esp32-build:
 esp32-flash: esp32-build
     cd esp32-client && espflash flash --baud 115200 --monitor target/xtensa-esp32-espidf/release/esp32-client
 
+# Build firmware images + manifest into firmware-dist/ (served by the web flasher / OTA)
+esp32-release:
+    ./esp32-client/scripts/release.sh
+
 # Open ESP32 serial monitor without reflashing
 esp32-monitor:
     cd esp32-client && espflash monitor

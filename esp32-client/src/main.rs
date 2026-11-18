@@ -3,6 +3,8 @@ mod buffer;
 mod config;
 mod http;
 mod ota;
+mod protocol;
+mod provision;
 mod tilt;
 mod wifi;
 
@@ -155,16 +157,26 @@ fn run() -> Result<()> {
     config::apply_nvs_overrides(&mut cfg, &nvs);
 
     config::log_config(&cfg);
-    config::validate_config(&cfg).context("Configuration validation failed")?;
 
-    // Initialize watchdog — use the config value so NVS overrides are respected
-    init_watchdog(cfg.watchdog_timeout_secs * 1000).context("Watchdog initialization failed")?;
-
-    // Initialize WiFi
     let peripherals =
         esp_idf_svc::hal::peripherals::Peripherals::take().context("Failed to take peripherals")?;
     let sys_loop =
         esp_idf_svc::eventloop::EspSystemEventLoop::take().context("Failed to take event loop")?;
+
+    provision::init_uart().context("Failed to initialise serial provisioning")?;
+
+    // A fresh (or invalid) config is not fatal: wait for the web UI to provision us.
+    // The watchdog isn't armed yet, so idling here is safe.
+    if let Err(e) = config::validate_config(&cfg) {
+        log::warn!("Configuration not usable ({:#})", e);
+        return provision::run_unprovisioned(cfg, nvs, peripherals.modem, sys_loop);
+    }
+
+    provision::spawn_listener(config::Config { ..cfg }, nvs.clone())
+        .context("Failed to start provisioning listener")?;
+
+    // Initialize watchdog — use the config value so NVS overrides are respected
+    init_watchdog(cfg.watchdog_timeout_secs * 1000).context("Watchdog initialization failed")?;
 
     let mut wifi_manager =
         wifi::WifiManager::new(peripherals.modem, sys_loop, nvs, cfg.wifi_ssid, cfg.wifi_password)
@@ -435,19 +447,28 @@ fn run_ota_phase(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("OTA response missing 'url' field"))?;
 
+    // The server may advertise a relative path (bundled firmware); resolve it
+    // against the server URL we are already configured with.
+    let resolved_url;
+    let firmware_url = if firmware_url.starts_with('/') {
+        resolved_url = format!("{}{}", cfg.server_url.trim_end_matches('/'), firmware_url);
+        resolved_url.as_str()
+    } else {
+        firmware_url
+    };
     if !firmware_url.starts_with("http://") && !firmware_url.starts_with("https://") {
         anyhow::bail!("OTA firmware URL must be HTTP/HTTPS, got: '{}'", firmware_url);
     }
 
-    if server_version == cfg.firmware_version {
-        log::debug!("OTA: firmware up to date ({})", cfg.firmware_version);
+    if server_version == config::FIRMWARE_VERSION {
+        log::debug!("OTA: firmware up to date ({})", config::FIRMWARE_VERSION);
         feed_watchdog_or_warn();
         return Ok(());
     }
 
     log::info!(
         "OTA: server version='{}' current='{}', starting update",
-        server_version, cfg.firmware_version
+        server_version, config::FIRMWARE_VERSION
     );
 
     match ota::OtaUpdater::perform_update(firmware_url) {

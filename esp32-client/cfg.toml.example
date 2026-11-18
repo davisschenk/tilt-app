@@ -1,5 +1,8 @@
 # ESP32 Tilt Client Configuration
-# Copy this file to cfg.toml and fill in your values.
+# OPTIONAL: normally the device is configured from the web UI (Device Setup page).
+# Copy this file to cfg.toml only if you want compile-time defaults for development.
+# Values provisioned over serial (stored in NVS) take priority over these.
+# The firmware version comes from Cargo.toml.
 # WARNING: cfg.toml contains credentials — do NOT commit it to version control.
 
 [esp32-client]
@@ -33,6 +36,3 @@ health_report_interval_cycles = 60
 
 # Check for OTA firmware update every N scan cycles (default: 60, 0 = disabled)
 ota_check_interval_cycles = 60
-
-# Current firmware version string (used to detect when server has a newer version)
-firmware_version = "0.1.0"
