@@ -18,10 +18,11 @@ export class ApiError extends Error {
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let body: unknown;
+    const fallback = response.clone();
     try {
       body = await response.json();
     } catch {
-      body = await response.text();
+      body = await fallback.text();
     }
     throw new ApiError(response.status, response.statusText, body);
   }
