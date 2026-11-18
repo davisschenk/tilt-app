@@ -15,6 +15,7 @@ mod m20260402_012232_add_yeast_strain_to_brews;
 mod m20260402_022608_add_nutrient_alert_target_to_brews;
 mod m20260407_004327_add_is_disabled_to_hydrometers;
 mod m20260414_234520_create_event_attachments_table;
+mod m20261117_000001_add_user_ownership;
 
 pub struct Migrator;
 
@@ -37,6 +38,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260402_022608_add_nutrient_alert_target_to_brews::Migration),
             Box::new(m20260407_004327_add_is_disabled_to_hydrometers::Migration),
             Box::new(m20260414_234520_create_event_attachments_table::Migration),
+            Box::new(m20261117_000001_add_user_ownership::Migration),
         ]
     }
 }

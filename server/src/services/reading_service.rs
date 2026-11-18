@@ -50,9 +50,19 @@ pub async fn batch_create(
 
 pub async fn find_filtered(
     db: &DatabaseConnection,
+    owner: Uuid,
     query: &ReadingsQuery,
 ) -> Result<Vec<ReadingResponse>, DbErr> {
-    let mut select = Reading::find();
+    // Only readings from hydrometers the caller owns, whatever ids they pass.
+    let mut select = Reading::find().filter(
+        Column::HydrometerId.in_subquery(
+            sea_orm::sea_query::Query::select()
+                .column(crate::models::entities::hydrometers::Column::Id)
+                .from(crate::models::entities::hydrometers::Entity)
+                .and_where(crate::models::entities::hydrometers::Column::OwnerId.eq(owner))
+                .to_owned(),
+        ),
+    );
 
     if let Some(brew_id) = query.brew_id {
         select = select.filter(Column::BrewId.eq(brew_id));

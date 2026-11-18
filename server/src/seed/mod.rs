@@ -21,12 +21,40 @@ pub async fn seed_minimal(db: &DatabaseConnection, force: bool) -> Result<SeedRe
         wipe(db).await?;
     }
 
+    let owner = ensure_dev_user(db).await?;
+
     let mut report = SeedReport::default();
-    seed_hydrometers(db, &mut report).await?;
-    seed_brews_and_readings(db, &mut report).await?;
+    seed_hydrometers(db, owner, &mut report).await?;
+    seed_brews_and_readings(db, owner, &mut report).await?;
     seed_events(db, &mut report).await?;
-    seed_alerts(db, &mut report).await?;
+    seed_alerts(db, owner, &mut report).await?;
     Ok(report)
+}
+
+/// The seeded data belongs to the same dev user that `AUTH_MODE=disabled` injects.
+async fn ensure_dev_user(db: &DatabaseConnection) -> Result<uuid::Uuid> {
+    use crate::auth_mode::dev_user;
+    use crate::models::entities::users;
+    use sea_orm::{ColumnTrait, QueryFilter, Set};
+
+    if let Some(u) = users::Entity::find()
+        .filter(users::Column::OidcSub.eq(dev_user::SUB))
+        .one(db)
+        .await?
+    {
+        return Ok(u.id);
+    }
+    let id = uuid::Uuid::new_v4();
+    users::Entity::insert(users::ActiveModel {
+        id: Set(id),
+        oidc_sub: Set(dev_user::SUB.to_string()),
+        email: Set(dev_user::EMAIL.to_string()),
+        name: Set(dev_user::NAME.to_string()),
+        created_at: Set(chrono::Utc::now().fixed_offset()),
+    })
+    .exec(db)
+    .await?;
+    Ok(id)
 }
 
 #[derive(Default, Debug)]
@@ -83,7 +111,11 @@ pub mod ids {
     ]);
 }
 
-async fn seed_hydrometers(db: &DatabaseConnection, r: &mut SeedReport) -> Result<()> {
+async fn seed_hydrometers(
+    db: &DatabaseConnection,
+    owner: uuid::Uuid,
+    r: &mut SeedReport,
+) -> Result<()> {
     use crate::models::entities::hydrometers;
     use sea_orm::Set;
 
@@ -92,6 +124,7 @@ async fn seed_hydrometers(db: &DatabaseConnection, r: &mut SeedReport) -> Result
     let rows = vec![
         hydrometers::ActiveModel {
             id: Set(ids::HYDROMETER_RED),
+            owner_id: Set(owner),
             color: Set("Red".into()),
             name: Set(Some("Mash Tun".into())),
             temp_offset_f: Set(0.0),
@@ -101,6 +134,7 @@ async fn seed_hydrometers(db: &DatabaseConnection, r: &mut SeedReport) -> Result
         },
         hydrometers::ActiveModel {
             id: Set(ids::HYDROMETER_BLACK),
+            owner_id: Set(owner),
             color: Set("Black".into()),
             name: Set(Some("Conical".into())),
             temp_offset_f: Set(0.0),
@@ -110,6 +144,7 @@ async fn seed_hydrometers(db: &DatabaseConnection, r: &mut SeedReport) -> Result
         },
         hydrometers::ActiveModel {
             id: Set(ids::HYDROMETER_GREEN),
+            owner_id: Set(owner),
             color: Set("Green".into()),
             name: Set(None),
             temp_offset_f: Set(0.0),
@@ -125,7 +160,11 @@ async fn seed_hydrometers(db: &DatabaseConnection, r: &mut SeedReport) -> Result
     Ok(())
 }
 
-async fn seed_brews_and_readings(db: &DatabaseConnection, r: &mut SeedReport) -> Result<()> {
+async fn seed_brews_and_readings(
+    db: &DatabaseConnection,
+    owner: uuid::Uuid,
+    r: &mut SeedReport,
+) -> Result<()> {
     use crate::models::entities::{brews, readings};
     use chrono::{Duration, Utc};
     use sea_orm::Set;
@@ -137,6 +176,7 @@ async fn seed_brews_and_readings(db: &DatabaseConnection, r: &mut SeedReport) ->
     let active_start = now - Duration::hours(24);
     let active = brews::ActiveModel {
         id: Set(ids::BREW_ACTIVE),
+        owner_id: Set(owner),
         name: Set("West Coast IPA".into()),
         style: Set(Some("American IPA".into())),
         og: Set(Some(1.062)),
@@ -162,6 +202,7 @@ async fn seed_brews_and_readings(db: &DatabaseConnection, r: &mut SeedReport) ->
     let completed_end = now - Duration::days(30);
     let completed = brews::ActiveModel {
         id: Set(ids::BREW_COMPLETED),
+        owner_id: Set(owner),
         name: Set("Imperial Stout".into()),
         style: Set(Some("Russian Imperial Stout".into())),
         og: Set(Some(1.085)),
@@ -287,7 +328,7 @@ async fn seed_events(db: &DatabaseConnection, r: &mut SeedReport) -> Result<()> 
     Ok(())
 }
 
-async fn seed_alerts(db: &DatabaseConnection, r: &mut SeedReport) -> Result<()> {
+async fn seed_alerts(db: &DatabaseConnection, owner: uuid::Uuid, r: &mut SeedReport) -> Result<()> {
     use crate::models::entities::{alert_rules, alert_targets};
     use chrono::Utc;
     use sea_orm::Set;
@@ -296,6 +337,7 @@ async fn seed_alerts(db: &DatabaseConnection, r: &mut SeedReport) -> Result<()> 
 
     let target = alert_targets::ActiveModel {
         id: Set(ids::ALERT_TARGET),
+        owner_id: Set(owner),
         name: Set("Local webhook stub".into()),
         url: Set("http://localhost:9999/webhook".into()),
         format: Set("generic".into()),

@@ -17,7 +17,10 @@ use crate::{
     fairings::rate_limit::RateLimitGuard,
     guards::current_user::{CurrentUser, SESSION_COOKIE},
     oidc::OidcState,
-    services::sessions::{self, CreateSessionParams},
+    services::{
+        sessions::{self, CreateSessionParams},
+        user_service,
+    },
 };
 
 #[derive(Debug, Serialize)]
@@ -142,6 +145,12 @@ pub async fn callback(
         .and_then(|n| n.get(None))
         .map(|n| n.as_str().to_string())
         .unwrap_or_else(|| email.clone());
+
+    // Create the account on first login and refresh profile fields on every login.
+    let account = user_service::upsert(db, &user_sub, &email, &name)
+        .await
+        .map_err(|e| err(&format!("user upsert failed: {e}")))?;
+    tracing::info!(user_id = %account.id, "user logged in");
 
     let id_token_str = id_token.to_string();
     let id_token_hash = format!("{:x}", Sha256::digest(id_token_str.as_bytes()));

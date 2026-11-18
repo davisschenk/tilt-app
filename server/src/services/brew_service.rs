@@ -1,10 +1,11 @@
 use sea_orm::*;
 use uuid::Uuid;
 
+use crate::models::entities::alert_targets;
 use crate::models::entities::brews::{self, ActiveModel, Column, Entity as Brew};
 use crate::models::entities::hydrometers::Entity as Hydrometer;
 use crate::models::entities::readings::{self, Entity as Reading};
-use crate::services::analytics_service;
+use crate::services::{analytics_service, hydrometer_service};
 use shared::{BrewResponse, BrewStatus, CreateBrew, TiltColor, TiltReading, UpdateBrew};
 
 fn model_to_response(model: brews::Model, latest: Option<TiltReading>) -> BrewResponse {
@@ -73,11 +74,44 @@ async fn latest_reading_for(db: &DatabaseConnection, brew: &brews::Model) -> Opt
     ))
 }
 
+pub use super::WriteError;
+
+/// Fetch a brew only if `owner` owns it. Other users' ids look like misses.
+pub async fn find_owned(
+    db: &DatabaseConnection,
+    owner: Uuid,
+    id: Uuid,
+) -> Result<Option<brews::Model>, DbErr> {
+    Brew::find()
+        .filter(Column::Id.eq(id))
+        .filter(Column::OwnerId.eq(owner))
+        .one(db)
+        .await
+}
+
+/// True when the alert target (if any) belongs to `owner`.
+async fn target_is_owned(
+    db: &DatabaseConnection,
+    owner: Uuid,
+    target_id: Option<Uuid>,
+) -> Result<bool, DbErr> {
+    let Some(target_id) = target_id else {
+        return Ok(true);
+    };
+    Ok(alert_targets::Entity::find()
+        .filter(alert_targets::Column::Id.eq(target_id))
+        .filter(alert_targets::Column::OwnerId.eq(owner))
+        .one(db)
+        .await?
+        .is_some())
+}
+
 pub async fn find_all(
     db: &DatabaseConnection,
+    owner: Uuid,
     status_filter: Option<&str>,
 ) -> Result<Vec<BrewResponse>, DbErr> {
-    let mut query = Brew::find();
+    let mut query = Brew::find().filter(Column::OwnerId.eq(owner));
     if let Some(status) = status_filter {
         query = query.filter(Column::Status.eq(status));
     }
@@ -90,18 +124,34 @@ pub async fn find_all(
     Ok(results)
 }
 
-pub async fn find_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<BrewResponse>, DbErr> {
-    let Some(model) = Brew::find_by_id(id).one(db).await? else {
+pub async fn find_by_id(
+    db: &DatabaseConnection,
+    owner: Uuid,
+    id: Uuid,
+) -> Result<Option<BrewResponse>, DbErr> {
+    let Some(model) = find_owned(db, owner, id).await? else {
         return Ok(None);
     };
     let latest = latest_reading_for(db, &model).await;
     Ok(Some(model_to_response(model, latest)))
 }
 
-pub async fn create(db: &DatabaseConnection, input: CreateBrew) -> Result<BrewResponse, DbErr> {
+pub async fn create(
+    db: &DatabaseConnection,
+    owner: Uuid,
+    input: CreateBrew,
+) -> Result<BrewResponse, WriteError> {
+    if hydrometer_service::find_owned(db, owner, input.hydrometer_id)
+        .await?
+        .is_none()
+        || !target_is_owned(db, owner, input.nutrient_alert_target_id).await?
+    {
+        return Err(WriteError::BadReference);
+    }
     let now = chrono::Utc::now();
     let model = ActiveModel {
         id: Set(Uuid::new_v4()),
+        owner_id: Set(owner),
         name: Set(input.name),
         style: Set(input.style),
         og: Set(input.og),
@@ -127,13 +177,16 @@ pub async fn create(db: &DatabaseConnection, input: CreateBrew) -> Result<BrewRe
 
 pub async fn update(
     db: &DatabaseConnection,
+    owner: Uuid,
     id: Uuid,
     input: UpdateBrew,
-) -> Result<Option<BrewResponse>, DbErr> {
-    let existing = Brew::find_by_id(id).one(db).await?;
-    let Some(existing) = existing else {
-        return Ok(None);
-    };
+) -> Result<BrewResponse, WriteError> {
+    let existing = find_owned(db, owner, id)
+        .await?
+        .ok_or(WriteError::NotFound)?;
+    if !target_is_owned(db, owner, input.nutrient_alert_target_id).await? {
+        return Err(WriteError::BadReference);
+    }
 
     let mut active: ActiveModel = existing.into();
     if let Some(name) = input.name {
@@ -182,20 +235,25 @@ pub async fn update(
 
     let updated = active.update(db).await?;
     let latest = latest_reading_for(db, &updated).await;
-    Ok(Some(model_to_response(updated, latest)))
+    Ok(model_to_response(updated, latest))
 }
 
-pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
-    let result = Brew::delete_by_id(id).exec(db).await?;
+pub async fn delete(db: &DatabaseConnection, owner: Uuid, id: Uuid) -> Result<bool, DbErr> {
+    let result = Brew::delete_many()
+        .filter(Column::Id.eq(id))
+        .filter(Column::OwnerId.eq(owner))
+        .exec(db)
+        .await?;
     Ok(result.rows_affected > 0)
 }
 
 pub async fn update_pitch_time(
     db: &DatabaseConnection,
+    owner: Uuid,
     brew_id: Uuid,
     pitch_time: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<(), DbErr> {
-    let existing = Brew::find_by_id(brew_id).one(db).await?;
+    let existing = find_owned(db, owner, brew_id).await?;
     let Some(existing) = existing else {
         return Ok(());
     };
@@ -208,9 +266,11 @@ pub async fn update_pitch_time(
 
 pub async fn find_active_for_hydrometer(
     db: &DatabaseConnection,
+    owner: Uuid,
     hydrometer_id: Uuid,
 ) -> Result<Option<brews::Model>, DbErr> {
     Brew::find()
+        .filter(Column::OwnerId.eq(owner))
         .filter(Column::HydrometerId.eq(hydrometer_id))
         .filter(Column::Status.eq("Active"))
         .one(db)

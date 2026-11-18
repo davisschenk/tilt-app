@@ -99,6 +99,7 @@ mod tests {
 
 pub async fn create_api_key(
     db: &DatabaseConnection,
+    owner: Uuid,
     name: String,
     created_by: String,
     expires_at: Option<chrono::DateTime<chrono::FixedOffset>>,
@@ -108,6 +109,7 @@ pub async fn create_api_key(
 
     let model = ActiveModel {
         id: Set(Uuid::new_v4()),
+        owner_id: Set(owner),
         name: Set(name.clone()),
         key_hash: Set(hash),
         prefix: Set(prefix.clone()),
@@ -131,10 +133,10 @@ pub async fn create_api_key(
 
 pub async fn list_api_keys(
     db: &DatabaseConnection,
-    user_sub: &str,
+    owner: Uuid,
 ) -> Result<Vec<ApiKeySummary>, DbErr> {
     let keys = ApiKey::find()
-        .filter(api_keys::Column::CreatedBy.eq(user_sub))
+        .filter(api_keys::Column::OwnerId.eq(owner))
         .all(db)
         .await?;
 
@@ -152,27 +154,20 @@ pub async fn list_api_keys(
         .collect())
 }
 
+/// Delete one of `owner`'s keys. Deleting a key that does not exist, or that
+/// belongs to someone else, is a silent no-op so ids cannot be probed.
 pub async fn delete_api_key(
     db: &DatabaseConnection,
     id: Uuid,
-    user_sub: &str,
+    owner: Uuid,
 ) -> Result<(), ApiKeyError> {
-    let key = ApiKey::find_by_id(id)
-        .one(db)
+    ApiKey::delete_many()
+        .filter(api_keys::Column::Id.eq(id))
+        .filter(api_keys::Column::OwnerId.eq(owner))
+        .exec(db)
         .await
         .map_err(ApiKeyError::Db)?;
-
-    match key {
-        None => Ok(()),
-        Some(k) if k.created_by != user_sub => Err(ApiKeyError::Invalid),
-        Some(_) => {
-            ApiKey::delete_by_id(id)
-                .exec(db)
-                .await
-                .map_err(ApiKeyError::Db)?;
-            Ok(())
-        }
-    }
+    Ok(())
 }
 
 pub async fn validate_api_key(

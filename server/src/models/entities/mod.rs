@@ -11,3 +11,4 @@ pub mod event_attachments;
 pub mod hydrometers;
 pub mod readings;
 pub mod user_sessions;
+pub mod users;

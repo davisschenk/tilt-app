@@ -2,9 +2,11 @@ use chrono::Utc;
 use sea_orm::*;
 use uuid::Uuid;
 
+use crate::models::entities::brew_events::Entity as BrewEvent;
 use crate::models::entities::event_attachments::{
     self, ActiveModel, Column, Entity as EventAttachment,
 };
+use crate::services::brew_service;
 use shared::EventAttachmentResponse;
 
 fn model_to_response(model: event_attachments::Model) -> EventAttachmentResponse {
@@ -53,11 +55,26 @@ pub async fn find_by_event(
         .map(|models| models.into_iter().map(model_to_response).collect())
 }
 
-pub async fn find_raw_by_id(
+/// Fetch an attachment only if `owner` owns the brew its event belongs to.
+/// Other users' ids look like misses.
+pub async fn find_owned_raw(
     db: &DatabaseConnection,
+    owner: Uuid,
     id: Uuid,
 ) -> Result<Option<event_attachments::Model>, DbErr> {
-    EventAttachment::find_by_id(id).one(db).await
+    let Some(att) = EventAttachment::find_by_id(id).one(db).await? else {
+        return Ok(None);
+    };
+    let Some(event) = BrewEvent::find_by_id(att.event_id).one(db).await? else {
+        return Ok(None);
+    };
+    if brew_service::find_owned(db, owner, event.brew_id)
+        .await?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    Ok(Some(att))
 }
 
 pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
