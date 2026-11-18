@@ -134,9 +134,19 @@ The ESP32 client supports over-the-air firmware updates. The device periodically
 ### How It Works
 
 1. Every `ota_check_interval_cycles` scan cycles (default: every 60 cycles ≈ 15 minutes), the device calls `GET /api/v1/ota/firmware` on the server.
-2. The server returns `{ "version": "x.y.z", "url": "..." }`. By default this is the firmware bundled in `FIRMWARE_DIR`, with a path relative to the server (`/api/v1/firmware/files/...`) that the device resolves against its configured server URL.
-3. If the server version differs from the device's version (from `Cargo.toml`), the device downloads the app image from `url`, flashes it to the inactive OTA slot, and reboots.
-4. On failure the device logs the error and continues normal operation — no reboot.
+2. The server returns `{ version, url, sha256, size, signature }` for the firmware bundled in `FIRMWARE_DIR`. `url` is relative (`/api/v1/firmware/files/...`) and resolved against the device's configured server URL.
+3. The device only proceeds if the version is **strictly newer** than its own (`Cargo.toml`), the build contains an OTA public key, and the Ed25519 `signature` over `tilt-ota-v1:{version}:{size}:{sha256}` verifies. The image is then streamed into the inactive slot while hashing; a size or SHA-256 mismatch aborts before the slot is activated.
+4. On success the device reboots into the new slot. Rollback is enabled: the new image is marked valid after its first completed scan cycle, otherwise the bootloader reverts to the previous slot.
+5. On any failure the device logs the error and keeps running the current firmware.
+
+### Signing keys
+
+```bash
+openssl genpkey -algorithm ed25519 -out ota-signing.pem      # keep private; never commit
+OTA_SIGNING_KEY_FILE=$PWD/ota-signing.pem just esp32-release
+```
+
+`release.sh` compiles the matching public key into the firmware and signs `manifest.json`. In CI, store the PEM as the `OTA_SIGNING_KEY` repository secret. Unsigned builds work for USB/web flashing but refuse OTA. Devices only accept updates signed by the key they were built with, so keep the same key across releases. Because of this, plain HTTP transport is acceptable for firmware downloads.
 
 ### Server Setup
 
@@ -147,14 +157,7 @@ Firmware is served from `FIRMWARE_DIR` (default `/app/firmware` in Docker), whic
 just esp32-release   # writes firmware-dist/ (merged image, OTA app image, manifest.json)
 ```
 
-To host the image elsewhere instead, set these optional overrides on the server:
-
-| Variable | Description |
-|---|---|
-| `OTA_FIRMWARE_VERSION` | Firmware version string to serve to devices (e.g. `0.2.0`) |
-| `OTA_FIRMWARE_URL` | Full URL to the OTA app `.bin` file |
-
-With neither firmware installed nor an override, the endpoint returns 404 and OTA is effectively off.
+With no firmware installed the endpoint returns 404 and OTA is effectively off. There is no URL override: updates must come from the signed bundled manifest.
 
 ### Releasing an Update
 

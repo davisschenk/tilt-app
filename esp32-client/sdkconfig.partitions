@@ -1,2 +1,0 @@
-CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="/home/davis/tilt-app/esp32-client/partitions.csv"

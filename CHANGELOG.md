@@ -10,6 +10,11 @@ All notable changes to this project will be documented in this file.
 - **Serial provisioning** — The ESP32 firmware now stores WiFi, server URL and API key in NVS and accepts config over serial, so one generic image works for everyone (`cfg.toml` is optional).
 - **Bundled firmware** — CI builds the firmware and the Docker image ships it (`FIRMWARE_DIR`); the server exposes `/api/v1/firmware/manifest` and serves it for OTA, with a relative URL.
 
+### Security
+
+- **OTA hardening** — Devices now only install strictly newer firmware whose Ed25519-signed manifest and SHA-256 verify (key via `OTA_SIGNING_KEY_FILE` / `OTA_SIGNING_KEY` CI secret). Removed the `OTA_FIRMWARE_URL`/`OTA_FIRMWARE_VERSION` overrides.
+- **OTA reliability** — Fixed a stack overflow in the download buffer, enabled bootloader rollback (marks the image valid after the first scan cycle), and grew both OTA slots to 0x1F0000. **Existing boards need one USB/web reflash** to pick up the new partition table and bootloader.
+
 ### Changes
 
 - Firmware version now comes from `esp32-client/Cargo.toml`; `firmware_version` was removed from `cfg.toml`.

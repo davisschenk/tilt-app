@@ -25,6 +25,8 @@ serde_json = "1"
 anyhow = "1"
 heapless = "0.9"
 toml-cfg = "0.2"
+sha2 = { version = "0.10", default-features = false }
+ed25519-compact = { version = "2", default-features = false, features = ["opt_size"] }
 
 [build-dependencies]
 embuild = "0.33.1"

@@ -10,6 +10,10 @@ pub const CONSECUTIVE_ERROR_WARN_THRESHOLD: u32 = 10;
 /// Compared against the server's OTA manifest.
 pub const FIRMWARE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Hex Ed25519 public key that OTA manifests must be signed with. Injected at build
+/// time by `scripts/release.sh` (`OTA_PUBLIC_KEY`). When absent, OTA is refused.
+pub const OTA_PUBLIC_KEY_HEX: Option<&str> = option_env!("OTA_PUBLIC_KEY");
+
 #[toml_cfg::toml_config]
 pub struct Config {
     /// WiFi network SSID to connect to.

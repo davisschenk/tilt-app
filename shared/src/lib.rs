@@ -566,6 +566,10 @@ pub struct FirmwareManifest {
     pub chip: String,
     pub built_at: String,
     pub files: FirmwareFiles,
+    /// Hex Ed25519 signature over `tilt-ota-v1:{version}:{app.size}:{app.sha256}`.
+    /// Absent for unsigned (development) builds, which devices refuse to install.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
 }
 
 #[cfg(test)]
