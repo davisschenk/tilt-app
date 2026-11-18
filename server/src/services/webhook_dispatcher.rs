@@ -30,6 +30,8 @@ pub struct NutrientWebhookPayload {
 pub enum DispatchError {
     HttpError(reqwest::Error),
     ServerError(u16),
+    /// The target URL failed SSRF validation (see `webhook_guard`).
+    InvalidUrl(String),
 }
 
 impl std::fmt::Display for DispatchError {
@@ -37,6 +39,7 @@ impl std::fmt::Display for DispatchError {
         match self {
             DispatchError::HttpError(e) => write!(f, "HTTP error: {e}"),
             DispatchError::ServerError(code) => write!(f, "Server returned status {code}"),
+            DispatchError::InvalidUrl(why) => write!(f, "Blocked webhook URL: {why}"),
         }
     }
 }
@@ -199,6 +202,8 @@ pub async fn dispatch(
         WebhookFormat::Slack => build_slack_payload(rule, &metric, &operator, actual, recorded_at),
     };
 
+    // Re-check at send time: the row may predate validation, or the env may have changed.
+    super::webhook_guard::validate_url(&target.url).map_err(DispatchError::InvalidUrl)?;
     let mut request = client.post(&target.url).json(&payload);
 
     if let Some(ref secret) = target.secret_header {
@@ -304,6 +309,8 @@ pub async fn dispatch_nutrient_notification(
         }),
     };
 
+    // Re-check at send time: the row may predate validation, or the env may have changed.
+    super::webhook_guard::validate_url(&target.url).map_err(DispatchError::InvalidUrl)?;
     let mut request = client.post(&target.url).json(&payload);
     if let Some(ref secret) = target.secret_header {
         request = request.header("Authorization", secret);
@@ -387,6 +394,8 @@ pub async fn dispatch_test(
         }),
     };
 
+    // Re-check at send time: the row may predate validation, or the env may have changed.
+    super::webhook_guard::validate_url(&target.url).map_err(DispatchError::InvalidUrl)?;
     let mut request = client.post(&target.url).json(&payload);
 
     if let Some(ref secret) = target.secret_header {

@@ -6,8 +6,9 @@ use uuid::Uuid;
 
 use shared::{AlertTargetResponse, CreateAlertTarget, UpdateAlertTarget};
 
+use crate::fairings::rate_limit::TestFireLimiter;
 use crate::guards::current_user::CurrentUser;
-use crate::services::{alert_target_service, webhook_dispatcher};
+use crate::services::{alert_target_service, webhook_dispatcher, webhook_guard};
 
 #[get("/alert-targets")]
 async fn list(
@@ -40,7 +41,11 @@ async fn create(
     db: &State<DatabaseConnection>,
     input: Json<CreateAlertTarget>,
 ) -> Result<(Status, Json<AlertTargetResponse>), Status> {
-    alert_target_service::create(db.inner(), user.user_id, input.into_inner())
+    let input = input.into_inner();
+    if webhook_guard::validate_url(&input.url).is_err() {
+        return Err(Status::UnprocessableEntity);
+    }
+    alert_target_service::create(db.inner(), user.user_id, input)
         .await
         .map(|t| (Status::Created, Json(t)))
         .map_err(|_| Status::UnprocessableEntity)
@@ -54,7 +59,13 @@ async fn update(
     input: Json<UpdateAlertTarget>,
 ) -> Result<Json<AlertTargetResponse>, Status> {
     let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
-    match alert_target_service::update(db.inner(), user.user_id, id, input.into_inner()).await {
+    let input = input.into_inner();
+    if let Some(url) = &input.url
+        && webhook_guard::validate_url(url).is_err()
+    {
+        return Err(Status::UnprocessableEntity);
+    }
+    match alert_target_service::update(db.inner(), user.user_id, id, input).await {
         Ok(Some(t)) => Ok(Json(t)),
         Ok(None) => Err(Status::NotFound),
         Err(_) => Err(Status::InternalServerError),
@@ -78,34 +89,38 @@ async fn test_fire(
     user: CurrentUser,
     db: &State<DatabaseConnection>,
     http_client: &State<reqwest::Client>,
+    limiter: &State<TestFireLimiter>,
     id: &str,
-) -> Json<serde_json::Value> {
+) -> Result<Json<serde_json::Value>, Status> {
+    if !limiter.allow(user.user_id) {
+        return Err(Status::TooManyRequests);
+    }
     let Ok(id) = Uuid::parse_str(id) else {
-        return Json(serde_json::json!({ "ok": false, "error": "Invalid UUID" }));
+        return Ok(Json(
+            serde_json::json!({ "ok": false, "error": "Invalid UUID" }),
+        ));
     };
 
     let target = match alert_target_service::find_raw_by_id(db.inner(), user.user_id, id).await {
         Ok(Some(t)) => t,
         Ok(None) => {
-            return Json(serde_json::json!({ "ok": false, "error": "Alert target not found" }));
+            return Ok(Json(
+                serde_json::json!({ "ok": false, "error": "Alert target not found" }),
+            ));
         }
         Err(e) => {
-            return Json(
+            return Ok(Json(
                 serde_json::json!({ "ok": false, "error": format!("Database error: {e}") }),
-            );
+            ));
         }
     };
 
-    match webhook_dispatcher::dispatch_test(http_client.inner(), &target).await {
-        Ok(status_code) => Json(serde_json::json!({
-            "ok": true,
-            "statusCode": status_code
-        })),
-        Err(e) => Json(serde_json::json!({
-            "ok": false,
-            "error": format!("{e}")
-        })),
-    }
+    Ok(Json(
+        match webhook_dispatcher::dispatch_test(http_client.inner(), &target).await {
+            Ok(status_code) => serde_json::json!({ "ok": true, "statusCode": status_code }),
+            Err(e) => serde_json::json!({ "ok": false, "error": format!("{e}") }),
+        },
+    ))
 }
 
 pub fn routes() -> Vec<Route> {

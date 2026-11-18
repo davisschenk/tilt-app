@@ -12,6 +12,7 @@ pub mod sessions;
 pub mod tosna_service;
 pub mod user_service;
 pub mod webhook_dispatcher;
+pub mod webhook_guard;
 
 use sea_orm::DbErr;
 
