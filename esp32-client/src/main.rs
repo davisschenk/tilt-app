@@ -3,6 +3,7 @@ mod buffer;
 mod config;
 mod http;
 mod ota;
+mod ota_logic;
 mod protocol;
 mod provision;
 mod tilt;
@@ -227,6 +228,7 @@ fn run() -> Result<()> {
 
     let scan_interval = Duration::from_secs(cfg.scan_interval_secs as u64);
     let start_time = Instant::now();
+    let mut slot_confirmed = false;
 
     log::info!("Entering main scan-upload loop");
 
@@ -276,6 +278,18 @@ fn run() -> Result<()> {
 
         // Phase 5: Feed watchdog — always, regardless of success/failure
         feed_watchdog_or_warn();
+
+        // The image survived init and a full scan/upload cycle: confirm it so the
+        // bootloader stops treating it as pending (rollback protection after OTA).
+        if !slot_confirmed {
+            match esp_idf_svc::ota::EspOta::new().and_then(|mut o| o.mark_running_slot_valid()) {
+                Ok(()) => {
+                    slot_confirmed = true;
+                    log::info!("Running firmware marked valid");
+                }
+                Err(e) => log::warn!("Could not mark running slot valid: {:?}", e),
+            }
+        }
 
         // Phase 6: Sleep for the remainder of the scan interval.
         // The BLE scan phase already consumed scan_interval_secs, so we only
@@ -411,8 +425,8 @@ fn run_health_phase(
 /// Phase 4: Check for an OTA firmware update every `ota_check_interval_cycles` scans.
 ///
 /// Fetches the server's OTA manifest and compares the `version` field against the
-/// running firmware version. If a newer version is available and the `url` field is
-/// a valid HTTP/HTTPS URL, downloads and flashes the firmware then reboots.
+/// running firmware version. If a strictly newer, correctly signed image is advertised,
+/// downloads and flashes it (verifying size and SHA-256), then reboots.
 ///
 /// Returns `Err` if the OTA manifest is missing required fields or the URL scheme
 /// is invalid. Network failures are logged and swallowed (return `Ok(())`).
@@ -442,10 +456,42 @@ fn run_ota_phase(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("OTA response missing 'version' field"))?;
 
+    // Only ever move forward. This also prevents downgrades and update loops when the
+    // advertised version is bogus or unparsable.
+    if !ota_logic::is_newer(server_version, config::FIRMWARE_VERSION) {
+        log::debug!(
+            "OTA: no newer firmware (server={}, current={})",
+            server_version,
+            config::FIRMWARE_VERSION
+        );
+        feed_watchdog_or_warn();
+        return Ok(());
+    }
+
+    let Some(public_key) = config::OTA_PUBLIC_KEY_HEX else {
+        log::warn!(
+            "OTA: version {} available but this build has no signing key; refusing to update",
+            server_version
+        );
+        return Ok(());
+    };
+
     let firmware_url = body
         .get("url")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("OTA response missing 'url' field"))?;
+    let sha256 = body
+        .get("sha256")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("OTA response missing 'sha256' field"))?;
+    let size = body
+        .get("size")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| anyhow::anyhow!("OTA response missing 'size' field"))?;
+    let Some(signature) = body.get("signature").and_then(|v| v.as_str()) else {
+        log::warn!("OTA: server firmware {} is unsigned; refusing to update", server_version);
+        return Ok(());
+    };
 
     // The server may advertise a relative path (bundled firmware); resolve it
     // against the server URL we are already configured with.
@@ -460,18 +506,18 @@ fn run_ota_phase(
         anyhow::bail!("OTA firmware URL must be HTTP/HTTPS, got: '{}'", firmware_url);
     }
 
-    if server_version == config::FIRMWARE_VERSION {
-        log::debug!("OTA: firmware up to date ({})", config::FIRMWARE_VERSION);
-        feed_watchdog_or_warn();
-        return Ok(());
-    }
-
     log::info!(
         "OTA: server version='{}' current='{}', starting update",
         server_version, config::FIRMWARE_VERSION
     );
 
-    match ota::OtaUpdater::perform_update(firmware_url) {
+    let target = ota::OtaTarget {
+        version: server_version,
+        size,
+        sha256_hex: sha256,
+        signature_hex: signature,
+    };
+    match ota::OtaUpdater::perform_update(firmware_url, &target, public_key) {
         Ok(()) => {
             log::info!("OTA complete, rebooting");
             esp_idf_svc::hal::reset::restart();

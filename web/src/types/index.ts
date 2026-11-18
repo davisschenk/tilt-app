@@ -310,4 +310,5 @@ export interface FirmwareManifest {
     merged: FirmwareFile;
     app: FirmwareFile;
   };
+  signature?: string;
 }

@@ -13,3 +13,4 @@ uploads/
 # Built firmware images (produced by `just esp32-release`)
 firmware-dist/*
 !firmware-dist/.gitkeep
+esp32-client/sdkconfig.partitions

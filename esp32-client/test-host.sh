@@ -22,6 +22,7 @@ edition = "2021"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
+ed25519-compact = { version = "2", default-features = false }
 EOF
 
 # Pin to stable toolchain so we don't pick up the esp toolchain
@@ -33,10 +34,12 @@ EOF
 cp "$SCRIPT_DIR/src/tilt.rs" "$TEST_DIR/src/tilt.rs"
 cp "$SCRIPT_DIR/src/buffer.rs" "$TEST_DIR/src/buffer.rs"
 cp "$SCRIPT_DIR/src/protocol.rs" "$TEST_DIR/src/protocol.rs"
+cp "$SCRIPT_DIR/src/ota_logic.rs" "$TEST_DIR/src/ota_logic.rs"
 cat > "$TEST_DIR/src/lib.rs" << 'EOF'
 pub mod tilt;
 pub mod buffer;
 pub mod protocol;
+pub mod ota_logic;
 EOF
 
 echo "Running tests in $TEST_DIR ..."

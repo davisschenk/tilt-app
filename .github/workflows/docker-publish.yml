@@ -47,7 +47,16 @@ jobs:
         run: command -v espflash >/dev/null || cargo install espflash --locked --version 3.2.0
 
       - name: Build firmware images
-        run: ./esp32-client/scripts/release.sh
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          if [ -n "$OTA_SIGNING_KEY" ]; then
+            umask 077
+            printf '%s\n' "$OTA_SIGNING_KEY" > "$RUNNER_TEMP/ota-signing.pem"
+            export OTA_SIGNING_KEY_FILE="$RUNNER_TEMP/ota-signing.pem"
+          fi
+          ./esp32-client/scripts/release.sh
+          rm -f "$RUNNER_TEMP/ota-signing.pem"
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4

@@ -47,3 +47,7 @@ CONFIG_ESP_TASK_WDT_TIMEOUT_S=120
 # via esp_task_wdt_add() and feed it between scan chunks instead.
 CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
 CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
+
+# OTA rollback: a new image must call mark_running_slot_valid() (done after the first
+# completed scan cycle) or the bootloader reverts to the previous slot on reboot.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
