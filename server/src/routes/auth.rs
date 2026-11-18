@@ -178,6 +178,9 @@ pub async fn callback(
             .same_site(SameSite::Lax)
             .max_age(Duration::days(1))
             .http_only(true)
+            .secure(crate::startup::cookie_secure(
+                &std::env::var("AUTHENTIK_REDIRECT_URL").unwrap_or_default(),
+            ))
             .build(),
     );
 

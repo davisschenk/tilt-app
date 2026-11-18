@@ -27,10 +27,7 @@ impl<'r> FromRequest<'r> for CurrentUser {
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         // Auth disabled: inject a fixed dev user. All requests succeed.
-        if AuthMode::from_env()
-            .map(|m| m.is_disabled())
-            .unwrap_or(true)
-        {
+        if AuthMode::of(req).is_disabled() {
             let db = match req.guard::<&rocket::State<DatabaseConnection>>().await {
                 Outcome::Success(db) => db,
                 _ => return Outcome::Error((Status::InternalServerError, ())),

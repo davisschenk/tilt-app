@@ -59,7 +59,6 @@ impl Harness {
         // SAFETY: this module holds the only test that reads these variables, so
         // nothing else in the process races with the writes.
         unsafe {
-            std::env::set_var("AUTH_MODE", "oidc");
             std::env::set_var("UPLOAD_DIR", &upload_dir);
         }
 
@@ -68,6 +67,7 @@ impl Harness {
 
         let rocket = rocket::build()
             .manage(db.clone())
+            .manage(crate::auth_mode::AuthMode::Oidc)
             .manage(reqwest::Client::new())
             .manage(crate::fairings::rate_limit::TestFireLimiter::new())
             .mount("/api/v1", routes::hydrometers::routes())

@@ -58,6 +58,11 @@ auth: oidc https://auth.example.com/...
 
 `AUTH_MODE=oidc` with missing `AUTHENTIK_*` env vars causes the server to refuse to start. Production compose defaults to `oidc`.
 
+Startup is strict about unsafe configs:
+- An unset `AUTH_MODE` means `oidc` (auth enforced), not `disabled`.
+- `AUTH_MODE=disabled` additionally needs `AUTH_DISABLED_ACK=true` (already in `.env.example`). If you see "refusing to start ... AUTH_DISABLED_ACK", add that line to your `.env`. The production compose file forces it to `false`.
+- In `oidc` mode the server also refuses to start if `FRONTEND_URL` is empty, `ROCKET_SECRET_KEY` is empty or still the `CHANGE_ME` placeholder, or `AUTHENTIK_REDIRECT_URL` is plain http outside localhost. The session cookie is marked `Secure` whenever the redirect URL is not plain http.
+
 ## Port allocation
 
 Worktrees get free ports automatically on first `just up`. Ports stick (recorded in `.env`) until you `just down --reset`. There's no manual port table.
