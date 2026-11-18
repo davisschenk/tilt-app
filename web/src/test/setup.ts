@@ -1,7 +1,9 @@
 import "@testing-library/jest-dom/vitest"
 import { afterAll, afterEach, beforeAll, vi } from "vitest"
-import { cleanup } from "@testing-library/react"
+import { cleanup, configure } from "@testing-library/react"
 import { server } from "./msw/server"
+
+configure({ asyncUtilTimeout: 4000 })
 
 const originalLocation = Object.getOwnPropertyDescriptor(window, "location")!
 

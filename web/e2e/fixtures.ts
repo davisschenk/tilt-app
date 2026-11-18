@@ -31,7 +31,7 @@ export async function expectAccessible(
 
 /** Fails the test on uncaught page errors or console errors (except noisy known ones). */
 export const test = base.extend<{ consoleErrors: string[] }>({
-  consoleErrors: async ({ page }, use) => {
+  consoleErrors: async ({ page }, provide) => {
     const errors: string[] = []
     page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`))
     page.on("console", (m) => {
@@ -40,7 +40,7 @@ export const test = base.extend<{ consoleErrors: string[] }>({
       if (m.location().url.endsWith("/api/v1/firmware/manifest")) return
       errors.push(`console: ${m.text()} (${m.location().url})`)
     })
-    await use(errors)
+    await provide(errors)
   },
 })
 

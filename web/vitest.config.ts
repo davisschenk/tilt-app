@@ -10,6 +10,8 @@ export default mergeConfig(
       setupFiles: ["src/test/setup.ts"],
       include: ["src/**/*.test.{ts,tsx}"],
       css: false,
+      // Interaction-heavy tests run slower with v8 coverage and many parallel jsdom workers.
+      testTimeout: 20_000,
       coverage: {
         provider: "v8",
         reporter: ["text", "json-summary", "lcov", "html"],
