@@ -21,7 +21,7 @@ pub async fn list(
     user: CurrentUser,
     db: &State<DatabaseConnection>,
 ) -> Result<Json<serde_json::Value>, Status> {
-    api_keys::list_api_keys(db.inner(), &user.user_sub)
+    api_keys::list_api_keys(db.inner(), user.user_id)
         .await
         .map(|keys| Json(serde_json::json!(keys)))
         .map_err(|_| Status::InternalServerError)
@@ -34,10 +34,16 @@ pub async fn create(
     input: Json<CreateApiKeyRequest>,
 ) -> Result<(Status, Json<serde_json::Value>), Status> {
     let req = input.into_inner();
-    api_keys::create_api_key(db.inner(), req.name, user.user_sub, req.expires_at)
-        .await
-        .map(|created| (Status::Created, Json(serde_json::json!(created))))
-        .map_err(|_| Status::InternalServerError)
+    api_keys::create_api_key(
+        db.inner(),
+        user.user_id,
+        req.name,
+        user.user_sub,
+        req.expires_at,
+    )
+    .await
+    .map(|created| (Status::Created, Json(serde_json::json!(created))))
+    .map_err(|_| Status::InternalServerError)
 }
 
 #[delete("/api-keys/<id>")]
@@ -45,7 +51,7 @@ pub async fn delete(user: CurrentUser, db: &State<DatabaseConnection>, id: &str)
     let Ok(id) = Uuid::parse_str(id) else {
         return Status::UnprocessableEntity;
     };
-    match api_keys::delete_api_key(db.inner(), id, &user.user_sub).await {
+    match api_keys::delete_api_key(db.inner(), id, user.user_id).await {
         Ok(()) => Status::NoContent,
         Err(ApiKeyError::Invalid) => Status::Forbidden,
         Err(_) => Status::InternalServerError,

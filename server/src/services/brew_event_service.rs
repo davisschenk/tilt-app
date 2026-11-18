@@ -63,11 +63,26 @@ pub async fn find_by_brew(
     Ok(responses)
 }
 
+/// Fetch an event only if it belongs to `brew_id`. Callers must already have
+/// verified that the caller owns the brew.
+pub async fn find_in_brew_raw(
+    db: &DatabaseConnection,
+    brew_id: Uuid,
+    id: Uuid,
+) -> Result<Option<brew_events::Model>, DbErr> {
+    BrewEvent::find()
+        .filter(Column::Id.eq(id))
+        .filter(Column::BrewId.eq(brew_id))
+        .one(db)
+        .await
+}
+
 pub async fn find_by_id(
     db: &DatabaseConnection,
+    brew_id: Uuid,
     id: Uuid,
 ) -> Result<Option<BrewEventResponse>, DbErr> {
-    let Some(model) = BrewEvent::find_by_id(id).one(db).await? else {
+    let Some(model) = find_in_brew_raw(db, brew_id, id).await? else {
         return Ok(None);
     };
     let attachments = attachment_service::find_by_event(db, model.id)
@@ -97,10 +112,11 @@ pub async fn create(
 
 pub async fn update(
     db: &DatabaseConnection,
+    brew_id: Uuid,
     id: Uuid,
     payload: UpdateBrewEvent,
 ) -> Result<Option<BrewEventResponse>, DbErr> {
-    let existing = BrewEvent::find_by_id(id).one(db).await?;
+    let existing = find_in_brew_raw(db, brew_id, id).await?;
     let Some(existing) = existing else {
         return Ok(None);
     };
@@ -127,7 +143,11 @@ pub async fn update(
     Ok(Some(model_to_response(updated, attachments)))
 }
 
-pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
-    let result = BrewEvent::delete_by_id(id).exec(db).await?;
+pub async fn delete(db: &DatabaseConnection, brew_id: Uuid, id: Uuid) -> Result<bool, DbErr> {
+    let result = BrewEvent::delete_many()
+        .filter(Column::Id.eq(id))
+        .filter(Column::BrewId.eq(brew_id))
+        .exec(db)
+        .await?;
     Ok(result.rows_affected > 0)
 }

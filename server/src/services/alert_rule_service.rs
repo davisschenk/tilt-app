@@ -3,6 +3,9 @@ use sea_orm::*;
 use uuid::Uuid;
 
 use crate::models::entities::alert_rules::{self, ActiveModel, Column, Entity as AlertRule};
+use crate::models::entities::alert_targets;
+use crate::services::{WriteError, alert_target_service, brew_service, hydrometer_service};
+use sea_orm::sea_query::Query;
 use shared::{AlertMetric, AlertOperator, AlertRuleResponse, CreateAlertRule, UpdateAlertRule};
 
 pub fn parse_metric(s: &str) -> AlertMetric {
@@ -41,12 +44,55 @@ fn model_to_response(model: alert_rules::Model) -> AlertRuleResponse {
     }
 }
 
+/// A rule belongs to whoever owns its alert target. Every query on rules
+/// filters through this so one user's rules never see another's data.
+fn owned_by(owner: Uuid) -> sea_orm::sea_query::SimpleExpr {
+    Column::AlertTargetId.in_subquery(
+        Query::select()
+            .column(alert_targets::Column::Id)
+            .from(alert_targets::Entity)
+            .and_where(alert_targets::Column::OwnerId.eq(owner))
+            .to_owned(),
+    )
+}
+
+/// True when every reference the caller supplied points at their own resource.
+async fn refs_are_owned(
+    db: &DatabaseConnection,
+    owner: Uuid,
+    brew_id: Option<Uuid>,
+    hydrometer_id: Option<Uuid>,
+    alert_target_id: Option<Uuid>,
+) -> Result<bool, DbErr> {
+    if let Some(id) = brew_id
+        && brew_service::find_owned(db, owner, id).await?.is_none()
+    {
+        return Ok(false);
+    }
+    if let Some(id) = hydrometer_id
+        && hydrometer_service::find_owned(db, owner, id)
+            .await?
+            .is_none()
+    {
+        return Ok(false);
+    }
+    if let Some(id) = alert_target_id
+        && alert_target_service::find_raw_by_id(db, owner, id)
+            .await?
+            .is_none()
+    {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
 pub async fn find_all(
     db: &DatabaseConnection,
+    owner: Uuid,
     brew_id: Option<Uuid>,
     hydrometer_id: Option<Uuid>,
 ) -> Result<Vec<AlertRuleResponse>, DbErr> {
-    let mut query = AlertRule::find();
+    let mut query = AlertRule::find().filter(owned_by(owner));
     if let Some(bid) = brew_id {
         query = query.filter(Column::BrewId.eq(bid));
     }
@@ -59,16 +105,32 @@ pub async fn find_all(
 
 pub async fn find_by_id(
     db: &DatabaseConnection,
+    owner: Uuid,
     id: Uuid,
 ) -> Result<Option<AlertRuleResponse>, DbErr> {
-    let model = AlertRule::find_by_id(id).one(db).await?;
+    let model = AlertRule::find_by_id(id)
+        .filter(owned_by(owner))
+        .one(db)
+        .await?;
     Ok(model.map(model_to_response))
 }
 
 pub async fn create(
     db: &DatabaseConnection,
+    owner: Uuid,
     input: CreateAlertRule,
-) -> Result<AlertRuleResponse, DbErr> {
+) -> Result<AlertRuleResponse, WriteError> {
+    if !refs_are_owned(
+        db,
+        owner,
+        input.brew_id,
+        input.hydrometer_id,
+        Some(input.alert_target_id),
+    )
+    .await?
+    {
+        return Err(WriteError::BadReference);
+    }
     let now = Utc::now().into();
     let model = ActiveModel {
         id: Set(Uuid::new_v4()),
@@ -92,12 +154,26 @@ pub async fn create(
 
 pub async fn update(
     db: &DatabaseConnection,
+    owner: Uuid,
     id: Uuid,
     input: UpdateAlertRule,
-) -> Result<Option<AlertRuleResponse>, DbErr> {
-    let Some(existing) = AlertRule::find_by_id(id).one(db).await? else {
-        return Ok(None);
-    };
+) -> Result<AlertRuleResponse, WriteError> {
+    let existing = AlertRule::find_by_id(id)
+        .filter(owned_by(owner))
+        .one(db)
+        .await?
+        .ok_or(WriteError::NotFound)?;
+    if !refs_are_owned(
+        db,
+        owner,
+        input.brew_id,
+        input.hydrometer_id,
+        input.alert_target_id,
+    )
+    .await?
+    {
+        return Err(WriteError::BadReference);
+    }
 
     let mut active: ActiveModel = existing.into();
 
@@ -134,11 +210,15 @@ pub async fn update(
     active.updated_at = Set(Utc::now().into());
 
     let updated = active.update(db).await?;
-    Ok(Some(model_to_response(updated)))
+    Ok(model_to_response(updated))
 }
 
-pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
-    let result = AlertRule::delete_by_id(id).exec(db).await?;
+pub async fn delete(db: &DatabaseConnection, owner: Uuid, id: Uuid) -> Result<bool, DbErr> {
+    let result = AlertRule::delete_many()
+        .filter(Column::Id.eq(id))
+        .filter(owned_by(owner))
+        .exec(db)
+        .await?;
     Ok(result.rows_affected > 0)
 }
 
@@ -146,12 +226,14 @@ pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
 /// Returns the raw DB models so the dispatcher can access alert_target_id directly.
 pub async fn find_triggered_rules(
     db: &DatabaseConnection,
+    owner: Uuid,
     gravity: f64,
     temperature_f: f64,
     brew_id: Option<Uuid>,
     hydrometer_id: Option<Uuid>,
 ) -> Result<Vec<alert_rules::Model>, DbErr> {
     let all_rules = AlertRule::find()
+        .filter(owned_by(owner))
         .filter(Column::Enabled.eq(true))
         .all(db)
         .await?;
@@ -214,10 +296,12 @@ pub async fn find_triggered_rules(
 /// have passed their cooldown, and whose gravity has been stable within the rule's window.
 pub async fn find_triggered_plateau_rules(
     db: &DatabaseConnection,
+    owner: Uuid,
     brew_id: Option<Uuid>,
     hydrometer_id: Option<Uuid>,
 ) -> Result<Vec<alert_rules::Model>, DbErr> {
     let plateau_rules = AlertRule::find()
+        .filter(owned_by(owner))
         .filter(Column::Enabled.eq(true))
         .filter(Column::Metric.eq("gravity_plateau"))
         .all(db)
@@ -258,7 +342,9 @@ pub async fn find_triggered_plateau_rules(
             limit: None,
         };
 
-        let readings = match crate::services::reading_service::find_filtered(db, &query).await {
+        let readings = match crate::services::reading_service::find_filtered(db, owner, &query)
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!(rule_id = %rule.id, error = %e, "Failed to fetch readings for plateau evaluation");

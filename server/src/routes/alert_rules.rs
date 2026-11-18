@@ -7,11 +7,11 @@ use uuid::Uuid;
 use shared::{AlertRuleResponse, CreateAlertRule, UpdateAlertRule};
 
 use crate::guards::current_user::CurrentUser;
-use crate::services::alert_rule_service;
+use crate::services::{WriteError, alert_rule_service};
 
 #[get("/alert-rules?<brew_id>&<hydrometer_id>")]
 async fn list(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     brew_id: Option<&str>,
     hydrometer_id: Option<&str>,
@@ -25,7 +25,7 @@ async fn list(
         .transpose()
         .map_err(|_| Status::UnprocessableEntity)?;
 
-    alert_rule_service::find_all(db.inner(), brew_id, hydrometer_id)
+    alert_rule_service::find_all(db.inner(), user.user_id, brew_id, hydrometer_id)
         .await
         .map(Json)
         .map_err(|_| Status::InternalServerError)
@@ -33,12 +33,12 @@ async fn list(
 
 #[get("/alert-rules/<id>")]
 async fn get_by_id(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     id: &str,
 ) -> Result<Json<AlertRuleResponse>, Status> {
     let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
-    match alert_rule_service::find_by_id(db.inner(), id).await {
+    match alert_rule_service::find_by_id(db.inner(), user.user_id, id).await {
         Ok(Some(r)) => Ok(Json(r)),
         Ok(None) => Err(Status::NotFound),
         Err(_) => Err(Status::InternalServerError),
@@ -47,37 +47,39 @@ async fn get_by_id(
 
 #[post("/alert-rules", data = "<input>")]
 async fn create(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     input: Json<CreateAlertRule>,
 ) -> Result<(Status, Json<AlertRuleResponse>), Status> {
-    alert_rule_service::create(db.inner(), input.into_inner())
-        .await
-        .map(|r| (Status::Created, Json(r)))
-        .map_err(|_| Status::UnprocessableEntity)
+    match alert_rule_service::create(db.inner(), user.user_id, input.into_inner()).await {
+        Ok(r) => Ok((Status::Created, Json(r))),
+        Err(WriteError::BadReference | WriteError::NotFound) => Err(Status::UnprocessableEntity),
+        Err(WriteError::Db(_)) => Err(Status::InternalServerError),
+    }
 }
 
 #[put("/alert-rules/<id>", data = "<input>")]
 async fn update(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     id: &str,
     input: Json<UpdateAlertRule>,
 ) -> Result<Json<AlertRuleResponse>, Status> {
     let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
-    match alert_rule_service::update(db.inner(), id, input.into_inner()).await {
-        Ok(Some(r)) => Ok(Json(r)),
-        Ok(None) => Err(Status::NotFound),
-        Err(_) => Err(Status::InternalServerError),
+    match alert_rule_service::update(db.inner(), user.user_id, id, input.into_inner()).await {
+        Ok(r) => Ok(Json(r)),
+        Err(WriteError::NotFound) => Err(Status::NotFound),
+        Err(WriteError::BadReference) => Err(Status::UnprocessableEntity),
+        Err(WriteError::Db(_)) => Err(Status::InternalServerError),
     }
 }
 
 #[delete("/alert-rules/<id>")]
-async fn delete_rule(_user: CurrentUser, db: &State<DatabaseConnection>, id: &str) -> Status {
+async fn delete_rule(user: CurrentUser, db: &State<DatabaseConnection>, id: &str) -> Status {
     let Ok(id) = Uuid::parse_str(id) else {
         return Status::UnprocessableEntity;
     };
-    match alert_rule_service::delete(db.inner(), id).await {
+    match alert_rule_service::delete(db.inner(), user.user_id, id).await {
         Ok(true) => Status::NoContent,
         Ok(false) => Status::NotFound,
         Err(_) => Status::InternalServerError,

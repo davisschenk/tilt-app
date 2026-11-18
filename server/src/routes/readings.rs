@@ -16,12 +16,13 @@ use crate::services::{
 
 #[post("/readings", data = "<batch>")]
 async fn create_batch(
-    _auth: AuthOrApiKey,
+    auth: AuthOrApiKey,
     _rate_limit: RateLimitGuard,
     db: &State<DatabaseConnection>,
     http_client: &State<reqwest::Client>,
     batch: Json<CreateReadingsBatch>,
 ) -> Result<(Status, Json<serde_json::Value>), Status> {
+    let owner = auth.owner_id;
     let readings: Vec<TiltReading> = batch.into_inner().0;
     if readings.is_empty() {
         return Ok((Status::Created, Json(serde_json::json!({ "count": 0 }))));
@@ -36,7 +37,7 @@ async fn create_batch(
     }
 
     for (color, batch_readings) in &grouped {
-        let hydrometer = hydrometer_service::find_or_create_by_color(db.inner(), color)
+        let hydrometer = hydrometer_service::find_or_create_by_color(db.inner(), owner, color)
             .await
             .map_err(|e| {
                 tracing::error!(color = ?color, error = %e, "Failed to find/create hydrometer");
@@ -48,9 +49,10 @@ async fn create_batch(
             continue;
         }
 
-        let active_brew = brew_service::find_active_for_hydrometer(db.inner(), hydrometer.id)
-            .await
-            .unwrap_or(None);
+        let active_brew =
+            brew_service::find_active_for_hydrometer(db.inner(), owner, hydrometer.id)
+                .await
+                .unwrap_or(None);
         let brew_id = active_brew.as_ref().map(|b| b.id);
 
         // Apply calibration offsets before storing
@@ -115,6 +117,7 @@ async fn create_batch(
                 evaluate_alerts(
                     &db_ref,
                     &client_ref,
+                    owner,
                     gravity,
                     temp_f,
                     recorded_at,
@@ -138,6 +141,7 @@ async fn create_batch(
                     tosna_service::evaluate_due_additions(
                         &db_ref,
                         &client_ref,
+                        owner,
                         bid,
                         &bname,
                         og,
@@ -157,6 +161,7 @@ async fn create_batch(
                     tosna_service::evaluate_temperature_safety(
                         &db_ref,
                         &client_ref,
+                        owner,
                         bid,
                         &bname,
                         &strain,
@@ -177,9 +182,11 @@ async fn create_batch(
 }
 
 /// Fire-and-forget alert evaluation. Errors are logged, never propagated.
+#[allow(clippy::too_many_arguments)]
 async fn evaluate_alerts(
     db: &DatabaseConnection,
     http_client: &reqwest::Client,
+    owner: Uuid,
     gravity: f64,
     temperature_f: f64,
     recorded_at: chrono::DateTime<chrono::Utc>,
@@ -188,6 +195,7 @@ async fn evaluate_alerts(
 ) {
     let triggered = match alert_rule_service::find_triggered_rules(
         db,
+        owner,
         gravity,
         temperature_f,
         brew_id,
@@ -203,7 +211,9 @@ async fn evaluate_alerts(
     };
 
     for rule in triggered {
-        let target = match alert_target_service::find_by_id_raw(db, rule.alert_target_id).await {
+        let target = match alert_target_service::find_raw_by_id(db, owner, rule.alert_target_id)
+            .await
+        {
             Ok(Some(t)) => t,
             Ok(None) => {
                 tracing::warn!(alert_target_id = %rule.alert_target_id, "Alert target not found for triggered rule");
@@ -243,7 +253,9 @@ async fn evaluate_alerts(
 
     // Evaluate plateau rules (require historical readings, handled separately)
     let plateau_triggered =
-        match alert_rule_service::find_triggered_plateau_rules(db, brew_id, hydrometer_id).await {
+        match alert_rule_service::find_triggered_plateau_rules(db, owner, brew_id, hydrometer_id)
+            .await
+        {
             Ok(rules) => rules,
             Err(e) => {
                 tracing::error!(error = %e, "Failed to query triggered plateau rules");
@@ -252,7 +264,9 @@ async fn evaluate_alerts(
         };
 
     for rule in plateau_triggered {
-        let target = match alert_target_service::find_by_id_raw(db, rule.alert_target_id).await {
+        let target = match alert_target_service::find_raw_by_id(db, owner, rule.alert_target_id)
+            .await
+        {
             Ok(Some(t)) => t,
             Ok(None) => {
                 tracing::warn!(alert_target_id = %rule.alert_target_id, "Alert target not found for plateau rule");
@@ -293,7 +307,7 @@ async fn evaluate_alerts(
 
 #[get("/readings?<brew_id>&<hydrometer_id>&<since>&<until>&<limit>")]
 async fn query(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     brew_id: Option<&str>,
     hydrometer_id: Option<&str>,
@@ -309,7 +323,7 @@ async fn query(
         limit,
     };
 
-    reading_service::find_filtered(db.inner(), &query)
+    reading_service::find_filtered(db.inner(), user.user_id, &query)
         .await
         .map(Json)
         .map_err(|e| {

@@ -9,4 +9,25 @@ pub mod hydrometer_service;
 pub mod reading_service;
 pub mod sessions;
 pub mod tosna_service;
+pub mod user_service;
 pub mod webhook_dispatcher;
+
+use sea_orm::DbErr;
+
+/// Why a write to an owned resource failed. Shared by services that validate
+/// references to other owned resources (brews, alert rules).
+#[derive(Debug)]
+pub enum WriteError {
+    /// The resource itself does not exist (or belongs to someone else).
+    NotFound,
+    /// It references a brew, hydrometer or alert target the caller does not own.
+    BadReference,
+    #[allow(dead_code)]
+    Db(DbErr),
+}
+
+impl From<DbErr> for WriteError {
+    fn from(e: DbErr) -> Self {
+        WriteError::Db(e)
+    }
+}

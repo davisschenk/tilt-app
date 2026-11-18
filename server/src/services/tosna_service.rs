@@ -145,6 +145,7 @@ pub fn lookup_strain(name: &str) -> Option<&'static YeastStrainInfo> {
 pub async fn evaluate_temperature_safety(
     db: &DatabaseConnection,
     http_client: &reqwest::Client,
+    owner: Uuid,
     brew_id: Uuid,
     brew_name: &str,
     yeast_strain: &str,
@@ -212,7 +213,7 @@ pub async fn evaluate_temperature_safety(
 
     let target = match nutrient_alert_target_id {
         None => return,
-        Some(id) => match alert_target_service::find_raw_by_id(db, id).await {
+        Some(id) => match alert_target_service::find_raw_by_id(db, owner, id).await {
             Ok(Some(t)) if t.enabled => t,
             Ok(_) => return,
             Err(e) => {
@@ -654,6 +655,7 @@ fn is_due(
 pub async fn evaluate_due_additions(
     db: &DatabaseConnection,
     http_client: &reqwest::Client,
+    owner: Uuid,
     brew_id: Uuid,
     brew_name: &str,
     og: f64,
@@ -700,7 +702,7 @@ pub async fn evaluate_due_additions(
 
     let target_opt = match nutrient_alert_target_id {
         None => None,
-        Some(id) => match alert_target_service::find_raw_by_id(db, id).await {
+        Some(id) => match alert_target_service::find_raw_by_id(db, owner, id).await {
             Ok(Some(t)) if t.enabled => Some(t),
             Ok(_) => None,
             Err(e) => {

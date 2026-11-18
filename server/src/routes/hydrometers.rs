@@ -11,10 +11,10 @@ use crate::services::hydrometer_service;
 
 #[get("/hydrometers")]
 async fn list(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
 ) -> Result<Json<Vec<HydrometerResponse>>, Status> {
-    hydrometer_service::find_all(db.inner())
+    hydrometer_service::find_all(db.inner(), user.user_id)
         .await
         .map(Json)
         .map_err(|_| Status::InternalServerError)
@@ -22,12 +22,12 @@ async fn list(
 
 #[get("/hydrometers/<id>")]
 async fn get_by_id(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     id: &str,
 ) -> Result<Json<HydrometerResponse>, Status> {
     let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
-    match hydrometer_service::find_by_id(db.inner(), id).await {
+    match hydrometer_service::find_by_id(db.inner(), user.user_id, id).await {
         Ok(Some(h)) => Ok(Json(h)),
         Ok(None) => Err(Status::NotFound),
         Err(_) => Err(Status::InternalServerError),
@@ -36,11 +36,11 @@ async fn get_by_id(
 
 #[post("/hydrometers", data = "<input>")]
 async fn create(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     input: Json<CreateHydrometer>,
 ) -> Result<(Status, Json<HydrometerResponse>), Status> {
-    hydrometer_service::create(db.inner(), input.into_inner())
+    hydrometer_service::create(db.inner(), user.user_id, input.into_inner())
         .await
         .map(|h| (Status::Created, Json(h)))
         .map_err(|_| Status::UnprocessableEntity)
@@ -48,13 +48,13 @@ async fn create(
 
 #[put("/hydrometers/<id>", data = "<input>")]
 async fn update(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     id: &str,
     input: Json<UpdateHydrometer>,
 ) -> Result<Json<HydrometerResponse>, Status> {
     let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
-    match hydrometer_service::update(db.inner(), id, input.into_inner()).await {
+    match hydrometer_service::update(db.inner(), user.user_id, id, input.into_inner()).await {
         Ok(Some(h)) => Ok(Json(h)),
         Ok(None) => Err(Status::NotFound),
         Err(_) => Err(Status::InternalServerError),
@@ -62,11 +62,11 @@ async fn update(
 }
 
 #[delete("/hydrometers/<id>")]
-async fn delete(_user: CurrentUser, db: &State<DatabaseConnection>, id: &str) -> Status {
+async fn delete(user: CurrentUser, db: &State<DatabaseConnection>, id: &str) -> Status {
     let Ok(id) = Uuid::parse_str(id) else {
         return Status::UnprocessableEntity;
     };
-    match hydrometer_service::delete(db.inner(), id).await {
+    match hydrometer_service::delete(db.inner(), user.user_id, id).await {
         Ok(true) => Status::NoContent,
         Ok(false) => Status::NotFound,
         Err(_) => Status::InternalServerError,

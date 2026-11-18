@@ -10,6 +10,7 @@ use uuid::Uuid;
 use shared::EventAttachmentResponse;
 
 use crate::guards::current_user::CurrentUser;
+use crate::routes::require_brew;
 use crate::services::{attachment_service, brew_event_service};
 
 const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
@@ -20,17 +21,18 @@ fn upload_dir() -> String {
 
 #[post("/brews/<brew_id>/events/<event_id>/attachments", data = "<upload>")]
 async fn upload(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     brew_id: &str,
     event_id: &str,
     upload: Form<TempFile<'_>>,
 ) -> Result<(Status, Json<EventAttachmentResponse>), Status> {
     let mut file = upload.into_inner();
-    let _brew_id = Uuid::parse_str(brew_id).map_err(|_| Status::UnprocessableEntity)?;
+    let brew_id = Uuid::parse_str(brew_id).map_err(|_| Status::UnprocessableEntity)?;
     let event_id = Uuid::parse_str(event_id).map_err(|_| Status::UnprocessableEntity)?;
 
-    brew_event_service::find_by_id(db.inner(), event_id)
+    require_brew(db.inner(), user.user_id, brew_id).await?;
+    brew_event_service::find_in_brew_raw(db.inner(), brew_id, event_id)
         .await
         .map_err(|_| Status::InternalServerError)?
         .ok_or(Status::NotFound)?;
@@ -95,13 +97,13 @@ async fn upload(
 
 #[get("/attachments/<id>/file")]
 async fn serve_file(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     id: &str,
 ) -> Result<(ContentType, Vec<u8>), Status> {
     let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
 
-    let model = attachment_service::find_raw_by_id(db.inner(), id)
+    let model = attachment_service::find_owned_raw(db.inner(), user.user_id, id)
         .await
         .map_err(|_| Status::InternalServerError)?
         .ok_or(Status::NotFound)?;
@@ -117,21 +119,21 @@ async fn serve_file(
     Ok((ct, bytes))
 }
 
-#[delete("/brews/<_brew_id>/events/<_event_id>/attachments/<id>")]
+#[delete("/brews/<_brew_id>/events/<event_id>/attachments/<id>")]
 async fn delete_attachment(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     _brew_id: &str,
-    _event_id: &str,
+    event_id: &str,
     id: &str,
 ) -> Status {
-    let Ok(id) = Uuid::parse_str(id) else {
+    let (Ok(id), Ok(event_id)) = (Uuid::parse_str(id), Uuid::parse_str(event_id)) else {
         return Status::UnprocessableEntity;
     };
 
-    let model = match attachment_service::find_raw_by_id(db.inner(), id).await {
-        Ok(Some(m)) => m,
-        Ok(None) => return Status::NotFound,
+    let model = match attachment_service::find_owned_raw(db.inner(), user.user_id, id).await {
+        Ok(Some(m)) if m.event_id == event_id => m,
+        Ok(_) => return Status::NotFound,
         Err(_) => return Status::InternalServerError,
     };
 

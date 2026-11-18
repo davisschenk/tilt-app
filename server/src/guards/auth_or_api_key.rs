@@ -4,36 +4,23 @@ use rocket::{
     request::{FromRequest, Outcome},
 };
 use sea_orm::DatabaseConnection;
-
-use crate::guards::current_user::SESSION_COOKIE;
-use crate::services::{
-    api_keys::{ApiKeyError, validate_api_key},
-    sessions,
-};
 use uuid::Uuid;
 
-/// A guard that accepts either a valid session cookie (CurrentUser) OR a valid API key.
-/// Used on the POST /readings endpoint so both the web UI and the Pi client can submit readings.
-pub struct AuthOrApiKey;
+use crate::guards::current_user::CurrentUser;
+use crate::services::api_keys::{ApiKeyError, validate_api_key};
+
+/// Accepts either a valid API key or a valid session, and says whose data the
+/// request acts on. Used on `POST /readings` so both the web UI and the ESP32
+/// can submit readings. `owner_id` MUST scope every query the handler runs.
+pub struct AuthOrApiKey {
+    pub owner_id: Uuid,
+}
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AuthOrApiKey {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        // Auth disabled: allow all requests through.
-        if crate::auth_mode::AuthMode::from_env()
-            .map(|m| m.is_disabled())
-            .unwrap_or(true)
-        {
-            return Outcome::Success(AuthOrApiKey);
-        }
-
-        let db = match req.guard::<&rocket::State<DatabaseConnection>>().await {
-            Outcome::Success(db) => db,
-            _ => return Outcome::Error((Status::InternalServerError, ())),
-        };
-
         // Try API key first (X-API-Key or Authorization: Bearer)
         let raw_key = req
             .headers()
@@ -46,8 +33,16 @@ impl<'r> FromRequest<'r> for AuthOrApiKey {
             .map(|s| s.to_string());
 
         if let Some(raw_key) = raw_key {
+            let db = match req.guard::<&rocket::State<DatabaseConnection>>().await {
+                Outcome::Success(db) => db,
+                _ => return Outcome::Error((Status::InternalServerError, ())),
+            };
             match validate_api_key(db, &raw_key).await {
-                Ok(_) => return Outcome::Success(AuthOrApiKey),
+                Ok(key) => {
+                    return Outcome::Success(AuthOrApiKey {
+                        owner_id: key.owner_id,
+                    });
+                }
                 Err(ApiKeyError::Expired) => return Outcome::Error((Status::Unauthorized, ())),
                 Err(ApiKeyError::Invalid) => {} // fall through to session check
                 Err(ApiKeyError::Db(_)) => {
@@ -56,28 +51,13 @@ impl<'r> FromRequest<'r> for AuthOrApiKey {
             }
         }
 
-        // Try session cookie
-        let session_id_str = match req.cookies().get_private(SESSION_COOKIE) {
-            Some(c) => c.value().to_string(),
-            None => return Outcome::Error((Status::Unauthorized, ())),
-        };
-
-        let session_id = match Uuid::parse_str(&session_id_str) {
-            Ok(id) => id,
-            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
-        };
-
-        match sessions::get_session_by_id(db, session_id).await {
-            Ok(Some(session)) => {
-                let now = chrono::Utc::now().fixed_offset();
-                if session.expires_at < now {
-                    return Outcome::Error((Status::Unauthorized, ()));
-                }
-                let _ = sessions::touch_session(db, session_id).await;
-                Outcome::Success(AuthOrApiKey)
-            }
-            Ok(None) => Outcome::Error((Status::Unauthorized, ())),
-            Err(_) => Outcome::Error((Status::InternalServerError, ())),
+        // Otherwise fall back to the session (or the dev user when auth is disabled).
+        match req.guard::<CurrentUser>().await {
+            Outcome::Success(user) => Outcome::Success(AuthOrApiKey {
+                owner_id: user.user_id,
+            }),
+            Outcome::Error(e) => Outcome::Error(e),
+            Outcome::Forward(f) => Outcome::Forward(f),
         }
     }
 }

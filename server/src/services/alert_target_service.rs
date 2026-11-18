@@ -1,7 +1,7 @@
 use sea_orm::*;
 use uuid::Uuid;
 
-use crate::models::entities::alert_targets::{self, ActiveModel, Entity as AlertTarget};
+use crate::models::entities::alert_targets::{self, ActiveModel, Column, Entity as AlertTarget};
 use shared::{AlertTargetResponse, CreateAlertTarget, UpdateAlertTarget, WebhookFormat};
 
 fn model_to_response(model: alert_targets::Model) -> AlertTargetResponse {
@@ -21,40 +21,41 @@ fn model_to_response(model: alert_targets::Model) -> AlertTargetResponse {
     }
 }
 
-pub async fn find_all(db: &DatabaseConnection) -> Result<Vec<AlertTargetResponse>, DbErr> {
-    let models = AlertTarget::find().all(db).await?;
+pub async fn find_all(
+    db: &DatabaseConnection,
+    owner: Uuid,
+) -> Result<Vec<AlertTargetResponse>, DbErr> {
+    let models = AlertTarget::find()
+        .filter(Column::OwnerId.eq(owner))
+        .all(db)
+        .await?;
     Ok(models.into_iter().map(model_to_response).collect())
 }
 
-#[allow(dead_code)]
-pub async fn find_all_raw(db: &DatabaseConnection) -> Result<Vec<alert_targets::Model>, DbErr> {
-    AlertTarget::find().all(db).await
-}
-
+/// Fetch an alert target only if `owner` owns it. Other users' ids look like misses.
 pub async fn find_raw_by_id(
     db: &DatabaseConnection,
+    owner: Uuid,
     id: Uuid,
 ) -> Result<Option<alert_targets::Model>, DbErr> {
-    AlertTarget::find_by_id(id).one(db).await
+    AlertTarget::find()
+        .filter(Column::Id.eq(id))
+        .filter(Column::OwnerId.eq(owner))
+        .one(db)
+        .await
 }
 
 pub async fn find_by_id(
     db: &DatabaseConnection,
+    owner: Uuid,
     id: Uuid,
 ) -> Result<Option<AlertTargetResponse>, DbErr> {
-    let model = AlertTarget::find_by_id(id).one(db).await?;
-    Ok(model.map(model_to_response))
-}
-
-pub async fn find_by_id_raw(
-    db: &DatabaseConnection,
-    id: Uuid,
-) -> Result<Option<alert_targets::Model>, DbErr> {
-    AlertTarget::find_by_id(id).one(db).await
+    Ok(find_raw_by_id(db, owner, id).await?.map(model_to_response))
 }
 
 pub async fn create(
     db: &DatabaseConnection,
+    owner: Uuid,
     input: CreateAlertTarget,
 ) -> Result<AlertTargetResponse, DbErr> {
     let now = chrono::Utc::now().into();
@@ -65,6 +66,7 @@ pub async fn create(
 
     let model = ActiveModel {
         id: Set(Uuid::new_v4()),
+        owner_id: Set(owner),
         name: Set(input.name),
         url: Set(input.url),
         format: Set(format_str),
@@ -79,10 +81,11 @@ pub async fn create(
 
 pub async fn update(
     db: &DatabaseConnection,
+    owner: Uuid,
     id: Uuid,
     input: UpdateAlertTarget,
 ) -> Result<Option<AlertTargetResponse>, DbErr> {
-    let Some(existing) = AlertTarget::find_by_id(id).one(db).await? else {
+    let Some(existing) = find_raw_by_id(db, owner, id).await? else {
         return Ok(None);
     };
 
@@ -113,7 +116,11 @@ pub async fn update(
     Ok(Some(model_to_response(updated)))
 }
 
-pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
-    let result = AlertTarget::delete_by_id(id).exec(db).await?;
+pub async fn delete(db: &DatabaseConnection, owner: Uuid, id: Uuid) -> Result<bool, DbErr> {
+    let result = AlertTarget::delete_many()
+        .filter(Column::Id.eq(id))
+        .filter(Column::OwnerId.eq(owner))
+        .exec(db)
+        .await?;
     Ok(result.rows_affected > 0)
 }

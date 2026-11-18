@@ -7,11 +7,12 @@ use uuid::Uuid;
 use shared::{BrewEventResponse, CreateBrewEvent, UpdateBrewEvent};
 
 use crate::guards::current_user::CurrentUser;
+use crate::routes::require_brew;
 use crate::services::{brew_event_service, brew_service};
 
 #[get("/brews/<brew_id>/events?<since>&<until>")]
 async fn list(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     brew_id: &str,
     since: Option<&str>,
@@ -26,6 +27,7 @@ async fn list(
         .map(|s| s.parse::<chrono::DateTime<chrono::Utc>>())
         .transpose()
         .map_err(|_| Status::UnprocessableEntity)?;
+    require_brew(db.inner(), user.user_id, brew_id).await?;
 
     brew_event_service::find_by_brew(db.inner(), brew_id, since, until)
         .await
@@ -35,14 +37,15 @@ async fn list(
 
 #[get("/brews/<brew_id>/events/<id>")]
 async fn get_by_id(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     brew_id: &str,
     id: &str,
 ) -> Result<Json<BrewEventResponse>, Status> {
-    let _brew_id = Uuid::parse_str(brew_id).map_err(|_| Status::UnprocessableEntity)?;
+    let brew_id = Uuid::parse_str(brew_id).map_err(|_| Status::UnprocessableEntity)?;
     let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
-    match brew_event_service::find_by_id(db.inner(), id).await {
+    require_brew(db.inner(), user.user_id, brew_id).await?;
+    match brew_event_service::find_by_id(db.inner(), brew_id, id).await {
         Ok(Some(r)) => Ok(Json(r)),
         Ok(None) => Err(Status::NotFound),
         Err(_) => Err(Status::InternalServerError),
@@ -51,12 +54,13 @@ async fn get_by_id(
 
 #[post("/brews/<brew_id>/events", data = "<input>")]
 async fn create(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     brew_id: &str,
     input: Json<CreateBrewEvent>,
 ) -> Result<(Status, Json<BrewEventResponse>), Status> {
     let brew_id = Uuid::parse_str(brew_id).map_err(|_| Status::UnprocessableEntity)?;
+    require_brew(db.inner(), user.user_id, brew_id).await?;
     let mut payload = input.into_inner();
     payload.brew_id = brew_id;
 
@@ -65,7 +69,13 @@ async fn create(
         .map_err(|_| Status::UnprocessableEntity)?;
 
     if event.event_type == shared::BrewEventType::YeastPitch {
-        let _ = brew_service::update_pitch_time(db.inner(), brew_id, Some(event.event_time)).await;
+        let _ = brew_service::update_pitch_time(
+            db.inner(),
+            user.user_id,
+            brew_id,
+            Some(event.event_time),
+        )
+        .await;
     }
 
     Ok((Status::Created, Json(event)))
@@ -73,20 +83,25 @@ async fn create(
 
 #[put("/brews/<brew_id>/events/<id>", data = "<input>")]
 async fn update(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     brew_id: &str,
     id: &str,
     input: Json<UpdateBrewEvent>,
 ) -> Result<Json<BrewEventResponse>, Status> {
-    let _brew_id = Uuid::parse_str(brew_id).map_err(|_| Status::UnprocessableEntity)?;
-    let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
     let brew_id = Uuid::parse_str(brew_id).map_err(|_| Status::UnprocessableEntity)?;
-    match brew_event_service::update(db.inner(), id, input.into_inner()).await {
+    let id = Uuid::parse_str(id).map_err(|_| Status::UnprocessableEntity)?;
+    require_brew(db.inner(), user.user_id, brew_id).await?;
+    match brew_event_service::update(db.inner(), brew_id, id, input.into_inner()).await {
         Ok(Some(r)) => {
             if r.event_type == shared::BrewEventType::YeastPitch {
-                let _ =
-                    brew_service::update_pitch_time(db.inner(), brew_id, Some(r.event_time)).await;
+                let _ = brew_service::update_pitch_time(
+                    db.inner(),
+                    user.user_id,
+                    brew_id,
+                    Some(r.event_time),
+                )
+                .await;
             }
             Ok(Json(r))
         }
@@ -97,7 +112,7 @@ async fn update(
 
 #[delete("/brews/<brew_id>/events/<id>")]
 async fn delete_event(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     brew_id: &str,
     id: &str,
@@ -108,13 +123,16 @@ async fn delete_event(
     let Ok(id) = Uuid::parse_str(id) else {
         return Status::UnprocessableEntity;
     };
+    if let Err(status) = require_brew(db.inner(), user.user_id, brew_id).await {
+        return status;
+    }
     // If deleting a YeastPitch event, clear pitch_time on the brew
-    if let Ok(Some(existing)) = brew_event_service::find_by_id(db.inner(), id).await
+    if let Ok(Some(existing)) = brew_event_service::find_by_id(db.inner(), brew_id, id).await
         && existing.event_type == shared::BrewEventType::YeastPitch
     {
-        let _ = brew_service::update_pitch_time(db.inner(), brew_id, None).await;
+        let _ = brew_service::update_pitch_time(db.inner(), user.user_id, brew_id, None).await;
     }
-    match brew_event_service::delete(db.inner(), id).await {
+    match brew_event_service::delete(db.inner(), brew_id, id).await {
         Ok(true) => Status::NoContent,
         Ok(false) => Status::NotFound,
         Err(_) => Status::InternalServerError,

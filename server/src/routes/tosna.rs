@@ -22,7 +22,7 @@ fn product_key(p: NutrientProduct) -> String {
 
 #[get("/brews/<brew_id>/nutrient-schedule")]
 async fn get_nutrient_schedule(
-    _user: CurrentUser,
+    user: CurrentUser,
     db: &State<DatabaseConnection>,
     brew_id: &str,
 ) -> Result<Json<NutrientScheduleResponse>, (Status, Json<serde_json::Value>)> {
@@ -33,7 +33,7 @@ async fn get_nutrient_schedule(
         )
     })?;
 
-    let brew = brew_service::find_by_id(db.inner(), id)
+    let brew = brew_service::find_by_id(db.inner(), user.user_id, id)
         .await
         .map_err(|_| {
             (

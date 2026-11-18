@@ -7,10 +7,12 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::auth_mode::{AuthMode, dev_user};
-use crate::services::sessions;
+use crate::services::{sessions, user_service};
 
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
+    /// Primary key of the `users` row; scope every query by this.
+    pub user_id: Uuid,
     pub session_id: Uuid,
     pub user_sub: String,
     pub email: String,
@@ -29,12 +31,22 @@ impl<'r> FromRequest<'r> for CurrentUser {
             .map(|m| m.is_disabled())
             .unwrap_or(true)
         {
-            return Outcome::Success(CurrentUser {
-                session_id: dev_user::SESSION_ID,
-                user_sub: dev_user::SUB.to_string(),
-                email: dev_user::EMAIL.to_string(),
-                name: dev_user::NAME.to_string(),
-            });
+            let db = match req.guard::<&rocket::State<DatabaseConnection>>().await {
+                Outcome::Success(db) => db,
+                _ => return Outcome::Error((Status::InternalServerError, ())),
+            };
+            return match user_service::resolve(db, dev_user::SUB, dev_user::EMAIL, dev_user::NAME)
+                .await
+            {
+                Ok(u) => Outcome::Success(CurrentUser {
+                    user_id: u.id,
+                    session_id: dev_user::SESSION_ID,
+                    user_sub: dev_user::SUB.to_string(),
+                    email: dev_user::EMAIL.to_string(),
+                    name: dev_user::NAME.to_string(),
+                }),
+                Err(_) => Outcome::Error((Status::InternalServerError, ())),
+            };
         }
 
         let cookie = req.cookies().get_private(SESSION_COOKIE);
@@ -60,7 +72,19 @@ impl<'r> FromRequest<'r> for CurrentUser {
                     return Outcome::Error((Status::Unauthorized, ()));
                 }
                 let _ = sessions::touch_session(db, session_id).await;
+                let user = match user_service::resolve(
+                    db,
+                    &session.user_sub,
+                    &session.email,
+                    &session.name,
+                )
+                .await
+                {
+                    Ok(u) => u,
+                    Err(_) => return Outcome::Error((Status::InternalServerError, ())),
+                };
                 Outcome::Success(CurrentUser {
+                    user_id: user.id,
                     session_id,
                     user_sub: session.user_sub,
                     email: session.email,

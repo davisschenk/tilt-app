@@ -38,8 +38,14 @@ async fn latest_reading_for(
     ))
 }
 
-pub async fn find_all(db: &DatabaseConnection) -> Result<Vec<HydrometerResponse>, DbErr> {
-    let models = Hydrometer::find().all(db).await?;
+pub async fn find_all(
+    db: &DatabaseConnection,
+    owner: Uuid,
+) -> Result<Vec<HydrometerResponse>, DbErr> {
+    let models = Hydrometer::find()
+        .filter(Column::OwnerId.eq(owner))
+        .all(db)
+        .await?;
     let mut results = Vec::with_capacity(models.len());
     for model in models {
         let color = TiltColor::parse(&model.color).unwrap_or(TiltColor::Red);
@@ -51,9 +57,10 @@ pub async fn find_all(db: &DatabaseConnection) -> Result<Vec<HydrometerResponse>
 
 pub async fn find_by_id(
     db: &DatabaseConnection,
+    owner: Uuid,
     id: Uuid,
 ) -> Result<Option<HydrometerResponse>, DbErr> {
-    let Some(model) = Hydrometer::find_by_id(id).one(db).await? else {
+    let Some(model) = find_owned(db, owner, id).await? else {
         return Ok(None);
     };
     let color = TiltColor::parse(&model.color).unwrap_or(TiltColor::Red);
@@ -63,10 +70,12 @@ pub async fn find_by_id(
 
 pub async fn create(
     db: &DatabaseConnection,
+    owner: Uuid,
     input: CreateHydrometer,
 ) -> Result<HydrometerResponse, DbErr> {
     let model = ActiveModel {
         id: Set(Uuid::new_v4()),
+        owner_id: Set(owner),
         color: Set(format!("{:?}", input.color)),
         name: Set(input.name),
         temp_offset_f: Set(0.0),
@@ -80,10 +89,11 @@ pub async fn create(
 
 pub async fn update(
     db: &DatabaseConnection,
+    owner: Uuid,
     id: Uuid,
     input: UpdateHydrometer,
 ) -> Result<Option<HydrometerResponse>, DbErr> {
-    let existing = Hydrometer::find_by_id(id).one(db).await?;
+    let existing = find_owned(db, owner, id).await?;
     let Some(existing) = existing else {
         return Ok(None);
     };
@@ -108,16 +118,35 @@ pub async fn update(
     Ok(Some(model_to_response(updated, latest)))
 }
 
-pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
-    let result = Hydrometer::delete_by_id(id).exec(db).await?;
+pub async fn delete(db: &DatabaseConnection, owner: Uuid, id: Uuid) -> Result<bool, DbErr> {
+    let result = Hydrometer::delete_many()
+        .filter(Column::Id.eq(id))
+        .filter(Column::OwnerId.eq(owner))
+        .exec(db)
+        .await?;
     Ok(result.rows_affected > 0)
+}
+
+/// Fetch a hydrometer only if `owner` owns it. Other users' ids look like misses.
+pub async fn find_owned(
+    db: &DatabaseConnection,
+    owner: Uuid,
+    id: Uuid,
+) -> Result<Option<hydrometers::Model>, DbErr> {
+    Hydrometer::find()
+        .filter(Column::Id.eq(id))
+        .filter(Column::OwnerId.eq(owner))
+        .one(db)
+        .await
 }
 
 pub async fn find_by_color(
     db: &DatabaseConnection,
+    owner: Uuid,
     color: &shared::TiltColor,
 ) -> Result<Option<hydrometers::Model>, DbErr> {
     Hydrometer::find()
+        .filter(Column::OwnerId.eq(owner))
         .filter(Column::Color.eq(format!("{:?}", color)))
         .one(db)
         .await
@@ -125,13 +154,15 @@ pub async fn find_by_color(
 
 pub async fn find_or_create_by_color(
     db: &DatabaseConnection,
+    owner: Uuid,
     color: &shared::TiltColor,
 ) -> Result<hydrometers::Model, DbErr> {
-    if let Some(existing) = find_by_color(db, color).await? {
+    if let Some(existing) = find_by_color(db, owner, color).await? {
         return Ok(existing);
     }
     let model = ActiveModel {
         id: Set(Uuid::new_v4()),
+        owner_id: Set(owner),
         color: Set(format!("{:?}", color)),
         name: Set(None),
         temp_offset_f: Set(0.0),

@@ -10,3 +10,4 @@ pub use super::event_attachments::Entity as EventAttachments;
 pub use super::hydrometers::Entity as Hydrometers;
 pub use super::readings::Entity as Readings;
 pub use super::user_sessions::Entity as UserSessions;
+pub use super::users::Entity as Users;
