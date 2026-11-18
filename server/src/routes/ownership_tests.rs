@@ -1062,6 +1062,63 @@ async fn limits_scenario(h: &Harness) {
         Status::TooManyRequests,
         "backdated reading"
     );
+    // 100,000 readings with the same timestamp must not hang the chart query: the
+    // bucket width used to round to zero and the downsampler looped forever.
+    let same_ts = tokio::time::timeout(
+        std::time::Duration::from_secs(20),
+        h.get(&format!("/readings?hydrometer_id={hc}"), &c),
+    )
+    .await
+    .expect("readings query with identical timestamps must finish");
+    assert_eq!(same_ts.0, Status::Ok);
+    assert!(
+        !same_ts.1.as_array().unwrap().is_empty() && same_ts.1.as_array().unwrap().len() <= 5_001,
+        "identical timestamps collapse to a few points"
+    );
+
+    // Long brews are downsampled while streaming: ~12,000 evenly spaced readings
+    // come back as about 5,000, in time order, covering the whole range.
+    let d = login(&h.db, "sub-user-d", "d@example.com").await;
+    let (_, hd) = h.post("/hydrometers", &d, json!({"color": "Purple"})).await;
+    let hd = id(&hd);
+    h.db.execute_unprepared(&format!(
+        "INSERT INTO readings (id, hydrometer_id, temperature_f, gravity, recorded_at, created_at) \
+         SELECT gen_random_uuid(), '{hd}', 68, 1.05 - i * 0.000001, \
+                timestamptz '2026-01-01 00:00:00+00' + i * interval '30 seconds', now() \
+         FROM generate_series(0, 11999) AS i"
+    ))
+    .await
+    .unwrap();
+    let (s, rs) = h.get(&format!("/readings?hydrometer_id={hd}"), &d).await;
+    assert_eq!(s, Status::Ok);
+    let rs = rs.as_array().unwrap();
+    assert!(
+        (4_500..=5_001).contains(&rs.len()),
+        "downsampled to ~5000, got {}",
+        rs.len()
+    );
+    let times: Vec<&str> = rs
+        .iter()
+        .map(|r| r["recordedAt"].as_str().unwrap())
+        .collect();
+    assert!(
+        times.windows(2).all(|w| w[0] < w[1]),
+        "points are in strictly increasing time order"
+    );
+    assert!(
+        times[0] < "2026-01-01T00:02",
+        "starts at the beginning of the range"
+    );
+    assert!(
+        *times.last().unwrap() > "2026-01-05T00:00",
+        "reaches the end of the range (~4.2 days)"
+    );
+    // A caller-supplied limit still bounds the rows exactly.
+    let (_, rs) = h
+        .get(&format!("/readings?hydrometer_id={hd}&limit=10"), &d)
+        .await;
+    assert_eq!(rs.as_array().unwrap().len(), 10, "limit is honoured");
+
     // Other accounts still ingest.
     assert_eq!(
         h.post("/readings", &h.a, reading("Red")).await.0,
