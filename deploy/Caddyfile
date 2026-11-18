@@ -1,0 +1,11 @@
+# TLS-terminating proxy for the optional `proxy` compose profile.
+# Caddy obtains and renews certificates automatically for SITE_ADDRESS.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	reverse_proxy server:8000 {
+		# Overwrite (never forward) any client-supplied value, so the server can trust
+		# this header; set ROCKET_IP_HEADER=X-Real-IP on the server to use it.
+		header_up X-Real-IP {remote_host}
+	}
+}
