@@ -3,8 +3,14 @@ name: Build and Publish Docker Image
 on:
   push:
     branches: [master]
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+    secrets:
+      OTA_SIGNING_KEY:
+        required: true
 
 env:
   REGISTRY: ghcr.io
@@ -16,7 +22,7 @@ jobs:
   firmware:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # attach images to GitHub releases
+      contents: read
 
     steps:
       - name: Checkout
@@ -49,7 +55,13 @@ jobs:
       - name: Build firmware images
         env:
           OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+          TILT_RELEASE_VERSION: ${{ inputs.version }}
         run: |
+          trap 'rm -f "$RUNNER_TEMP/ota-signing.pem"' EXIT
+          if [ -n "$TILT_RELEASE_VERSION" ] && [ -z "$OTA_SIGNING_KEY" ]; then
+            echo "A signed release requires OTA_SIGNING_KEY" >&2
+            exit 1
+          fi
           if [ -n "$OTA_SIGNING_KEY" ]; then
             umask 077
             printf '%s\n' "$OTA_SIGNING_KEY" > "$RUNNER_TEMP/ota-signing.pem"
@@ -66,12 +78,6 @@ jobs:
             firmware-dist/*.bin
             firmware-dist/manifest.json
           if-no-files-found: error
-
-      - name: Attach firmware to GitHub release
-        if: github.event_name == 'release'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" firmware-dist/*.bin firmware-dist/manifest.json --clobber
 
   build-and-push:
     needs: firmware
@@ -103,9 +109,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-
-            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ inputs.version != '' }}
+            type=raw,value=edge,enable=${{ inputs.version == '' }}
+            type=sha,prefix=sha-,enable=${{ inputs.version == '' }}
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

@@ -149,3 +149,31 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 [AGPL-3.0](LICENSE) — If you host a modified version of this software as a service, you must release your modifications under the same license.
+
+## Automated releases
+
+In GitHub Actions, open **Release → Run workflow**, select **master**, and choose
+the version increment: **patch** (default), **minor**, or **major**. The workflow
+calculates the next version from the highest existing stable `vX.Y.Z` tag;
+for example, patch changes `1.0.0` to `1.0.1`, minor to `1.1.0`, and major to
+`2.0.0`. Release runs are serialized so concurrent requests cannot choose the
+same version.
+
+The workflow runs the Rust formatting, lint and test checks and builds the web
+frontend. It then builds signed ESP32 firmware, bundles the same firmware into
+the server image, and publishes `ghcr.io/davisschenk/tilt-app:<version>` and
+`latest`. Finally it creates the `v<version>` GitHub release with generated
+release notes, flash and OTA images, `manifest.json`, and `SHA256SUMS`.
+
+The repository's `OTA_SIGNING_KEY` Actions secret must contain the existing
+Ed25519 private key in PEM format. Keep that key stable so installed devices
+continue to trust OTA updates. Release builds embed the calculated version in the
+firmware and its manifest; local builds use the ESP32 crate version.
+
+Merges to master publish development images as `edge` and `sha-<commit>`,
+leaving `latest` for tested releases. Creating a GitHub
+release by hand does not start a second image build. A release does not deploy
+or restart the homelab service; deployment remains managed by the homelab repo.
+If publishing fails before release creation, rerun the failed jobs for the same
+workflow run. Completed releases are immutable by convention; use a new version
+for subsequent changes.

@@ -25,7 +25,7 @@ fi
 
 cargo build --release
 
-VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*= *"\(.*\)"/\1/')
+VERSION=${TILT_RELEASE_VERSION:-$(grep -m1 '^version' Cargo.toml | sed 's/.*= *"\(.*\)"/\1/')}
 mkdir -p "$OUT"
 MERGED="tilt-esp32-$VERSION-merged.bin"
 APP="tilt-esp32-$VERSION-app.bin"
