@@ -142,6 +142,27 @@ impl Harness {
         (status, json)
     }
 
+    /// Send a request authenticated by an API key (as scanner firmware does),
+    /// optionally naming the scanner device.
+    async fn call_with_key(
+        &self,
+        method: Method,
+        uri: &str,
+        key: &str,
+        scanner: Option<&str>,
+        body: Value,
+    ) -> Status {
+        let mut req = self
+            .client
+            .req(method, format!("/api/v1{uri}"))
+            .header(Header::new("X-API-Key", key.to_owned()))
+            .json(&body);
+        if let Some(device) = scanner {
+            req = req.header(Header::new("X-Scanner-Id", device.to_owned()));
+        }
+        req.dispatch().await.status()
+    }
+
     async fn get(&self, uri: &str, who: &Cookie<'static>) -> (Status, Value) {
         self.call(Method::Get, uri, Some(who), None).await
     }
@@ -186,6 +207,40 @@ fn reading(color: &str) -> Value {
         "rssi": -60,
         "recordedAt": "2026-01-01T00:00:00Z"
     }])
+}
+
+/// A scanner heartbeat body for `device`.
+fn heartbeat(device: &str) -> Value {
+    json!({"deviceId": device, "firmwareVersion": "v1", "uptimeSeconds": 100,
+           "wifiRssi": -50, "scanIntervalSeconds": 60, "bufferedReadings": 0,
+           "scanOk": true, "uploadOk": true})
+}
+
+/// Put an attachment file on disk under `event_id` and its row in the database,
+/// as an upload would. Returns the attachment id and its storage path.
+async fn seed_attachment(
+    h: &Harness,
+    event_id: &str,
+    filename: &str,
+    bytes: &[u8],
+) -> (Uuid, String) {
+    let att_id = Uuid::new_v4();
+    let storage_path = format!("{event_id}/{att_id}_{filename}");
+    std::fs::create_dir_all(h.upload_dir.join(event_id)).unwrap();
+    std::fs::write(h.upload_dir.join(&storage_path), bytes).unwrap();
+    event_attachments::ActiveModel {
+        id: Set(att_id),
+        event_id: Set(event_id.parse().unwrap()),
+        filename: Set(filename.into()),
+        storage_path: Set(storage_path.clone()),
+        content_type: Set("image/png".into()),
+        size_bytes: Set(bytes.len() as i64),
+        created_at: Set(chrono::Utc::now().fixed_offset()),
+    }
+    .insert(&h.db)
+    .await
+    .unwrap();
+    (att_id, storage_path)
 }
 
 #[rocket::async_test]
@@ -380,22 +435,7 @@ async fn scenario(h: &Harness) {
     );
 
     // --- Attachments ---------------------------------------------------------------
-    let att_id = Uuid::new_v4();
-    let storage_path = format!("{ev}/{att_id}_pic.png");
-    std::fs::create_dir_all(h.upload_dir.join(&ev)).unwrap();
-    std::fs::write(h.upload_dir.join(&storage_path), b"not really a png").unwrap();
-    event_attachments::ActiveModel {
-        id: Set(att_id),
-        event_id: Set(ev.parse().unwrap()),
-        filename: Set("pic.png".into()),
-        storage_path: Set(storage_path.clone()),
-        content_type: Set("image/png".into()),
-        size_bytes: Set(16),
-        created_at: Set(chrono::Utc::now().fixed_offset()),
-    }
-    .insert(&h.db)
-    .await
-    .unwrap();
+    let (att_id, storage_path) = seed_attachment(h, &ev, "pic.png", b"not really a png").await;
     assert_eq!(
         h.get(&format!("/attachments/{att_id}/file"), a).await.0,
         Status::Ok,
@@ -531,14 +571,12 @@ async fn scenario(h: &Harness) {
     );
 
     // A's key writes into A's RED hydrometer, not B's.
-    let resp = h
-        .client
-        .post("/api/v1/readings")
-        .header(Header::new("X-API-Key", raw_key.clone()))
-        .json(&reading("Red"))
-        .dispatch()
-        .await;
-    assert_eq!(resp.status(), Status::Created, "A's key ingests a reading");
+    assert_eq!(
+        h.call_with_key(Method::Post, "/readings", &raw_key, None, reading("Red"))
+            .await,
+        Status::Created,
+        "A's key ingests a reading"
+    );
     let (_, rs) = h.get(&format!("/readings?hydrometer_id={ha}"), a).await;
     assert_eq!(
         rs.as_array().unwrap().len(),
@@ -585,14 +623,18 @@ async fn scenario(h: &Harness) {
     );
 
     // A garbage key is not a way in.
-    let resp = h
-        .client
-        .post("/api/v1/readings")
-        .header(Header::new("X-API-Key", "0".repeat(64)))
-        .json(&reading("Red"))
-        .dispatch()
-        .await;
-    assert_eq!(resp.status(), Status::Unauthorized, "unknown API key");
+    assert_eq!(
+        h.call_with_key(
+            Method::Post,
+            "/readings",
+            &"0".repeat(64),
+            None,
+            reading("Red")
+        )
+        .await,
+        Status::Unauthorized,
+        "unknown API key"
+    );
 
     // --- Upload hardening ---------------------------------------------------------
     let upload = |who: &Cookie<'static>,
@@ -1195,13 +1237,16 @@ async fn brewer_features_scenario(h: &Harness) {
         .0,
         Status::UnprocessableEntity
     );
-    let heartbeat = json!({"deviceId":"scanner-a","firmwareVersion":"v1","uptimeSeconds":100,"wifiRssi":-50,"scanIntervalSeconds":60,"bufferedReadings":0,"scanOk":false,"uploadOk":true});
     assert_eq!(
-        h.post("/scanners/heartbeat", &a, heartbeat.clone()).await.0,
+        h.post("/scanners/heartbeat", &a, heartbeat("scanner-a"))
+            .await
+            .0,
         Status::NoContent
     );
     assert_eq!(
-        h.post("/scanners/heartbeat", &a, heartbeat).await.0,
+        h.post("/scanners/heartbeat", &a, heartbeat("scanner-a"))
+            .await
+            .0,
         Status::NoContent
     );
     let scanners = h.get("/scanners", &a).await.1;
@@ -1229,21 +1274,29 @@ async fn brewer_features_scenario(h: &Harness) {
 
     let (_, key) = h.post("/api-keys", &a, json!({"name":"scanner key"})).await;
     let raw = key["key"].as_str().unwrap();
-    let response=h.client.post("/api/v1/scanners/heartbeat").header(Header::new("X-API-Key",raw.to_owned())).json(&json!({"deviceId":"scanner-a","firmwareVersion":"v2","uptimeSeconds":200,"wifiRssi":-45,"scanIntervalSeconds":60,"bufferedReadings":0,"scanOk":true,"uploadOk":true})).dispatch().await;
     assert_eq!(
-        response.status(),
+        h.call_with_key(
+            Method::Post,
+            "/scanners/heartbeat",
+            raw,
+            None,
+            heartbeat("scanner-a")
+        )
+        .await,
         Status::NoContent,
         "firmware authenticates with existing API key"
     );
-    let response = h
-        .client
-        .post("/api/v1/readings")
-        .header(Header::new("X-API-Key", raw.to_owned()))
-        .header(Header::new("X-Scanner-Id", "scanner-a"))
-        .json(&reading("Blue"))
-        .dispatch()
-        .await;
-    assert_eq!(response.status(), Status::Created);
+    assert_eq!(
+        h.call_with_key(
+            Method::Post,
+            "/readings",
+            raw,
+            Some("scanner-a"),
+            reading("Blue")
+        )
+        .await,
+        Status::Created
+    );
     let row = crate::models::entities::readings::Entity::find()
         .filter(
             crate::models::entities::readings::Column::HydrometerId.eq(hd.parse::<Uuid>().unwrap()),
@@ -1315,25 +1368,10 @@ async fn brewer_features_scenario(h: &Harness) {
         "Renamed"
     );
 
-    let photo_id = Uuid::new_v4();
-    let storage_path = format!("{event_id}/{photo_id}.png");
-    std::fs::create_dir_all(h.upload_dir.join(&event_id)).unwrap();
-    std::fs::write(h.upload_dir.join(&storage_path), b"\x89PNG\r\n\x1a\nphoto").unwrap();
-    event_attachments::ActiveModel {
-        id: Set(photo_id),
-        event_id: Set(event_id.parse().unwrap()),
-        filename: Set("photo.png".into()),
-        storage_path: Set(storage_path),
-        content_type: Set("image/png".into()),
-        size_bytes: Set(13),
-        created_at: Set(chrono::Utc::now().into()),
-    }
-    .insert(&h.db)
-    .await
-    .unwrap();
-    let photo_uri = format!("/api/v1/reports/{token}/photos/{photo_id}");
+    let (photo_id, _) = seed_attachment(h, &event_id, "photo.png", b"\x89PNG\r\n\x1a\nphoto").await;
+    let photo_uri = format!("/reports/{token}/photos/{photo_id}");
     assert_eq!(
-        h.client.get(&photo_uri).dispatch().await.status(),
+        h.call(Method::Get, &photo_uri, None, None).await.0,
         Status::NotFound,
         "unselected photo is private"
     );
@@ -1350,7 +1388,7 @@ async fn brewer_features_scenario(h: &Harness) {
         .0,
         Status::Ok
     );
-    let response = h.client.get(&photo_uri).dispatch().await;
+    let response = h.client.get(format!("/api/v1{photo_uri}")).dispatch().await;
     assert_eq!(response.status(), Status::Ok);
     assert_eq!(
         response.headers().get_one("Cache-Control"),
@@ -1373,7 +1411,7 @@ async fn brewer_features_scenario(h: &Harness) {
         Status::NotFound
     );
     assert_eq!(
-        h.client.get(&photo_uri).dispatch().await.status(),
+        h.call(Method::Get, &photo_uri, None, None).await.0,
         Status::NotFound,
         "revocation also removes public photo access"
     );
@@ -1434,7 +1472,7 @@ async fn full_footprint(h: &Harness, sub: &str, email: &str, color: &str) -> Foo
     let c = login(&h.db, sub, email).await;
     let user_id = h.owner_of(sub).await;
 
-    // brewer_preferences
+    // brewer_preferences, scanners
     let (s, _) = h
         .put(
             "/account/preferences",
@@ -1443,15 +1481,8 @@ async fn full_footprint(h: &Harness, sub: &str, email: &str, color: &str) -> Foo
         )
         .await;
     assert_eq!(s, Status::Ok, "{sub} sets preferences");
-    // scanners
     let (s, _) = h
-        .post(
-            "/scanners/heartbeat",
-            &c,
-            json!({"deviceId": "scanner-1", "firmwareVersion": "v1", "uptimeSeconds": 1,
-                   "wifiRssi": -50, "scanIntervalSeconds": 60, "bufferedReadings": 0,
-                   "scanOk": true, "uploadOk": true}),
-        )
+        .post("/scanners/heartbeat", &c, heartbeat("scanner-1"))
         .await;
     assert_eq!(s, Status::NoContent, "{sub} scanner heartbeat");
     // hydrometers, brews
@@ -1471,15 +1502,18 @@ async fn full_footprint(h: &Harness, sub: &str, email: &str, color: &str) -> Foo
     let (s, key) = h.post("/api-keys", &c, json!({"name": "k"})).await;
     assert_eq!(s, Status::Created, "{sub} creates API key");
     let api_key = key["key"].as_str().unwrap().to_string();
-    let resp = h
-        .client
-        .post("/api/v1/readings")
-        .header(Header::new("X-API-Key", api_key.clone()))
-        .header(Header::new("X-Scanner-Id", "scanner-1"))
-        .json(&reading(color))
-        .dispatch()
-        .await;
-    assert_eq!(resp.status(), Status::Created, "{sub} posts a reading");
+    assert_eq!(
+        h.call_with_key(
+            Method::Post,
+            "/readings",
+            &api_key,
+            Some("scanner-1"),
+            reading(color)
+        )
+        .await,
+        Status::Created,
+        "{sub} posts a reading"
+    );
     // brew_events, event_attachments (+ file on disk)
     let (s, ev) = h
         .post(
@@ -1491,22 +1525,7 @@ async fn full_footprint(h: &Harness, sub: &str, email: &str, color: &str) -> Foo
         .await;
     assert_eq!(s, Status::Created, "{sub} creates event");
     let ev = id(&ev);
-    let photo_id = Uuid::new_v4();
-    let storage_path = format!("{ev}/{photo_id}.png");
-    std::fs::create_dir_all(h.upload_dir.join(&ev)).unwrap();
-    std::fs::write(h.upload_dir.join(&storage_path), b"\x89PNG\r\n\x1a\nphoto").unwrap();
-    event_attachments::ActiveModel {
-        id: Set(photo_id),
-        event_id: Set(ev.parse().unwrap()),
-        filename: Set("photo.png".into()),
-        storage_path: Set(storage_path),
-        content_type: Set("image/png".into()),
-        size_bytes: Set(13),
-        created_at: Set(chrono::Utc::now().into()),
-    }
-    .insert(&h.db)
-    .await
-    .unwrap();
+    let (photo_id, _) = seed_attachment(h, &ev, "photo.png", b"\x89PNG\r\n\x1a\nphoto").await;
     // alert_targets, alert_rules
     let (s, target) = h
         .post(
@@ -1549,73 +1568,93 @@ async fn full_footprint(h: &Harness, sub: &str, email: &str, color: &str) -> Foo
     }
 }
 
-/// Row counts, per table, of everything belonging to `user_id`.
-async fn owned_rows(db: &DatabaseConnection, user_id: Uuid, sub: &str) -> Vec<(&'static str, u64)> {
+/// Tables that hold no user data, so account deletion and export ignore them.
+/// Every other table in the schema must be covered by `owned_rows`.
+const NON_USER_TABLES: [&str; 1] = [
+    "seaql_migrations", // migration bookkeeping
+];
+
+/// Tables with an `owner_id` column pointing at the user.
+const OWNER_ID_TABLES: [&str; 7] = [
+    "brewer_preferences",
+    "scanners",
+    "hydrometers",
+    "brews",
+    "brew_reports",
+    "api_keys",
+    "alert_targets",
+];
+
+/// User-owned tables and the account export key each one appears under.
+const EXPORT_KEYS: [(&str, &str); 12] = [
+    ("users", "account"),
+    ("brewer_preferences", "preferences"),
+    ("scanners", "scanners"),
+    ("hydrometers", "hydrometers"),
+    ("brews", "brews"),
+    ("brew_reports", "brewReports"),
+    ("api_keys", "apiKeys"),
+    ("alert_targets", "alertTargets"),
+    ("alert_rules", "alertRules"),
+    ("readings", "readings"),
+    ("brew_events", "brewEvents"),
+    ("event_attachments", "attachments"),
+];
+
+/// User-owned tables intentionally left out of the export.
+const NOT_EXPORTED: [&str; 1] = [
+    "user_sessions", // login session credentials, not user content
+];
+
+/// Row counts of everything belonging to the user, keyed by table. A table can
+/// appear more than once when it is reachable by more than one path.
+async fn owned_rows(db: &DatabaseConnection, f: &Footprint) -> Vec<(&'static str, u64)> {
+    let by_id = || sea_orm::Value::from(f.user_id);
     let mut out = Vec::new();
-    for (table, sql) in [
-        ("users", "SELECT count(*) FROM users WHERE id = $1"),
+    for table in OWNER_ID_TABLES {
+        let sql = format!("SELECT count(*) FROM {table} WHERE owner_id = $1");
+        out.push((table, count(db, &sql, by_id()).await));
+    }
+    for (table, sql, value) in [
+        ("users", "SELECT count(*) FROM users WHERE id = $1", by_id()),
         (
-            "brewer_preferences",
-            "SELECT count(*) FROM brewer_preferences WHERE owner_id = $1",
-        ),
-        (
-            "scanners",
-            "SELECT count(*) FROM scanners WHERE owner_id = $1",
-        ),
-        (
-            "hydrometers",
-            "SELECT count(*) FROM hydrometers WHERE owner_id = $1",
-        ),
-        ("brews", "SELECT count(*) FROM brews WHERE owner_id = $1"),
-        (
-            "brew_reports",
-            "SELECT count(*) FROM brew_reports WHERE owner_id = $1",
-        ),
-        (
-            "api_keys",
-            "SELECT count(*) FROM api_keys WHERE owner_id = $1",
-        ),
-        (
-            "alert_targets",
-            "SELECT count(*) FROM alert_targets WHERE owner_id = $1",
+            "user_sessions",
+            "SELECT count(*) FROM user_sessions WHERE user_sub = $1",
+            f.sub.clone().into(),
         ),
         (
             "alert_rules",
             "SELECT count(*) FROM alert_rules r JOIN alert_targets t ON t.id = r.alert_target_id \
              WHERE t.owner_id = $1",
+            by_id(),
         ),
         (
             "readings",
             "SELECT count(*) FROM readings r JOIN hydrometers h ON h.id = r.hydrometer_id \
              WHERE h.owner_id = $1",
+            by_id(),
         ),
         (
-            "readings(scanner)",
+            "readings",
             "SELECT count(*) FROM readings r JOIN scanners s ON s.id = r.scanner_id \
              WHERE s.owner_id = $1",
+            by_id(),
         ),
         (
             "brew_events",
             "SELECT count(*) FROM brew_events e JOIN brews b ON b.id = e.brew_id \
              WHERE b.owner_id = $1",
+            by_id(),
         ),
         (
             "event_attachments",
             "SELECT count(*) FROM event_attachments a JOIN brew_events e ON e.id = a.event_id \
              JOIN brews b ON b.id = e.brew_id WHERE b.owner_id = $1",
+            by_id(),
         ),
     ] {
-        out.push((table, count(db, sql, user_id.into()).await));
+        out.push((table, count(db, sql, value).await));
     }
-    out.push((
-        "user_sessions",
-        count(
-            db,
-            "SELECT count(*) FROM user_sessions WHERE user_sub = $1",
-            sub.into(),
-        )
-        .await,
-    ));
     out
 }
 
@@ -1632,53 +1671,98 @@ async fn count(db: &DatabaseConnection, sql: &str, value: sea_orm::Value) -> u64
     row.try_get_by_index::<i64>(0).unwrap() as u64
 }
 
+/// Every base table in the test schema, minus `NON_USER_TABLES`.
+async fn user_tables(db: &DatabaseConnection) -> std::collections::BTreeSet<String> {
+    db.query_all(sea_orm::Statement::from_string(
+        sea_orm::DatabaseBackend::Postgres,
+        "SELECT table_name::text FROM information_schema.tables \
+         WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'",
+    ))
+    .await
+    .unwrap()
+    .into_iter()
+    .map(|r| r.try_get_by_index::<String>(0).unwrap())
+    .filter(|t| !NON_USER_TABLES.contains(&t.as_str()))
+    .collect()
+}
+
+/// Check the public report link and the photo it publishes.
+async fn assert_links(h: &Harness, f: &Footprint, want: Status, who: &str) {
+    let report = format!("/reports/{}", f.report_token);
+    let photo = format!("{report}/photos/{}", f.photo_id);
+    assert_eq!(
+        h.call(Method::Get, &report, None, None).await.0,
+        want,
+        "{who}'s published report link"
+    );
+    assert_eq!(
+        h.call(Method::Get, &photo, None, None).await.0,
+        want,
+        "{who}'s published photo link"
+    );
+}
+
 /// Account export includes, and account deletion removes, every user-owned table
 /// (including scanners, brew reports and preferences), the uploaded files, the
 /// sessions and API keys, and the published report links; another user's data
-/// is untouched.
+/// is untouched. A migration that adds a table fails this test until the table
+/// is covered here (and by `account_service`).
 async fn account_deletion_scenario(h: &Harness) {
+    use std::collections::BTreeSet;
+
     let x = full_footprint(h, "del-x", "del-x@example.com", "Green").await;
     let y = full_footprint(h, "del-y", "del-y@example.com", "Green").await;
 
-    let x_before = owned_rows(&h.db, x.user_id, &x.sub).await;
+    // Structural completeness: every table is counted, and exported or excluded on purpose.
+    let x_before = owned_rows(&h.db, &x).await;
+    let counted: BTreeSet<String> = x_before.iter().map(|(t, _)| t.to_string()).collect();
+    let schema = user_tables(&h.db).await;
+    assert_eq!(
+        schema, counted,
+        "every table must be covered by owned_rows (or listed in NON_USER_TABLES)"
+    );
+    let exported: BTreeSet<String> = EXPORT_KEYS
+        .iter()
+        .map(|(t, _)| *t)
+        .chain(NOT_EXPORTED)
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        schema, exported,
+        "every table must map to an export key (or be listed in NOT_EXPORTED)"
+    );
     for (table, n) in &x_before {
         assert!(*n > 0, "test setup: X has a row in {table}");
     }
-    let y_before = owned_rows(&h.db, y.user_id, &y.sub).await;
+    let y_before = owned_rows(&h.db, &y).await;
 
-    // Export covers the new tables too.
+    // Export covers every user-content table.
     let (s, export) = h.get("/account/export", &x.cookie).await;
     assert_eq!(s, Status::Ok, "X exports");
+    for (table, key) in EXPORT_KEYS {
+        let v = &export[key];
+        let empty = v.is_null()
+            || v.as_array().is_some_and(Vec::is_empty)
+            || v.as_object().is_some_and(serde_json::Map::is_empty);
+        assert!(!empty, "export key {key} has X's {table}");
+    }
+    assert_eq!(export["preferences"]["temperature"], "C");
     assert_eq!(
-        export["preferences"]["temperature"], "C",
-        "export has preferences"
-    );
-    let scanners = export["scanners"].as_array().unwrap();
-    assert_eq!(scanners.len(), 1, "export has X's scanner");
-    assert_eq!(
-        export["readings"][0]["scanner_id"], scanners[0]["id"],
+        export["readings"][0]["scanner_id"], export["scanners"][0]["id"],
         "exported reading links to the exported scanner"
     );
-    let reports = export["brewReports"].as_array().unwrap();
-    assert_eq!(reports.len(), 1, "export has X's published report");
-    assert_eq!(reports[0]["token"], x.report_token.as_str());
+    let report = &export["brewReports"][0];
+    assert_eq!(report["token"], x.report_token.as_str());
+    assert!(
+        report["payload"].get("readings").is_none(),
+        "report snapshots do not duplicate readings"
+    );
     assert!(
         !export.to_string().contains(&y.report_token),
         "export has none of Y's reports"
     );
 
-    // Published links work before deletion.
-    let photo = |f: &Footprint| format!("/api/v1/reports/{}/photos/{}", f.report_token, f.photo_id);
-    let report = |f: &Footprint| format!("/api/v1/reports/{}", f.report_token);
-    assert_eq!(
-        h.client.get(report(&x)).dispatch().await.status(),
-        Status::Ok
-    );
-    assert_eq!(
-        h.client.get(photo(&x)).dispatch().await.status(),
-        Status::Ok
-    );
-
+    assert_links(h, &x, Status::Ok, "X").await;
     let (s, _) = h
         .post(
             "/account/delete",
@@ -1689,7 +1773,7 @@ async fn account_deletion_scenario(h: &Harness) {
     assert_eq!(s, Status::NoContent, "X deletes their account");
 
     // Nothing of X's remains: rows, files, credentials, public links.
-    for (table, n) in owned_rows(&h.db, x.user_id, &x.sub).await {
+    for (table, n) in owned_rows(&h.db, &x).await {
         assert_eq!(n, 0, "X's {table} rows are gone");
     }
     assert!(
@@ -1701,36 +1785,23 @@ async fn account_deletion_scenario(h: &Harness) {
         Status::Unauthorized,
         "X's session no longer works"
     );
-    let resp = h
-        .client
-        .post("/api/v1/scanners/heartbeat")
-        .header(Header::new("X-API-Key", x.api_key.clone()))
-        .json(
-            &json!({"deviceId": "scanner-1", "firmwareVersion": "v1", "uptimeSeconds": 1,
-                      "scanIntervalSeconds": 60, "bufferedReadings": 0,
-                      "scanOk": true, "uploadOk": true}),
-        )
-        .dispatch()
-        .await;
     assert_eq!(
-        resp.status(),
+        h.call_with_key(
+            Method::Post,
+            "/scanners/heartbeat",
+            &x.api_key,
+            None,
+            heartbeat("scanner-1")
+        )
+        .await,
         Status::Unauthorized,
         "X's API key no longer works"
     );
-    assert_eq!(
-        h.client.get(report(&x)).dispatch().await.status(),
-        Status::NotFound,
-        "X's published report link stops working"
-    );
-    assert_eq!(
-        h.client.get(photo(&x)).dispatch().await.status(),
-        Status::NotFound,
-        "X's published photo link stops working"
-    );
+    assert_links(h, &x, Status::NotFound, "X").await;
 
     // Y is untouched.
     assert_eq!(
-        owned_rows(&h.db, y.user_id, &y.sub).await,
+        owned_rows(&h.db, &y).await,
         y_before,
         "Y's rows survive X's deletion"
     );
@@ -1738,13 +1809,6 @@ async fn account_deletion_scenario(h: &Harness) {
         h.upload_dir.join(&y.event_dir).exists(),
         "Y's files survive"
     );
-    assert_eq!(
-        h.client.get(report(&y)).dispatch().await.status(),
-        Status::Ok
-    );
-    assert_eq!(
-        h.client.get(photo(&y)).dispatch().await.status(),
-        Status::Ok
-    );
+    assert_links(h, &y, Status::Ok, "Y").await;
     assert_eq!(h.get("/scanners", &y.cookie).await.0, Status::Ok);
 }

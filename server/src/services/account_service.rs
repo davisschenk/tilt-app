@@ -102,20 +102,16 @@ pub async fn export(db: &DatabaseConnection, user: &users::Model) -> Result<Valu
         "exportedAt": chrono::Utc::now(),
         "preferences": preferences.map(|r| r.payload),
         // `id` is what `readings[].scanner_id` refers to.
-        "scanners": scanners.into_iter().map(|r| json!({
-            "id": r.id,
-            "deviceId": r.device_id,
-            "lastSeenAt": r.last_seen_at,
-            "health": r.payload,
-        })).collect::<Vec<_>>(),
-        // Published report links: the public URL is /reports/{token}.
-        "brewReports": reports.into_iter().map(|r| json!({
-            "id": r.id,
-            "brewId": r.brew_id,
-            "token": r.token,
-            "createdAt": r.created_at,
-            "snapshot": r.payload,
-        })).collect::<Vec<_>>(),
+        "scanners": scanners.iter().map(|m| row(m, &[])).collect::<Vec<_>>(),
+        // The public link is /reports/{token}. A snapshot's readings duplicate the
+        // top-level `readings`, so they are dropped here to keep the file small.
+        "brewReports": reports.iter().map(|m| {
+            let mut v = row(m, &[]);
+            if let Some(payload) = v["payload"].as_object_mut() {
+                payload.remove("readings");
+            }
+            v
+        }).collect::<Vec<_>>(),
         "account": { "id": user.id, "email": user.email, "name": user.name, "createdAt": user.created_at },
         "hydrometers": hydros.iter().map(|m| row(m, &[])).collect::<Vec<_>>(),
         "brews": brews_.iter().map(|m| row(m, &[])).collect::<Vec<_>>(),

@@ -261,12 +261,23 @@ pub async fn list(
 }
 
 /// Every report the owner has published, oldest first (for account export).
+///
+/// Reports can only be published on the owner's own brews, so selecting by brew
+/// is equivalent to selecting by `owner_id`, and uses the `brew_reports_brew` index.
 pub async fn find_all(
     db: &DatabaseConnection,
     owner: Uuid,
 ) -> Result<Vec<brew_reports::Model>, DbErr> {
     Report::find()
-        .filter(Column::OwnerId.eq(owner))
+        .filter(
+            Column::BrewId.in_subquery(
+                sea_query::Query::select()
+                    .column(brews::Column::Id)
+                    .from(brews::Entity)
+                    .and_where(brews::Column::OwnerId.eq(owner))
+                    .to_owned(),
+            ),
+        )
         .order_by_asc(Column::CreatedAt)
         .all(db)
         .await
