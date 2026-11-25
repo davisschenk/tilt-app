@@ -8,6 +8,6 @@ echo "Running cargo fmt check..."
 cargo fmt --manifest-path "$REPO_ROOT/Cargo.toml" --all -- --check
 
 echo "Running cargo clippy..."
-cargo clippy --manifest-path "$REPO_ROOT/Cargo.toml" --workspace -- -D warnings
+cargo clippy --manifest-path "$REPO_ROOT/Cargo.toml" --workspace --all-targets -- -D warnings
 
 echo "Pre-commit checks passed."

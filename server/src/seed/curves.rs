@@ -41,7 +41,7 @@ mod tests {
     fn temperature_stays_within_amplitude() {
         for i in 0..1000 {
             let t = temperature_at(68.0, 1.5, i);
-            assert!(t >= 66.5 && t <= 69.5, "got {t} at i={i}");
+            assert!((66.5..=69.5).contains(&t), "got {t} at i={i}");
         }
     }
 }

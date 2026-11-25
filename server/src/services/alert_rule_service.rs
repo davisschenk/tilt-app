@@ -394,13 +394,20 @@ pub fn evaluate_plateau_rule(readings_in_window: &[(f64, f64)], threshold: f64) 
     (max_g - min_g) <= threshold
 }
 
+/// Update last_triggered_at for a rule after successful dispatch.
+pub async fn update_last_triggered(db: &DatabaseConnection, id: Uuid) -> Result<(), DbErr> {
+    let Some(existing) = AlertRule::find_by_id(id).one(db).await? else {
+        return Ok(());
+    };
+    let mut active: ActiveModel = existing.into();
+    active.last_triggered_at = Set(Some(Utc::now().into()));
+    active.update(db).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn flat(g: f64, n: usize) -> Vec<(f64, f64)> {
-        (0..n).map(|i| (i as f64, g)).collect()
-    }
 
     #[test]
     fn plateau_true_when_gravity_flat_within_threshold() {
@@ -446,15 +453,4 @@ mod tests {
         let d: shared::AlertOperator = serde_json::from_str("\"plateau\"").unwrap();
         assert_eq!(d, shared::AlertOperator::Plateau);
     }
-}
-
-/// Update last_triggered_at for a rule after successful dispatch.
-pub async fn update_last_triggered(db: &DatabaseConnection, id: Uuid) -> Result<(), DbErr> {
-    let Some(existing) = AlertRule::find_by_id(id).one(db).await? else {
-        return Ok(());
-    };
-    let mut active: ActiveModel = existing.into();
-    active.last_triggered_at = Set(Some(Utc::now().into()));
-    active.update(db).await?;
-    Ok(())
 }
