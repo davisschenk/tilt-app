@@ -295,7 +295,7 @@ mod tests {
     #[rocket::async_test]
     async fn launch_fails_if_guarded_route_has_no_limits() {
         let rocket = rocket::build().mount("/", routes![api_route]);
-        let err = Client::tracked(rocket).await.err().expect("launch aborts");
+        let err = Client::tracked(rocket).await.expect_err("launch aborts");
         assert!(
             matches!(err.kind(), rocket::error::ErrorKind::SentinelAborts(_)),
             "{err:?}"
