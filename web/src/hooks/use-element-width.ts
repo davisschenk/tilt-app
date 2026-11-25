@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 /**
- * Tracks an element's content width with a ResizeObserver.
+ * Tracks an element's content width (rounded to whole pixels) with a ResizeObserver.
  *
  * Returns a callback ref rather than reading a ref object in a mount-only effect:
  * charts render a skeleton while loading, so their container mounts *after* the
@@ -15,11 +15,12 @@ export function useElementWidth<T extends HTMLElement>(initialWidth: number) {
   useEffect(() => {
     if (!element) return;
     const ro = new ResizeObserver((entries) => {
-      setWidth(entries[0]?.contentRect.width ?? element.clientWidth);
+      // React bails out of the re-render when the rounded width is unchanged.
+      setWidth(Math.round(entries[0]?.contentRect.width ?? element.clientWidth));
     });
     ro.observe(element);
     return () => ro.disconnect();
   }, [element]);
 
-  return { ref: setElement, element, width };
+  return { ref: setElement, width };
 }

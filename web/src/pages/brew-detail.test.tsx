@@ -18,7 +18,10 @@ vi.mock("@uiw/react-md-editor", () => {
   return { default: MDEditor }
 })
 
-beforeEach(() => { resetChart(); success.mockClear(); error.mockClear() })
+const media = vi.hoisted(() => ({ mobile: false }))
+vi.mock("@/hooks/use-media-query", () => ({ useIsMobile: () => media.mobile, useMediaQuery: () => false }))
+
+beforeEach(() => { resetChart(); success.mockClear(); error.mockClear(); media.mobile = false })
 
 function setup(b = brew(), extra: { analytics?: object; rules?: unknown[] } = {}) {
   const puts: Record<string, unknown>[] = []
@@ -147,21 +150,11 @@ describe("BrewDetail", () => {
   })
 
   it("mounts only the tabbed layout on mobile, with the chart behind the Chart tab", async () => {
-    const original = window.matchMedia
-    window.matchMedia = vi.fn((query: string) => ({
-      matches: query === "(max-width: 767.98px)",
-      media: query,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })) as unknown as typeof window.matchMedia
-    try {
-      setup()
-      await userEvent.click(await screen.findByRole("tab", { name: "Chart" }))
-      expect(await screen.findAllByTestId("echart")).toHaveLength(1)
-      expect(screen.queryByRole("button", { name: /Recent Readings/ })).not.toBeInTheDocument()
-    } finally {
-      window.matchMedia = original
-    }
+    media.mobile = true
+    setup()
+    await userEvent.click(await screen.findByRole("tab", { name: "Chart" }))
+    expect(await screen.findAllByTestId("echart")).toHaveLength(1)
+    expect(screen.queryByRole("button", { name: /Recent Readings/ })).not.toBeInTheDocument()
   })
 
   it("expands the readings table", async () => {

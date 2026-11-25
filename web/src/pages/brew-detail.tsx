@@ -116,6 +116,77 @@ export default function BrewDetail() {
     );
   }
 
+  // Shared by the mobile (tabs) and desktop layouts.
+  const statsCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Brew Stats</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-4">
+          <StatItem label="OG" value={u.formatGravity(brew.og)} />
+          <StatItem label="FG" value={u.formatGravity(brew.fg)} />
+          <StatItem label="Target FG" value={u.formatGravity(brew.targetFg)} />
+          <StatItem label="ABV" value={brew.finalAbv != null ? `${brew.finalAbv.toFixed(1)}%` : "—"} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  const detailsCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Details</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <p className="text-sm text-muted-foreground">Hydrometer</p>
+          <p className="font-medium">{hydrometer?.color ?? brew.latestReading?.color ?? "Unknown"}</p>
+        </div>
+        <div>
+          <p className="text-sm text-muted-foreground">Start Date</p>
+          <p className="font-medium">{brew.startDate ? format(new Date(brew.startDate), "MMM d, yyyy") : "—"}</p>
+        </div>
+        <div>
+          <p className="text-sm text-muted-foreground">End Date</p>
+          <p className="font-medium">{brew.endDate ? format(new Date(brew.endDate), "MMM d, yyyy") : "—"}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  const predictionCard = (className?: string) =>
+    brew.targetFg != null && (
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle className="text-base">Predicted Completion</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {analytics == null ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : analytics.predictedFgDate != null ? (
+            <div className="grid grid-cols-2 gap-4">
+              <StatItem label="Predicted Date" value={format(new Date(analytics.predictedFgDate), "MMM d 'at' HH:mm")} />
+              <StatItem
+                label="Time Remaining"
+                value={
+                  analytics.hoursRemaining != null
+                    ? analytics.hoursRemaining >= 24
+                      ? `${Math.floor(analytics.hoursRemaining / 24)}d ${Math.round(analytics.hoursRemaining % 24)}h`
+                      : `${Math.round(analytics.hoursRemaining)}h`
+                    : "—"
+                }
+              />
+            </div>
+          ) : analytics.currentGravity != null && analytics.currentGravity <= brew.targetFg ? (
+            <p className="text-sm text-green-700 dark:text-green-500 font-medium">Fermentation complete</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Insufficient data for prediction</p>
+          )}
+        </CardContent>
+      </Card>
+    );
+
   return (
     <div>
       <Breadcrumbs />
@@ -223,10 +294,10 @@ export default function BrewDetail() {
         })()}
       </div>
 
-      {/* Only one layout is mounted: CSS-hiding the other (hidden md:block) left its
-          ReadingsChart mounted under display:none, where ECharts sizes its canvas to 0×0. */}
+      {/* Mount only the layout for this breakpoint. (The mobile chart bug itself was the
+          charts' mount-only ResizeObserver, fixed by useElementWidth.) Toggling both layouts
+          with md:hidden / hidden md:block ran every query twice and kept two charts alive. */}
       {isMobile ? (
-      <div>
         <Tabs defaultValue="info">
           <TabsList className="w-full mb-4">
             <TabsTrigger value="info" className="flex-1 text-xs">Info</TabsTrigger>
@@ -238,68 +309,9 @@ export default function BrewDetail() {
 
           <TabsContent value="info">
             <div className="grid gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Brew Stats</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-4">
-                    <StatItem label="OG" value={u.formatGravity(brew.og)} />
-                    <StatItem label="FG" value={u.formatGravity(brew.fg)} />
-                    <StatItem label="Target FG" value={u.formatGravity(brew.targetFg)} />
-                    <StatItem label="ABV" value={brew.finalAbv != null ? `${brew.finalAbv.toFixed(1)}%` : "—"} />
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Hydrometer</p>
-                    <p className="font-medium">{hydrometer?.color ?? brew.latestReading?.color ?? "Unknown"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Start Date</p>
-                    <p className="font-medium">{brew.startDate ? format(new Date(brew.startDate), "MMM d, yyyy") : "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">End Date</p>
-                    <p className="font-medium">{brew.endDate ? format(new Date(brew.endDate), "MMM d, yyyy") : "—"}</p>
-                  </div>
-                </CardContent>
-              </Card>
-              {brew.targetFg != null && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Predicted Completion</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {analytics == null ? (
-                      <p className="text-sm text-muted-foreground">Loading...</p>
-                    ) : analytics.predictedFgDate != null ? (
-                      <div className="grid grid-cols-2 gap-4">
-                        <StatItem label="Predicted Date" value={format(new Date(analytics.predictedFgDate), "MMM d 'at' HH:mm")} />
-                        <StatItem
-                          label="Time Remaining"
-                          value={
-                            analytics.hoursRemaining != null
-                              ? analytics.hoursRemaining >= 24
-                                ? `${Math.floor(analytics.hoursRemaining / 24)}d ${Math.round(analytics.hoursRemaining % 24)}h`
-                                : `${Math.round(analytics.hoursRemaining)}h`
-                              : "—"
-                          }
-                        />
-                      </div>
-                    ) : analytics.currentGravity != null && analytics.currentGravity <= brew.targetFg ? (
-                      <p className="text-sm text-green-700 dark:text-green-500 font-medium">Fermentation complete</p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Insufficient data for prediction</p>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
+              {statsCard}
+              {detailsCard}
+              {predictionCard()}
               <BrewNotes brewId={brew.id} notes={brew.notes ?? null} />
               <NutrientSetupPanel brew={brew} />
             </div>
@@ -379,89 +391,14 @@ export default function BrewDetail() {
             <ReadingsTable brewId={brew.id} exportFilename={`${brew.name.replace(/[^a-z0-9]/gi, "_")}_readings.csv`} />
           </TabsContent>
         </Tabs>
-      </div>
-
       ) : (
-      <div>
+      <>
         <div className="grid gap-6 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Brew Stats</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                <StatItem label="OG" value={u.formatGravity(brew.og)} />
-                <StatItem label="FG" value={u.formatGravity(brew.fg)} />
-                <StatItem label="Target FG" value={u.formatGravity(brew.targetFg)} />
-                <StatItem label="ABV" value={brew.finalAbv != null ? `${brew.finalAbv.toFixed(1)}%` : "—"} />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <p className="text-sm text-muted-foreground">Hydrometer</p>
-                <p className="font-medium">
-                  {hydrometer?.color ?? brew.latestReading?.color ?? "Unknown"}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Start Date</p>
-                <p className="font-medium">
-                  {brew.startDate
-                    ? format(new Date(brew.startDate), "MMM d, yyyy")
-                    : "—"}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">End Date</p>
-                <p className="font-medium">
-                  {brew.endDate
-                    ? format(new Date(brew.endDate), "MMM d, yyyy")
-                    : "—"}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          {statsCard}
+          {detailsCard}
         </div>
 
-        {brew.targetFg != null && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle className="text-base">Predicted Completion</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {analytics == null ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
-              ) : analytics.predictedFgDate != null ? (
-                <div className="grid grid-cols-2 gap-4">
-                  <StatItem
-                    label="Predicted Date"
-                    value={format(new Date(analytics.predictedFgDate), "MMM d 'at' HH:mm")}
-                  />
-                  <StatItem
-                    label="Time Remaining"
-                    value={
-                      analytics.hoursRemaining != null
-                        ? analytics.hoursRemaining >= 24
-                          ? `${Math.floor(analytics.hoursRemaining / 24)}d ${Math.round(analytics.hoursRemaining % 24)}h`
-                          : `${Math.round(analytics.hoursRemaining)}h`
-                        : "—"
-                    }
-                  />
-                </div>
-              ) : analytics.currentGravity != null && analytics.currentGravity <= brew.targetFg ? (
-                <p className="text-sm text-green-700 dark:text-green-500 font-medium">Fermentation complete</p>
-              ) : (
-                <p className="text-sm text-muted-foreground">Insufficient data for prediction</p>
-              )}
-            </CardContent>
-          </Card>
-        )}
+        {predictionCard("mt-6")}
 
         <BrewNotes brewId={brew.id} notes={brew.notes ?? null} />
 
@@ -576,7 +513,7 @@ export default function BrewDetail() {
           </button>
           {readingsExpanded && <ReadingsTable brewId={brew.id} exportFilename={`${brew.name.replace(/[^a-z0-9]/gi, "_")}_readings.csv`} />}
         </div>
-      </div>
+      </>
       )}
 
       <EditBrewDialog brew={brew} open={editOpen} onOpenChange={setEditOpen} />

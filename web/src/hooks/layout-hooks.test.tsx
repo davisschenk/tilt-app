@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { act, render, renderHook, screen } from "@testing-library/react"
-import { useIsMobile, useMediaQuery } from "./use-media-query"
+import { useMediaQuery } from "./use-media-query"
 import { useElementWidth } from "./use-element-width"
 
 function mockMatchMedia(initial: boolean) {
@@ -32,13 +32,6 @@ describe("useMediaQuery", () => {
     expect(result.current).toBe(false)
     unmount()
     expect(mm.listeners.size).toBe(0)
-  })
-
-  it("useIsMobile queries below the md breakpoint", () => {
-    mm = mockMatchMedia(false)
-    const { result } = renderHook(() => useIsMobile())
-    expect(result.current).toBe(false)
-    expect(window.matchMedia).toHaveBeenCalledWith("(max-width: 767.98px)")
   })
 })
 

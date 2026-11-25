@@ -76,13 +76,12 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
   const [addEventOpen, setAddEventOpen] = useState(false);
   const [addEventTime, setAddEventTime] = useState<string | undefined>(undefined);
   const [showEvents, setShowEvents] = useState(true);
-  const { ref: containerRef, element: container, width: containerWidth } = useElementWidth<HTMLDivElement>(800);
+  const { ref: containerRef, width: containerWidth } = useElementWidth<HTMLDivElement>(800);
+  // Only the breakpoint feeds the option, so resizing doesn't rebuild it every pixel;
+  // echarts-for-react's autoResize redraws the canvas at the new size.
+  const compact = containerWidth < 640;
   const echartsRef = useRef<ReactECharts>(null);
   const theme = useEChartsTheme();
-
-  useEffect(() => {
-    echartsRef.current?.getEchartsInstance().resize();
-  }, [containerWidth]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -297,10 +296,10 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         data: ["Gravity", "Temperature"],
         bottom: 4,
         icon: "circle",
-        textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: containerWidth < 640 ? 10 : 12 },
+        textStyle: { color: theme.textColor, fontFamily: theme.fontFamily, fontSize: compact ? 10 : 12 },
       },
       // Two grids: thin event strip at top / main chart below
-      grid: containerWidth < 640
+      grid: compact
         ? [
             { left: 46, right: 34, top: 36, bottom: 56 },
             { left: 46, right: 34, top: 18, height: 12 },
@@ -313,7 +312,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         {
           gridIndex: 0,
           ...sharedXAxisConfig,
-          axisLabel: { color: theme.mutedColor, fontFamily: theme.fontFamily, fontSize: containerWidth < 640 ? 9 : 11, formatter: axisLabelFormatter },
+          axisLabel: { color: theme.mutedColor, fontFamily: theme.fontFamily, fontSize: compact ? 9 : 11, formatter: axisLabelFormatter },
         },
         {
           // Event strip x-axis — hidden, just for positioning
@@ -326,14 +325,14 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         {
           gridIndex: 0,
           name: u.gravityLabel,
-          nameTextStyle: { color: "#1971C2", fontFamily: theme.fontFamily, fontSize: containerWidth < 640 ? 9 : 11 },
+          nameTextStyle: { color: "#1971C2", fontFamily: theme.fontFamily, fontSize: compact ? 9 : 11 },
           min: Math.floor(gMin * 1000 - 1) / 1000,
           max: Math.ceil(gMax * 1000 + 1) / 1000,
-          splitNumber: containerWidth < 640 ? 3 : 5,
+          splitNumber: compact ? 3 : 5,
           axisLabel: {
             color: "#1971C2",
             fontFamily: theme.fontFamily,
-            fontSize: containerWidth < 640 ? 9 : 11,
+            fontSize: compact ? 9 : 11,
             formatter: (val: number) => u.formatNumber("gravity", val),
           },
           splitLine: { lineStyle: { color: theme.gridColor } },
@@ -343,15 +342,15 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
           gridIndex: 0,
           name: u.temperatureLabel,
           position: "right" as const,
-          nameTextStyle: { color: "#E8590C", fontFamily: theme.fontFamily, fontSize: containerWidth < 640 ? 9 : 11 },
+          nameTextStyle: { color: "#E8590C", fontFamily: theme.fontFamily, fontSize: compact ? 9 : 11 },
           min: Math.floor(tMin - 2),
           max: Math.ceil(tMax + 2),
-          splitNumber: containerWidth < 640 ? 3 : 5,
+          splitNumber: compact ? 3 : 5,
           axisLabel: {
             color: "#E8590C",
             fontFamily: theme.fontFamily,
-            fontSize: containerWidth < 640 ? 9 : 11,
-            formatter: (val: number) => containerWidth < 640 ? `${u.temperature(val).toFixed(0)}°` : u.formatTemperature(val),
+            fontSize: compact ? 9 : 11,
+            formatter: (val: number) => compact ? `${u.temperature(val).toFixed(0)}°` : u.formatTemperature(val),
           },
           splitLine: { show: false },
           axisLine: { lineStyle: { color: theme.borderColor } },
@@ -446,7 +445,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
     xMin,
     xMax,
     range,
-    containerWidth,
+    compact,
     showEvents,
   ]);
 
@@ -492,7 +491,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
             <ReactECharts
               ref={echartsRef}
               option={option}
-              style={{ height: containerWidth < 640 ? 280 : 420 }}
+              style={{ height: compact ? 280 : 420 }}
               notMerge
               onEvents={onEvents}
             />
@@ -519,7 +518,6 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
               const ev = eventTooltip.event;
               const color = EVENT_COLORS[ev.eventType];
               const label = EVENT_LABELS[ev.eventType];
-              const containerWidth = container?.clientWidth ?? 400;
               const tipWidth = 220;
               const rawLeft = eventTooltip.x + 14;
               const left = Math.min(rawLeft, containerWidth - tipWidth - 8);
