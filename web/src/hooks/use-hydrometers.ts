@@ -6,11 +6,12 @@ import type {
   UpdateHydrometer,
 } from "@/types";
 
-export function useHydrometers() {
+/** Pass `live` where latest readings / online status are on screen, to poll. */
+export function useHydrometers(options?: { live?: boolean }) {
   return useQuery<HydrometerResponse[]>({
     queryKey: ["hydrometers"],
     queryFn: () => apiGet<HydrometerResponse[]>("/hydrometers"),
-    refetchInterval: 30_000,
+    refetchInterval: options?.live ? 30_000 : undefined,
   });
 }
 

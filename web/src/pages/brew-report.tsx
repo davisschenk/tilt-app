@@ -1,64 +1,79 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost, apiPut, apiDelete, API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL } from "@/lib/api";
 import { useBrew } from "@/hooks/use-brews";
 import { useBrewEvents } from "@/hooks/use-brew-events";
 import { useReadings } from "@/hooks/use-readings";
-import { useUnits, unitTools, type Preferences } from "@/lib/units";
+import {
+  useBrewReports,
+  usePublicBrewReport,
+  usePublishBrewReport,
+  useRevokeBrewReport,
+} from "@/hooks/use-brew-reports";
+import { useUnits, unitTools } from "@/lib/units";
 import { Button } from "@/components/ui/button";
-import type { BrewEventResponse } from "@/types";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import type {
+  BrewEventResponse,
+  BrewReportEvent,
+  BrewReportLink,
+  BrewReportSnapshot,
+} from "@/types";
 import * as toast from "@/lib/toast";
-interface ReportEvent {
-  label: string;
-  eventType: string;
-  eventTime: string;
-  gravityAtEvent: number | null;
-  tempAtEvent: number | null;
-  notes: string | null;
-  photos: { id: string; filename: string; url: string }[];
+
+// Chart geometry (SVG user units): the plot spans X_LEFT..X_RIGHT and
+// Y_BOTTOM up to Y_BOTTOM - PLOT_HEIGHT.
+const X_LEFT = 75;
+const X_RIGHT = 795;
+const Y_BOTTOM = 240;
+const PLOT_HEIGHT = 190;
+const GRID_FRACTIONS = [0, 0.25, 0.5, 0.75, 1];
+
+/** Journal-style entries stay private unless explicitly selected. */
+const PRIVATE_EVENT_TYPES = ["note", "tasting_note"];
+
+type Extent = [lo: number, hi: number];
+
+function extent(values: number[]): Extent {
+  return [Math.min(...values), Math.max(...values)];
 }
-interface Report {
-  name: string;
-  style: string | null;
-  status: string;
-  og: number | null;
-  fg: number | null;
-  targetFg: number | null;
-  abv: number | null;
-  yeastStrain: string | null;
-  startDate: string | null;
-  endDate: string | null;
-  notes: string | null;
-  units: Preferences;
-  events: ReportEvent[];
-  readings: { recordedAt: string; gravity: number; temperatureF: number }[];
-  createdAt: string;
-}
-interface Share {
-  id: string;
-  token: string;
-  createdAt: string;
-}
-function ReportView({ report: r }: { report: Report }) {
-  const u = unitTools(r.units);
+
+function ReportView({ report: r }: { report: BrewReportSnapshot }) {
+  const u = useMemo(() => unitTools(r.units), [r.units]);
   const rows = r.readings;
-  const dates = rows.map((p) => Date.parse(p.recordedAt));
-  const min = dates[0] ?? 0,
-    max = dates.at(-1) ?? 1;
-  function path(kind: "gravity" | "temperatureF") {
-    const values = rows.map((p) =>
-      kind === "gravity" ? u.gravity(p.gravity) : u.temperature(p.temperatureF),
-    );
-    const lo = Math.min(...values),
-      hi = Math.max(...values);
-    return values
-      .map(
-        (v, i) =>
-          `${i ? "L" : "M"}${75 + ((dates[i] - min) / Math.max(max - min, 1)) * 720},${240 - ((v - lo) / Math.max(hi - lo, 0.001)) * 190}`,
-      )
+  // Extents are computed once per snapshot; the conversions are monotonic, so
+  // converting the canonical extent gives the displayed one.
+  const chart = useMemo(() => {
+    const times = rows.map((p) => Date.parse(p.recordedAt));
+    const gravity = extent(rows.map((p) => p.gravity));
+    const temperatureF = extent(rows.map((p) => p.temperatureF));
+    return {
+      times,
+      start: times[0] ?? 0,
+      end: times.at(-1) ?? 1,
+      gravity,
+      temperatureF,
+      gravityDisplay: gravity.map(u.gravity) as Extent,
+      temperatureDisplay: temperatureF.map(u.temperature) as Extent,
+    };
+  }, [rows, u]);
+  const { times, start, end } = chart;
+
+  const xAt = (t: number) =>
+    X_LEFT + ((t - start) / Math.max(end - start, 1)) * (X_RIGHT - X_LEFT);
+  const yAt = (v: number, [lo, hi]: Extent) =>
+    Y_BOTTOM - ((v - lo) / Math.max(hi - lo, 0.001)) * PLOT_HEIGHT;
+  const path = (value: (i: number) => number, range: Extent) =>
+    rows
+      .map((_, i) => `${i ? "L" : "M"}${xAt(times[i])},${yAt(value(i), range)}`)
       .join(" ");
-  }
+  const lerp = ([lo, hi]: Extent, f: number) => lo + f * (hi - lo);
+  const markers = r.events.filter((e) => {
+    const t = Date.parse(e.eventTime);
+    return t >= start && t <= end;
+  });
+
   return (
     <article className="report-body space-y-6">
       <header>
@@ -88,65 +103,54 @@ function ReportView({ report: r }: { report: Report }) {
               aria-label="Gravity and temperature over time"
               className="w-full"
             >
-              {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
-                const gLo = Math.min(...rows.map((p) => p.gravity)),
-                  gHi = Math.max(...rows.map((p) => p.gravity));
-                const tLo = Math.min(...rows.map((p) => p.temperatureF)),
-                  tHi = Math.max(...rows.map((p) => p.temperatureF));
-                const y = 240 - fraction * 190;
+              {GRID_FRACTIONS.map((fraction) => {
+                const y = Y_BOTTOM - fraction * PLOT_HEIGHT;
                 return (
                   <g key={fraction}>
-                    <line x1="75" x2="795" y1={y} y2={y} stroke="#ddd" />
+                    <line x1={X_LEFT} x2={X_RIGHT} y1={y} y2={y} stroke="#ddd" />
                     <text
-                      x="68"
+                      x={X_LEFT - 7}
                       y={y + 4}
                       textAnchor="end"
                       fontSize="11"
                       fill="#1971c2"
                     >
-                      {u
-                        .gravity(gLo + fraction * (gHi - gLo))
-                        .toFixed(r.units.gravity === "P" ? 2 : 3)}
+                      {u.formatDisplayNumber(
+                        "gravity",
+                        lerp(chart.gravityDisplay, fraction),
+                      )}
                     </text>
-                    <text x="805" y={y + 4} fontSize="11" fill="#d9480f">
-                      {u.temperature(tLo + fraction * (tHi - tLo)).toFixed(1)}
+                    <text x={X_RIGHT + 10} y={y + 4} fontSize="11" fill="#d9480f">
+                      {u.formatDisplayNumber(
+                        "temperature",
+                        lerp(chart.temperatureDisplay, fraction),
+                      )}
                     </text>
                   </g>
                 );
               })}
               <path
-                d={path("gravity")}
+                d={path((i) => u.gravity(rows[i].gravity), chart.gravityDisplay)}
                 fill="none"
                 stroke="#1971c2"
                 strokeWidth="2"
               />
               <path
-                d={path("temperatureF")}
+                d={path(
+                  (i) => u.temperature(rows[i].temperatureF),
+                  chart.temperatureDisplay,
+                )}
                 fill="none"
                 stroke="#d9480f"
                 strokeWidth="2"
               />
-              {r.events
-                .filter(
-                  (e) =>
-                    Date.parse(e.eventTime) >= min &&
-                    Date.parse(e.eventTime) <= max,
-                )
-                .map((e, i) => (
+              {markers.map((e, i) => {
+                const x = xAt(Date.parse(e.eventTime));
+                return (
                   <line
                     key={i}
-                    x1={
-                      50 +
-                      ((Date.parse(e.eventTime) - min) /
-                        Math.max(max - min, 1)) *
-                        800
-                    }
-                    x2={
-                      50 +
-                      ((Date.parse(e.eventTime) - min) /
-                        Math.max(max - min, 1)) *
-                        800
-                    }
+                    x1={x}
+                    x2={x}
                     y1="35"
                     y2="245"
                     stroke="#888"
@@ -154,36 +158,30 @@ function ReportView({ report: r }: { report: Report }) {
                   >
                     <title>{e.label}</title>
                   </line>
-                ))}
-              <text x="50" y="275" fill="currentColor" fontSize="12">
-                {new Date(min).toLocaleString()}
+                );
+              })}
+              <text x={X_LEFT} y="275" fill="currentColor" fontSize="12">
+                {new Date(start).toLocaleString()}
               </text>
               <text
-                x="850"
+                x={X_RIGHT}
                 y="275"
                 textAnchor="end"
                 fill="currentColor"
                 fontSize="12"
               >
-                {new Date(max).toLocaleString()}
+                {new Date(end).toLocaleString()}
               </text>
             </svg>
             <p className="text-sm">
               <span className="text-blue-700">Gravity ({u.gravityLabel})</span>:{" "}
-              {u.formatGravity(Math.min(...rows.map((p) => p.gravity)))} –{" "}
-              {u.formatGravity(Math.max(...rows.map((p) => p.gravity)))};{" "}
+              {u.formatGravity(chart.gravity[0])} –{" "}
+              {u.formatGravity(chart.gravity[1])};{" "}
               <span className="text-orange-700">
                 temperature ({u.temperatureLabel})
               </span>
-              :{" "}
-              {u.formatTemperature(
-                Math.min(...rows.map((p) => p.temperatureF)),
-              )}{" "}
-              –{" "}
-              {u.formatTemperature(
-                Math.max(...rows.map((p) => p.temperatureF)),
-              )}
-              . Each line uses its own vertical scale.
+              : {u.formatTemperature(chart.temperatureF[0])} –{" "}
+              {u.formatTemperature(chart.temperatureF[1])}. Each line uses its own vertical scale.
             </p>
           </>
         ) : (
@@ -233,13 +231,7 @@ function ReportView({ report: r }: { report: Report }) {
 }
 export function PublicBrewReport() {
   const { token } = useParams();
-  const q = useQuery({
-    queryKey: ["public-report", token],
-    queryFn: () => apiGet<Report>(`/reports/${token}`),
-    retry: false,
-    staleTime: 0,
-    refetchInterval: 30_000,
-  });
+  const q = usePublicBrewReport(token);
   return (
     <main className="max-w-5xl mx-auto p-6">
       <div className="no-print mb-6">
@@ -255,54 +247,60 @@ export function PublicBrewReport() {
     </main>
   );
 }
+
 export default function BrewReport() {
   const { id = "" } = useParams();
   const brew = useBrew(id);
   const events = useBrewEvents(id);
   const readings = useReadings({ brewId: id });
   const { units } = useUnits();
-  const client = useQueryClient();
+  const shares = useBrewReports(id);
+  const publishReport = usePublishBrewReport(id);
+  const revokeReport = useRevokeBrewReport(id);
   const [selection, setSelection] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState(false);
   const [photos, setPhotos] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const shares = useQuery({
-    queryKey: ["reports", id],
-    queryFn: () => apiGet<Share[]>(`/brews/${id}/reports`),
-  });
-  const selected = (events.data ?? []).filter(
-    (e) => selection[e.id] ?? !["note", "tasting_note"].includes(e.eventType),
-  );
-  async function publish(old?: Share) {
-    setBusy(true);
+  const busy = publishReport.isPending || revokeReport.isPending;
+
+  const isSelected = (e: BrewEventResponse) =>
+    selection[e.id] ?? !PRIVATE_EVENT_TYPES.includes(e.eventType);
+  const selected = (events.data ?? []).filter(isSelected);
+
+  async function publish(old?: BrewReportLink) {
+    const options = {
+      eventIds: selected.map((e) => e.id),
+      includeNotes: notes,
+      includePhotos: photos,
+      units,
+    };
     try {
-      const options = {
-        eventIds: selected.map((e) => e.id),
-        includeNotes: notes,
-        includePhotos: photos,
-        units,
-      };
-      const result = old
-        ? await apiPut<Share>(`/brews/${id}/reports/${old.id}`, options)
-        : await apiPost<Share>(`/brews/${id}/reports`, options);
-      await client.invalidateQueries({ queryKey: ["reports", id] });
+      const result = await publishReport.mutateAsync({
+        options,
+        reportId: old?.id,
+      });
       toast.success(old ? "Snapshot refreshed" : "Report link created");
-      if (!old)
+      if (!old) {
         await navigator.clipboard
           ?.writeText(`${location.origin}/reports/${result.token}`)
           .catch(() => {});
+      }
     } catch {
       toast.error("Could not publish report");
-    } finally {
-      setBusy(false);
     }
   }
+
+  function revoke(link: BrewReportLink) {
+    revokeReport.mutate(link.id, {
+      onError: () => toast.error("Could not revoke link"),
+    });
+  }
+
   if (brew.isPending || events.isPending || readings.isPending)
     return <p>Loading report preview…</p>;
   if (!brew.data || events.isError || readings.isError)
     return <p>Could not load report preview.</p>;
   const b = brew.data;
-  const mapEvent = (e: BrewEventResponse): ReportEvent => ({
+  const mapEvent = (e: BrewEventResponse): BrewReportEvent => ({
     ...e,
     notes: notes ? e.notes : null,
     photos: photos
@@ -313,7 +311,7 @@ export default function BrewReport() {
         }))
       : [],
   });
-  const report: Report = {
+  const report: BrewReportSnapshot = {
     ...b,
     abv: b.finalAbv,
     units,
@@ -331,38 +329,29 @@ export default function BrewReport() {
           Only the selected content below will be shared. Published reports stay
           fixed until refreshed.
         </p>
-        <label className="block">
-          <input
-            type="checkbox"
-            checked={notes}
-            onChange={(e) => setNotes(e.target.checked)}
-          />{" "}
-          Include batch and entry notes
-        </label>
-        <label className="block">
-          <input
-            type="checkbox"
-            checked={photos}
-            onChange={(e) => setPhotos(e.target.checked)}
-          />{" "}
-          Include selected entries’ photos
-        </label>
-        <fieldset>
+        <div className="flex items-center gap-2">
+          <Switch id="report-notes" checked={notes} onCheckedChange={setNotes} />
+          <Label htmlFor="report-notes">Include batch and entry notes</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch id="report-photos" checked={photos} onCheckedChange={setPhotos} />
+          <Label htmlFor="report-photos">Include selected entries’ photos</Label>
+        </div>
+        <fieldset className="space-y-2">
           <legend>Log entries</legend>
           {events.data?.map((e) => (
-            <label key={e.id} className="block">
-              <input
-                type="checkbox"
-                checked={
-                  selection[e.id] ??
-                  !["note", "tasting_note"].includes(e.eventType)
+            <div key={e.id} className="flex items-center gap-2">
+              <Switch
+                id={`report-event-${e.id}`}
+                checked={isSelected(e)}
+                onCheckedChange={(checked) =>
+                  setSelection({ ...selection, [e.id]: checked })
                 }
-                onChange={(v) =>
-                  setSelection({ ...selection, [e.id]: v.target.checked })
-                }
-              />{" "}
-              {e.label} ({e.eventType.replaceAll("_", " ")})
-            </label>
+              />
+              <Label htmlFor={`report-event-${e.id}`}>
+                {e.label} ({e.eventType.replaceAll("_", " ")})
+              </Label>
+            </div>
           ))}
         </fieldset>
         <div className="flex gap-3">
@@ -390,17 +379,7 @@ export default function BrewReport() {
               <Button
                 variant="destructive"
                 disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    await apiDelete(`/brews/${id}/reports/${s.id}`);
-                    await shares.refetch();
-                  } catch {
-                    toast.error("Could not revoke link");
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
+                onClick={() => revoke(s)}
               >
                 Revoke link
               </Button>

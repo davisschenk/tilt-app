@@ -40,7 +40,7 @@ test.describe("alerts", () => {
     await page.getByRole("button", { name: /add rule/i }).first().click()
     const rDialog = page.getByRole("dialog", { name: "Add Alert Rule" })
     await rDialog.getByLabel("Name *").fill(ruleName)
-    await rDialog.getByLabel("Threshold *").fill("1.010")
+    await rDialog.getByLabel(/^Threshold/).fill("1.010")
     await rDialog.getByRole("combobox", { name: /Webhook Target/ }).click()
     await page.getByRole("option", { name: targetName }).click()
     await rDialog.getByRole("button", { name: "Create" }).click()

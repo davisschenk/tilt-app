@@ -27,7 +27,7 @@ function isStale(recordedAt: string): boolean {
 const REFRESH_INTERVAL = 30_000;
 
 function ActiveBrewCard({ brew }: { brew: BrewResponse }) {
- const u=useUnits();
+  const u = useUnits();
   const { data: analytics, isLoading: analyticsLoading } = useBrewAnalytics(brew.id);
   const { data: recentReadings } = useReadings({ brewId: brew.id, limit: 3 });
 
@@ -157,7 +157,7 @@ function StatCard({
 }
 
 export default function Dashboard() {
- const u=useUnits();
+  const u = useUnits();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -166,7 +166,7 @@ export default function Dashboard() {
   const { data: activeBrews, isLoading: brewsLoading } = useBrews("Active", {
     refetchInterval: REFRESH_INTERVAL,
   });
-  const { data: hydrometers, isLoading: hydrometersLoading } = useHydrometers();
+  const { data: hydrometers, isLoading: hydrometersLoading } = useHydrometers({ live: true });
   const { data: readings, isLoading: readingsLoading } = useReadings({ limit: 1 });
   const { data: allAlertRules } = useAlertRules();
 

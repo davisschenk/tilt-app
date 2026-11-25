@@ -1,5 +1,3 @@
-import { useUnits } from "@/lib/units";
-import ScannerHealth, { ReadingGaps } from "@/components/device/scanner-health";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
@@ -19,6 +17,9 @@ import RegisterHydrometerDialog from "@/components/hydrometer/register-hydromete
 import EditHydrometerDialog from "@/components/hydrometer/edit-hydrometer-dialog";
 import DeleteHydrometerDialog from "@/components/hydrometer/delete-hydrometer-dialog";
 import { Badge } from "@/components/ui/badge";
+import ScannerHealth from "@/components/device/scanner-health";
+import ReadingGaps from "@/components/hydrometer/reading-gaps";
+import { useUnits } from "@/lib/units";
 import type { HydrometerResponse } from "@/types";
 
 function isStale(recordedAt: string): boolean {
@@ -28,7 +29,7 @@ function isStale(recordedAt: string): boolean {
 
 export default function HydrometerList() {
   const u = useUnits();
-  const { data: hydrometers, isLoading } = useHydrometers();
+  const { data: hydrometers, isLoading } = useHydrometers({ live: true });
   const { data: activeBrews } = useBrews("Active");
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<HydrometerResponse | null>(null);
@@ -116,11 +117,11 @@ export default function HydrometerList() {
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
                       <p className="text-muted-foreground">Temp Offset</p>
-                      <p className="font-medium">{(h.tempOffsetF * (u.units.temperature === "C" ? 5/9 : 1)).toFixed(1)}{u.temperatureLabel}</p>
+                      <p className="font-medium">{u.formatTemperatureDelta(h.tempOffsetF)}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Gravity Offset</p>
-                      <p className="font-medium">{(u.gravity(1+h.gravityOffset)-u.gravity(1)).toFixed(u.units.gravity === "P" ? 2 : 3)} {u.gravityLabel}</p>
+                      <p className="font-medium">{u.formatGravityDelta(h.gravityOffset)}</p>
                     </div>
                   </div>
 

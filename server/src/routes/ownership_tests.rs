@@ -81,7 +81,9 @@ impl Harness {
             .mount("/api/v1", routes::analytics::routes())
             .mount("/api/v1", routes::tosna::routes())
             .mount("/api/v1", routes::api_keys::routes())
-            .mount("/api/v1", routes::brewer_features::routes())
+            .mount("/api/v1", routes::preferences::routes())
+            .mount("/api/v1", routes::scanners::routes())
+            .mount("/api/v1", routes::reports::routes())
             .mount("/api/v1", routes::account::routes());
         let client = Client::tracked(rocket).await.expect("rocket builds");
 

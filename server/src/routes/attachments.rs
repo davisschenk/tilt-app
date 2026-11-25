@@ -11,6 +11,7 @@ use uuid::Uuid;
 use shared::EventAttachmentResponse;
 
 use crate::guards::current_user::CurrentUser;
+use crate::models::entities::event_attachments;
 use crate::routes::require_brew;
 use crate::services::{attachment_service, brew_event_service};
 
@@ -35,12 +36,40 @@ fn sniff_image(head: &[u8]) -> Option<(&'static str, &'static str)> {
     }
 }
 
-/// An uploaded file served back to its owner. The headers make it inert even
-/// if the bytes are not what we think: no sniffing, no scripts, sandboxed.
-struct AttachmentFile {
+/// An uploaded file served back to its owner (or through a public report).
+/// The headers make it inert even if the bytes are not what we think: no
+/// sniffing, no scripts, sandboxed.
+pub(crate) struct AttachmentFile {
     content_type: ContentType,
     bytes: Vec<u8>,
     filename: String,
+    cache_control: &'static str,
+}
+
+impl AttachmentFile {
+    /// Owner downloads may be cached privately by the browser.
+    pub(crate) const PRIVATE_CACHE: &'static str = "private, max-age=3600";
+    /// Publicly shared files must stop loading as soon as access is revoked.
+    pub(crate) const NO_STORE: &'static str = "no-store";
+
+    /// Read a stored attachment from disk; a missing file is a 404.
+    pub(crate) async fn load(
+        model: event_attachments::Model,
+        cache_control: &'static str,
+    ) -> Result<Self, Status> {
+        let path = PathBuf::from(upload_dir()).join(&model.storage_path);
+        let bytes = tokio::fs::read(&path).await.map_err(|_| Status::NotFound)?;
+        let content_type = model
+            .content_type
+            .parse::<ContentType>()
+            .unwrap_or(ContentType::Binary);
+        Ok(Self {
+            content_type,
+            bytes,
+            filename: model.filename,
+            cache_control,
+        })
+    }
 }
 
 impl<'r> rocket::response::Responder<'r, 'static> for AttachmentFile {
@@ -56,7 +85,7 @@ impl<'r> rocket::response::Responder<'r, 'static> for AttachmentFile {
                 "Content-Disposition",
                 format!("inline; filename=\"{}\"", self.filename),
             )
-            .raw_header("Cache-Control", "private, max-age=3600")
+            .raw_header("Cache-Control", self.cache_control)
             .ok()
     }
 }
@@ -176,19 +205,7 @@ async fn serve_file(
         .map_err(|_| Status::InternalServerError)?
         .ok_or(Status::NotFound)?;
 
-    let path = PathBuf::from(upload_dir()).join(&model.storage_path);
-    let bytes = tokio::fs::read(&path).await.map_err(|_| Status::NotFound)?;
-
-    let content_type = model
-        .content_type
-        .parse::<ContentType>()
-        .unwrap_or(ContentType::Binary);
-
-    Ok(AttachmentFile {
-        content_type,
-        bytes,
-        filename: model.filename,
-    })
+    AttachmentFile::load(model, AttachmentFile::PRIVATE_CACHE).await
 }
 
 #[delete("/brews/<_brew_id>/events/<event_id>/attachments/<id>")]

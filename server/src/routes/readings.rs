@@ -11,7 +11,7 @@ use crate::guards::auth_or_api_key::AuthOrApiKey;
 use crate::guards::current_user::CurrentUser;
 use crate::services::{
     alert_rule_service, alert_target_service, brew_service, hydrometer_service, limits,
-    reading_service, tosna_service, webhook_dispatcher,
+    preferences_service, reading_service, scanner_service, tosna_service, webhook_dispatcher,
 };
 
 struct ScannerDevice(Option<String>);
@@ -36,18 +36,6 @@ async fn create_batch(
     batch: Json<CreateReadingsBatch>,
 ) -> Result<(Status, Json<serde_json::Value>), Status> {
     let owner = auth.owner_id;
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-    let scanner_id = if let Some(device) = scanner.0 {
-        crate::models::entities::scanners::Entity::find()
-            .filter(crate::models::entities::scanners::Column::OwnerId.eq(owner))
-            .filter(crate::models::entities::scanners::Column::DeviceId.eq(device))
-            .one(db.inner())
-            .await
-            .map_err(|_| Status::InternalServerError)?
-            .map(|s| s.id)
-    } else {
-        None
-    };
     let readings: Vec<TiltReading> = batch.into_inner().0;
     if readings.is_empty() {
         return Ok((Status::Created, Json(serde_json::json!({ "count": 0 }))));
@@ -66,6 +54,17 @@ async fn create_batch(
         tracing::warn!(owner = %owner, recent, "daily reading cap reached");
         return Err(Status::TooManyRequests);
     }
+
+    let scanner_id = match scanner.0 {
+        Some(device) => scanner_service::find_by_device(db.inner(), owner, &device)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to look up scanner");
+                Status::InternalServerError
+            })?
+            .map(|s| s.id),
+        None => None,
+    };
 
     let mut total_count: u64 = 0;
 
@@ -233,7 +232,7 @@ async fn evaluate_alerts(
     brew_id: Option<Uuid>,
     hydrometer_id: Option<Uuid>,
 ) {
-    let triggered = match alert_rule_service::find_triggered_rules(
+    let mut triggered = match alert_rule_service::find_triggered_rules(
         db,
         owner,
         gravity,
@@ -249,6 +248,18 @@ async fn evaluate_alerts(
             return;
         }
     };
+
+    // Plateau rules need historical readings, so they are evaluated separately.
+    match alert_rule_service::find_triggered_plateau_rules(db, owner, brew_id, hydrometer_id).await
+    {
+        Ok(rules) => triggered.extend(rules),
+        Err(e) => tracing::error!(error = %e, "Failed to query triggered plateau rules"),
+    }
+
+    if triggered.is_empty() {
+        return;
+    }
+    let preferences = preferences_service::get_or_default(db, owner).await;
 
     for rule in triggered {
         let target = match alert_target_service::find_raw_by_id(db, owner, rule.alert_target_id)
@@ -271,9 +282,7 @@ async fn evaluate_alerts(
 
         let rule_id = rule.id;
         match webhook_dispatcher::dispatch(
-            &crate::routes::brewer_features::preferences(db, owner)
-                .await
-                .unwrap_or_default(),
+            &preferences,
             http_client,
             &target,
             &rule,
@@ -290,62 +299,6 @@ async fn evaluate_alerts(
             }
             Err(e) => {
                 tracing::error!(rule_id = %rule_id, error = %e, "Webhook dispatch failed");
-            }
-        }
-    }
-
-    // Evaluate plateau rules (require historical readings, handled separately)
-    let plateau_triggered =
-        match alert_rule_service::find_triggered_plateau_rules(db, owner, brew_id, hydrometer_id)
-            .await
-        {
-            Ok(rules) => rules,
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to query triggered plateau rules");
-                return;
-            }
-        };
-
-    for rule in plateau_triggered {
-        let target = match alert_target_service::find_raw_by_id(db, owner, rule.alert_target_id)
-            .await
-        {
-            Ok(Some(t)) => t,
-            Ok(None) => {
-                tracing::warn!(alert_target_id = %rule.alert_target_id, "Alert target not found for plateau rule");
-                continue;
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to look up alert target for plateau rule");
-                continue;
-            }
-        };
-
-        if !target.enabled {
-            continue;
-        }
-
-        let rule_id = rule.id;
-        match webhook_dispatcher::dispatch(
-            &crate::routes::brewer_features::preferences(db, owner)
-                .await
-                .unwrap_or_default(),
-            http_client,
-            &target,
-            &rule,
-            gravity,
-            temperature_f,
-            recorded_at,
-        )
-        .await
-        {
-            Ok(()) => {
-                if let Err(e) = alert_rule_service::update_last_triggered(db, rule_id).await {
-                    tracing::error!(rule_id = %rule_id, error = %e, "Failed to update last_triggered_at for plateau rule");
-                }
-            }
-            Err(e) => {
-                tracing::error!(rule_id = %rule_id, error = %e, "Plateau webhook dispatch failed");
             }
         }
     }

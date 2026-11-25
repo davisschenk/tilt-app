@@ -1,4 +1,3 @@
-import { useUnits, type unitTools } from "@/lib/units";
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Plus, Pencil, Trash2 } from "lucide-react";
@@ -20,35 +19,12 @@ import { useAlertTargets } from "@/hooks/use-alert-targets";
 import CreateAlertRuleDialog from "@/components/alerts/create-alert-rule-dialog";
 import EditAlertRuleDialog from "@/components/alerts/edit-alert-rule-dialog";
 import DeleteAlertRuleDialog from "@/components/alerts/delete-alert-rule-dialog";
-import type { AlertRuleResponse, AlertMetric, AlertOperator } from "@/types";
-
-const METRIC_LABELS: Record<AlertMetric, string> = {
-  gravity: "Gravity",
-  temperature_f: "Temperature (°F)",
-  gravity_plateau: "Gravity Plateau",
-};
-
-const OPERATOR_SYMBOLS: Record<AlertOperator, string> = {
-  lte: "≤",
-  gte: "≥",
-  lt: "<",
-  gt: ">",
-  eq: "=",
-  plateau: "plateau",
-};
-
-function formatCondition(metric: AlertMetric, operator: AlertOperator, threshold: number, windowHours: number | undefined, u: ReturnType<typeof unitTools>): string {
-  if (metric === "gravity_plateau") {
-    return `Gravity flat ±${(u.gravity(1+threshold)-u.gravity(1)).toFixed(u.units.gravity === "P" ? 2 : 4)} over ${windowHours ?? 24}h`;
-  }
-  const metricLabel = metric === "temperature_f" ? `Temperature (${u.temperatureLabel})` : METRIC_LABELS[metric] ?? metric;
-  const opSymbol = OPERATOR_SYMBOLS[operator] ?? operator;
-  const value = metric === "gravity" ? u.formatGravity(threshold) : u.formatTemperature(threshold);
-  return `${metricLabel} ${opSymbol} ${value}`;
-}
+import { useUnits } from "@/lib/units";
+import { formatCondition } from "@/lib/alerts";
+import type { AlertRuleResponse } from "@/types";
 
 export default function AlertRules() {
- const u=useUnits();
+  const u = useUnits();
   const { data: rules, isLoading } = useAlertRules();
   const { data: targets } = useAlertTargets();
   const [createOpen, setCreateOpen] = useState(false);
@@ -97,7 +73,7 @@ export default function AlertRules() {
                   <TableCell className="font-medium py-3">{r.name}</TableCell>
                   <TableCell className="hidden sm:table-cell">
                     <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                      {formatCondition(r.metric, r.operator, r.threshold, r.windowHours, u)}
+                      {formatCondition(r, u)}
                     </code>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-sm">

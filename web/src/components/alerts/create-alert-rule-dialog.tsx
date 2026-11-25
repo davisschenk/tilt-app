@@ -151,7 +151,7 @@ export default function CreateAlertRuleDialog({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="rule-threshold">Plateau Threshold ({u.gravityLabel}, reference SG 1.000) *</Label>
-                <MeasurementInput measurement={isPlateau ? "gravityOffset" : metric === "gravity" ? "gravity" : "temperature"}
+                <MeasurementInput measurement="gravityOffset"
                   id="rule-threshold"
                   type="number"
                   step="0.0001"
@@ -175,7 +175,7 @@ export default function CreateAlertRuleDialog({
           ) : (
             <div className="space-y-2">
               <Label htmlFor="rule-threshold">Threshold ({metric === "gravity" ? u.gravityLabel : u.temperatureLabel}) *</Label>
-              <MeasurementInput measurement={isPlateau ? "gravityOffset" : metric === "gravity" ? "gravity" : "temperature"}
+              <MeasurementInput measurement={metric === "gravity" ? "gravity" : "temperature"}
                 id="rule-threshold"
                 type="number"
                 step={thresholdStep}
@@ -188,7 +188,7 @@ export default function CreateAlertRuleDialog({
 
           {isPlateau && (
             <p className="text-xs text-muted-foreground">
-              Alert fires when gravity has not moved more than {(u.gravity(1+Number(threshold || "0.002"))-u.gravity(1)).toFixed(u.units.gravity === "P" ? 2 : 4)} {u.gravityLabel} over the last {windowHours} hours.
+              Alert fires when gravity has not moved more than {u.formatGravityDelta(Number(threshold || "0.002"))} over the last {windowHours} hours.
             </p>
           )}
 

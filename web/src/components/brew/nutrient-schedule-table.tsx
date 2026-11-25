@@ -1,4 +1,4 @@
-import { useUnits, type unitTools } from "@/lib/units";
+import { useUnits, type UnitTools } from "@/lib/units";
 import { format } from "date-fns";
 import { CheckCircle2, Clock, Droplets, AlertCircle, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +37,7 @@ function gramsToTsp(product: NutrientProduct, grams: number): number {
   return grams / (G_PER_TSP[product] ?? 1);
 }
 
-function triggerLabel(addition: NutrientAddition, u: ReturnType<typeof unitTools>): string {
+function triggerLabel(addition: NutrientAddition, u: UnitTools): string {
   if (addition.primaryTrigger === "at_pitch") return "At pitch";
   if (addition.primaryTrigger === "gravity_threshold" && addition.gravityThreshold != null) {
     const fallback = addition.fallbackHours != null ? ` (fallback: ${addition.fallbackHours}h)` : "";
@@ -60,7 +60,7 @@ function AdditionRow({
   onLog: () => void;
   isLogging: boolean;
 }) {
-  const u=useUnits();
+  const u = useUnits();
   const tsp = gramsToTsp(addition.product, addition.amountGrams);
 
   return (

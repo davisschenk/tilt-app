@@ -343,7 +343,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
             color: "#1971C2",
             fontFamily: theme.fontFamily,
             fontSize: containerWidth < 640 ? 9 : 11,
-            formatter: (val: number) => u.gravity(val).toFixed(u.units.gravity === "P" ? 2 : 3),
+            formatter: (val: number) => u.formatNumber("gravity", val),
           },
           splitLine: { lineStyle: { color: theme.gridColor } },
           axisLine: { lineStyle: { color: theme.borderColor } },

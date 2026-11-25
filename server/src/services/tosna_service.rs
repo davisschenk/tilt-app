@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use super::alert_target_service;
 use super::brew_event_service;
+use super::preferences_service;
 use super::webhook_dispatcher::{
     self, DAP_G_PER_TSP, FERMAID_K_G_PER_TSP, FERMAID_O_G_PER_TSP, GOFERM_G_PER_TSP,
     NutrientWebhookPayload,
@@ -183,24 +184,22 @@ pub async fn evaluate_temperature_safety(
         return;
     }
 
-    let preferences = crate::routes::brewer_features::preferences(db, owner)
-        .await
-        .unwrap_or_default();
+    let preferences = preferences_service::get_or_default(db, owner).await;
     let excess = temperature_f - strain.temp_max_f;
     let fusel_note = if strain.name == "D47" {
         format!(
             " D47 produces significant fusel alcohols above {}.",
-            preferences.format_temperature(65.0, false)
+            preferences.format_temperature(65.0)
         )
     } else {
         String::new()
     };
     let notes = format!(
         "Temperature warning: {} exceeds safe max {} for {} by {}.{}",
-        preferences.format_temperature(temperature_f, false),
-        preferences.format_temperature(strain.temp_max_f, false),
+        preferences.format_temperature(temperature_f),
+        preferences.format_temperature(strain.temp_max_f),
         strain.name,
-        preferences.format_temperature(excess, true),
+        preferences.format_temperature_delta(excess),
         fusel_note
     );
 
@@ -722,6 +721,12 @@ pub async fn evaluate_due_additions(
         },
     };
 
+    // Only needed to word notifications, so skip the lookup when there is no target.
+    let preferences = match &target_opt {
+        Some(_) => preferences_service::get_or_default(db, owner).await,
+        None => Default::default(),
+    };
+
     for addition in &schedule {
         if completed_additions.contains(&addition.addition_number) {
             continue;
@@ -767,9 +772,7 @@ pub async fn evaluate_due_additions(
 
         if let Some(target) = &target_opt
             && let Err(e) = webhook_dispatcher::dispatch_nutrient_notification(
-                &crate::routes::brewer_features::preferences(db, owner)
-                    .await
-                    .unwrap_or_default(),
+                &preferences,
                 http_client,
                 target,
                 &payload,

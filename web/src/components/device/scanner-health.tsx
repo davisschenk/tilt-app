@@ -1,30 +1,13 @@
 import { useState, useEffect } from "react";
-import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
-import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "@/lib/api";
-interface Scanner {
-  id: string;
-  deviceId: string;
-  firmwareVersion: string;
-  lastSeenAt: string;
-  uptimeSeconds: number;
-  wifiRssi: number | null;
-  scanIntervalSeconds: number;
-  bufferedReadings: number;
-  scanOk: boolean;
-  uploadOk: boolean;
-}
+import { useScanners } from "@/hooks/use-scanners";
+
 export default function ScannerHealth() {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
-  const q = useQuery({
-    queryKey: ["scanners"],
-    queryFn: () => apiGet<Scanner[]>("/scanners"),
-    refetchInterval: 30_000,
-  });
+  const q = useScanners();
   return (
     <section className="mb-6 space-y-3">
       <h2 className="text-xl font-semibold">Scanners</h2>
@@ -66,17 +49,5 @@ export default function ScannerHealth() {
         })
       )}
     </section>
-  );
-}
-
-export function ReadingGaps({ brewId }: { brewId: string }) {
-  const q = useBrewAnalytics(brewId);
-  if (!q.data) return null;
-  const minutes = q.data.gaps.reduce((sum, g) => sum + g.durationMinutes, 0);
-  return (
-    <p className="text-sm">
-      Reading gaps: {q.data.gaps.length} ({Math.round(minutes)} min total). Gaps
-      exceed 45 minutes.
-    </p>
   );
 }

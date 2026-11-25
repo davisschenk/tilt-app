@@ -1,14 +1,10 @@
-import { useUnits } from "@/lib/units";
-import { MeasurementInput } from "@/components/ui/measurement-input";
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { useBrew } from "@/hooks/use-brews";
-import type { BrewResponse } from "@/types";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MeasurementInput } from "@/components/ui/measurement-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -19,19 +15,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { useCreateBrew, useBrews } from "@/hooks/use-brews";
+import { useBrew, useCreateBrew, useBrews } from "@/hooks/use-brews";
 import { useHydrometers } from "@/hooks/use-hydrometers";
 import ColorDot from "@/components/ui/color-dot";
 import * as toast from "@/lib/toast";
+import { useUnits } from "@/lib/units";
+import type { BrewResponse, HydrometerResponse } from "@/types";
 
 export default function BrewNew() {
- const [params]=useSearchParams(); const sourceId=params.get("duplicate") ?? "";
- const source=useBrew(sourceId);
- if(sourceId && source.isPending) return <p>Loading original batch…</p>;
- if(sourceId && source.isError) return <p>Could not load the original batch.</p>;
- return <BrewForm key={sourceId} source={source.data} />;
+  const [params] = useSearchParams();
+  const sourceId = params.get("duplicate") ?? "";
+  const source = useBrew(sourceId);
+  if (sourceId && source.isPending) return <p>Loading original batch…</p>;
+  if (sourceId && source.isError) return <p>Could not load the original batch.</p>;
+  return <BrewForm key={sourceId} source={source.data} />;
 }
-function BrewForm({source}:{source?:BrewResponse}) {
+
+function BrewForm({ source }: { source?: BrewResponse }) {
   const u = useUnits();
   const navigate = useNavigate();
   const { data: hydrometers } = useHydrometers();
@@ -39,6 +39,8 @@ function BrewForm({source}:{source?:BrewResponse}) {
   const createBrew = useCreateBrew();
 
   const usedHydrometerIds = new Set(activeBrews?.map((b) => b.hydrometerId) ?? []);
+  const isAvailable = (h: HydrometerResponse) =>
+    !h.isDisabled && !usedHydrometerIds.has(h.id);
 
   const [name, setName] = useState(source ? `${source.name} (copy)` : "");
   const [style, setStyle] = useState(source?.style ?? "");
@@ -60,7 +62,10 @@ function BrewForm({source}:{source?:BrewResponse}) {
     const errs: Record<string, string> = {};
     if (!name.trim()) errs.name = "Name is required";
     if (!hydrometerId) errs.hydrometerId = "Hydrometer is required";
-    if (usedHydrometerIds.has(hydrometerId) || hydrometers?.find(h=>h.id===hydrometerId)?.isDisabled) errs.hydrometerId="Choose an available, enabled hydrometer";
+    const selected = hydrometers?.find((h) => h.id === hydrometerId);
+    if (usedHydrometerIds.has(hydrometerId) || selected?.isDisabled) {
+      errs.hydrometerId = "Choose an available, enabled hydrometer";
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -102,7 +107,15 @@ function BrewForm({source}:{source?:BrewResponse}) {
         description="Create a new brew."
       />
 
-      {source && <p className="mb-4">Review the copied recipe and select a hydrometer. Yeast: {source.yeastStrain ?? "—"}; batch size: {source.batchSizeGallons ?? "—"} gal; nutrient protocol: {source.nutrientProtocol ?? "—"}. Dates, readings and log entries start fresh.</p>}
+      {source && (
+        <p className="mb-4">
+          Review the copied recipe and select a hydrometer. Yeast:{" "}
+          {source.yeastStrain ?? "—"}; batch size:{" "}
+          {source.batchSizeGallons ?? "—"} gal; nutrient protocol:{" "}
+          {source.nutrientProtocol ?? "—"}. Dates, readings and log entries
+          start fresh.
+        </p>
+      )}
       <Card className="max-w-2xl">
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -137,8 +150,7 @@ function BrewForm({source}:{source?:BrewResponse}) {
                 </SelectTrigger>
                 <SelectContent>
                   {hydrometers?.map((h) => {
-                    const inUse = usedHydrometerIds.has(h.id) || h.isDisabled;
-                    if (inUse) {
+                    if (!isAvailable(h)) {
                       return (
                         <div
                           key={h.id}
@@ -161,7 +173,12 @@ function BrewForm({source}:{source?:BrewResponse}) {
                   })}
                 </SelectContent>
               </Select>
-              {hydrometers && !hydrometers.some(h=>!h.isDisabled && !usedHydrometerIds.has(h.id)) && <p className="text-sm text-muted-foreground">No hydrometer is available. Finish an active batch or register an enabled hydrometer first.</p>}
+              {hydrometers && !hydrometers.some(isAvailable) && (
+                <p className="text-sm text-muted-foreground">
+                  No hydrometer is available. Finish an active batch or register
+                  an enabled hydrometer first.
+                </p>
+              )}
               {errors.hydrometerId && (
                 <p className="text-sm text-destructive">{errors.hydrometerId}</p>
               )}

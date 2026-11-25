@@ -62,4 +62,26 @@ describe("MeasurementInput", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "0." } });
     expect(screen.getByRole("textbox")).toHaveValue("0.");
   });
+  it("shows a placeholder only when this input's own unit is the default", () => {
+    state.units = { temperature: "C", gravity: "SG" };
+    const view = render(
+      <MeasurementInput
+        measurement="gravity"
+        value=""
+        onChange={() => {}}
+        placeholder="1.050"
+      />,
+    );
+    expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", "1.050");
+    view.rerender(
+      <MeasurementInput
+        measurement="temperature"
+        value=""
+        onChange={() => {}}
+        placeholder="68"
+      />,
+    );
+    expect(screen.getByRole("textbox")).not.toHaveAttribute("placeholder");
+    state.units = { temperature: "C", gravity: "P" };
+  });
 });

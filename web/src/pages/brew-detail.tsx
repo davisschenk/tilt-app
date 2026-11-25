@@ -1,7 +1,5 @@
-import { useUnits } from "@/lib/units";
-import { Link } from "react-router-dom";
 import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
 import { Pencil, CheckCircle, Archive, Trash2, PartyPopper, Bell, ChevronDown, ChevronUp, Plus, Table2, MoreHorizontal } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
@@ -34,22 +32,8 @@ import BrewEventLog from "@/components/brew/brew-event-log";
 import NutrientSetupPanel from "@/components/brew/nutrient-setup-panel";
 import * as toast from "@/lib/toast";
 import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
-import type { AlertMetric, AlertOperator } from "@/types";
-
-const METRIC_LABELS: Record<AlertMetric, string> = {
-  gravity: "Gravity",
-  temperature_f: "Temperature (°F)",
-  gravity_plateau: "Gravity Plateau",
-};
-
-const OPERATOR_SYMBOLS: Record<AlertOperator, string> = {
-  lte: "≤",
-  gte: "≥",
-  lt: "<",
-  gt: ">",
-  eq: "=",
-  plateau: "plateau",
-};
+import { useUnits } from "@/lib/units";
+import { formatCondition } from "@/lib/alerts";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   Active: "default",
@@ -173,8 +157,12 @@ export default function BrewDetail() {
             </div>
             {/* Desktop: inline button row */}
             <div className="hidden sm:flex items-center gap-2">
-              <Button variant="outline" size="sm" asChild><Link to={`/brews/new?duplicate=${brew.id}`}>Duplicate</Link></Button>
-              <Button variant="outline" size="sm" asChild><Link to={`/brews/${brew.id}/report`}>Report</Link></Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link to={`/brews/new?duplicate=${brew.id}`}>Duplicate</Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link to={`/brews/${brew.id}/report`}>Report</Link>
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Edit
@@ -363,16 +351,13 @@ export default function BrewDetail() {
                   return <p className="text-muted-foreground text-sm py-4">No alerts fired yet.</p>;
                 }
                 return triggered.map((r) => {
-                  const metricLabel = r.metric === "temperature_f" ? `Temperature (${u.temperatureLabel})` : METRIC_LABELS[r.metric] ?? r.metric;
-                  const opSymbol = OPERATOR_SYMBOLS[r.operator] ?? r.operator;
-                  const value = r.metric === "gravity" ? u.formatGravity(r.threshold) : r.metric === "temperature_f" ? u.formatTemperature(r.threshold) : `${(u.gravity(1+r.threshold)-u.gravity(1)).toFixed(4)} ${u.gravityLabel}`;
                   return (
                     <Card key={r.id} className="overflow-hidden">
                       <CardContent className="py-3 flex items-center gap-3 justify-between">
                         <div className="min-w-0">
                           <p className="font-medium text-sm truncate">{r.name}</p>
                           <p className="text-xs text-muted-foreground truncate">
-                            {metricLabel} {opSymbol} {value} → {targetMap.get(r.alertTargetId) ?? "Unknown target"}
+                            {formatCondition(r, u)} → {targetMap.get(r.alertTargetId) ?? "Unknown target"}
                           </p>
                         </div>
                         <p className="text-xs text-muted-foreground shrink-0">
@@ -552,16 +537,13 @@ export default function BrewDetail() {
                 }
 
                 return triggered.map((r) => {
-                  const metricLabel = r.metric === "temperature_f" ? `Temperature (${u.temperatureLabel})` : METRIC_LABELS[r.metric] ?? r.metric;
-                  const opSymbol = OPERATOR_SYMBOLS[r.operator] ?? r.operator;
-                  const value = r.metric === "gravity" ? u.formatGravity(r.threshold) : r.metric === "temperature_f" ? u.formatTemperature(r.threshold) : `${(u.gravity(1+r.threshold)-u.gravity(1)).toFixed(4)} ${u.gravityLabel}`;
                   return (
                     <Card key={r.id} className="overflow-hidden">
                       <CardContent className="py-3 flex items-center gap-3 justify-between">
                         <div className="min-w-0">
                           <p className="font-medium text-sm truncate">{r.name}</p>
                           <p className="text-xs text-muted-foreground truncate">
-                            {metricLabel} {opSymbol} {value} → {targetMap.get(r.alertTargetId) ?? "Unknown target"}
+                            {formatCondition(r, u)} → {targetMap.get(r.alertTargetId) ?? "Unknown target"}
                           </p>
                         </div>
                         <p className="text-xs text-muted-foreground shrink-0">

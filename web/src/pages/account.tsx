@@ -1,10 +1,16 @@
-import { useUnits } from "@/lib/units";
 import { useState } from "react";
 import { Download, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -19,6 +25,7 @@ import { LegalFooterLinks } from "@/components/legal-layout";
 import { apiPost, downloadFile } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import * as toast from "@/lib/toast";
+import { useUnits, type Preferences } from "@/lib/units";
 
 export default function AccountPage() {
   const { user } = useAuth();
@@ -30,6 +37,10 @@ export default function AccountPage() {
 
   const emailMatches =
     !!user && confirmEmail.trim().toLowerCase() === user.email.trim().toLowerCase();
+
+  function savePreferences(next: Preferences) {
+    save.mutate(next, { onError: () => toast.error("Could not save preferences") });
+  }
 
   async function handleExport() {
     setExporting(true);
@@ -60,10 +71,43 @@ export default function AccountPage() {
 
       <div className="space-y-6 max-w-2xl">
         <Card>
-          <CardHeader><CardTitle>Measurement preferences</CardTitle><CardDescription>Used across your devices, charts, forms and alerts.</CardDescription></CardHeader>
+          <CardHeader>
+            <CardTitle>Measurement preferences</CardTitle>
+            <CardDescription>Used across your devices, charts, forms and alerts.</CardDescription>
+          </CardHeader>
           <CardContent className="flex gap-6">
-            <label>Temperature <select aria-label="Temperature unit" value={units.temperature} disabled={save.isPending} onChange={e=>save.mutate({...units,temperature:e.target.value as "F"|"C"},{onError:()=>toast.error("Could not save preferences")})}><option value="F">°F</option><option value="C">°C</option></select></label>
-            <label>Gravity <select aria-label="Gravity unit" value={units.gravity} disabled={save.isPending} onChange={e=>save.mutate({...units,gravity:e.target.value as "SG"|"P"},{onError:()=>toast.error("Could not save preferences")})}><option value="SG">SG</option><option value="P">°P</option></select></label>
+            <div className="space-y-2">
+              <Label htmlFor="temperature-unit">Temperature</Label>
+              <Select
+                value={units.temperature}
+                disabled={save.isPending}
+                onValueChange={(v) => savePreferences({ ...units, temperature: v as Preferences["temperature"] })}
+              >
+                <SelectTrigger id="temperature-unit" aria-label="Temperature unit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="F">°F</SelectItem>
+                  <SelectItem value="C">°C</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gravity-unit">Gravity</Label>
+              <Select
+                value={units.gravity}
+                disabled={save.isPending}
+                onValueChange={(v) => savePreferences({ ...units, gravity: v as Preferences["gravity"] })}
+              >
+                <SelectTrigger id="gravity-unit" aria-label="Gravity unit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SG">SG</SelectItem>
+                  <SelectItem value="P">°P</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardContent>
         </Card>
         <Card>

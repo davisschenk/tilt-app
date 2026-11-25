@@ -6,6 +6,9 @@
 /// Number of consecutive errors before logging an elevated error-level warning.
 pub const CONSECUTIVE_ERROR_WARN_THRESHOLD: u32 = 10;
 
+/// Target spacing of scanner heartbeats to the server, in seconds.
+pub const HEARTBEAT_INTERVAL_SECS: u32 = 60;
+
 /// Firmware version, taken from Cargo.toml so it always matches the built image.
 /// Compared against the server's OTA manifest.
 pub const FIRMWARE_VERSION: &str = match option_env!("TILT_RELEASE_VERSION") {

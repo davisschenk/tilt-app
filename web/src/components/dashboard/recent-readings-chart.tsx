@@ -141,7 +141,7 @@ export default function RecentReadingsChart() {
         color: theme.mutedColor,
         fontFamily: theme.fontFamily,
         fontSize: isMobile ? 9 : 11,
-        formatter: (val: number) => u.gravity(val).toFixed(u.units.gravity === "P" ? 2 : 3),
+        formatter: (val: number) => u.formatNumber("gravity", val),
       },
       splitLine: { lineStyle: { color: theme.gridColor } },
       axisLine: { lineStyle: { color: theme.borderColor } },
