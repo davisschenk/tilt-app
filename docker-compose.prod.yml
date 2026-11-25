@@ -28,6 +28,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Optional settings such as LOG_FORMAT and METRICS_TOKEN come from .env here.
     env_file:
       - .env
     environment:

@@ -263,26 +263,16 @@ pub async fn dispatch(
         recorded_at,
     );
 
-    // Re-check at send time: the row may predate validation, or the env may have changed.
-    super::webhook_guard::validate_url(&target.url).map_err(DispatchError::InvalidUrl)?;
-    let mut request = client.post(&target.url).json(&payload);
-
-    if let Some(ref secret) = target.secret_header {
-        request = request.header("Authorization", secret);
-    }
-
-    let response = request.send().await.map_err(DispatchError::HttpError)?;
-
-    let status = response.status().as_u16();
-    if status >= 400 {
-        tracing::warn!(
-            target_name = %target.name,
-            rule_name = %rule.name,
-            status,
-            "Webhook dispatch failed"
-        );
-        return Err(DispatchError::ServerError(status));
-    }
+    let status = post("alert", client, target, &payload)
+        .await
+        .inspect_err(|e| {
+            tracing::warn!(
+                target_name = %target.name,
+                rule_name = %rule.name,
+                error = %e,
+                "Webhook dispatch failed"
+            );
+        })?;
 
     tracing::info!(
         target_name = %target.name,
@@ -372,18 +362,7 @@ pub async fn dispatch_nutrient_notification(
         }),
     };
 
-    // Re-check at send time: the row may predate validation, or the env may have changed.
-    super::webhook_guard::validate_url(&target.url).map_err(DispatchError::InvalidUrl)?;
-    let mut request = client.post(&target.url).json(&payload);
-    if let Some(ref secret) = target.secret_header {
-        request = request.header("Authorization", secret);
-    }
-
-    let response = request.send().await.map_err(DispatchError::HttpError)?;
-    let status = response.status().as_u16();
-    if status >= 400 {
-        return Err(DispatchError::ServerError(status));
-    }
+    let status = post("nutrient", client, target, &payload).await?;
 
     tracing::info!(
         target_name = %target.name,
@@ -457,22 +436,34 @@ pub async fn dispatch_test(
         }),
     };
 
-    // Re-check at send time: the row may predate validation, or the env may have changed.
-    super::webhook_guard::validate_url(&target.url).map_err(DispatchError::InvalidUrl)?;
-    let mut request = client.post(&target.url).json(&payload);
+    post("test", client, target, &payload).await
+}
 
-    if let Some(ref secret) = target.secret_header {
-        request = request.header("Authorization", secret);
+/// Sends one webhook and records its outcome. `kind` is one of a fixed set
+/// ("alert", "nutrient", "test"). Returns the response status on success.
+async fn post(
+    kind: &'static str,
+    client: &reqwest::Client,
+    target: &alert_targets::Model,
+    payload: &serde_json::Value,
+) -> Result<u16, DispatchError> {
+    let result = async {
+        // Re-check at send time: the row may predate validation, or the env may have changed.
+        super::webhook_guard::validate_url(&target.url).map_err(DispatchError::InvalidUrl)?;
+        let mut request = client.post(&target.url).json(payload);
+        if let Some(ref secret) = target.secret_header {
+            request = request.header("Authorization", secret);
+        }
+        let response = request.send().await.map_err(DispatchError::HttpError)?;
+        let status = response.status().as_u16();
+        if status >= 400 {
+            return Err(DispatchError::ServerError(status));
+        }
+        Ok(status)
     }
-
-    let response = request.send().await.map_err(DispatchError::HttpError)?;
-    let status = response.status().as_u16();
-
-    if status >= 400 {
-        return Err(DispatchError::ServerError(status));
-    }
-
-    Ok(status)
+    .await;
+    crate::metrics::webhook_delivery(kind, result.is_ok());
+    result
 }
 
 #[cfg(test)]
