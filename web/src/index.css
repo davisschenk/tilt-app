@@ -149,3 +149,17 @@
   --color-accent-fg: var(--primary) !important;
   --color-neutral-muted: var(--muted) !important;
 }
+@media print {
+ .no-print, aside, nav, [data-sonner-toaster] { display:none !important; }
+ body, .report-body { background:white !important; color:black !important; }
+ .report-body svg { width:100%; break-inside:avoid; }
+ .report-entry { break-inside:avoid; }
+ .report-body { font-size:11pt; }
+}
+
+@media print {
+ body > #root > div, #root > div > div { display:block !important; }
+ #root header.no-print, #root > div > div > header { display:none !important; }
+ main { overflow:visible !important; }
+ @page { margin:15mm; }
+}

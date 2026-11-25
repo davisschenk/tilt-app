@@ -16,11 +16,6 @@ use sea_orm::{Database, DatabaseConnection};
 use sea_orm_migration::MigratorTrait;
 use std::path::PathBuf;
 
-#[get("/health")]
-fn health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "status": "ok" }))
-}
-
 #[options("/<_path..>")]
 fn preflight(_path: PathBuf) -> rocket::http::Status {
     rocket::http::Status::NoContent
@@ -230,8 +225,11 @@ async fn rocket() -> Rocket<Build> {
         .attach(fairings::request_logger::RequestLogger)
         .attach(fairings::security_headers::SecurityHeaders)
         .attach(fairings::session_cleanup::SessionCleanup)
-        .mount("/api/v1", routes![health])
+        .mount("/api/v1", routes::health::routes())
         .mount("/", routes![preflight])
+        .mount("/api/v1", routes::preferences::routes())
+        .mount("/api/v1", routes::scanners::routes())
+        .mount("/api/v1", routes::reports::routes())
         .mount("/api/v1", routes::hydrometers::routes())
         .mount("/api/v1", routes::brews::routes())
         .mount("/api/v1", routes::readings::routes())

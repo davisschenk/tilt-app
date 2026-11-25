@@ -10,6 +10,10 @@ A full-stack application for monitoring fermentation with [Tilt Wireless Hydrome
 - **Fermentation event log** — Log events (dry hop, cold crash, etc.) with photo attachments
 - **TOSNA nutrient scheduling** — Automated nutrient addition schedule with reminders
 - **Alert system** — Gravity/temperature threshold alerts via webhook (Discord, Slack, etc.)
+- **Measurement preferences** — Account-wide °C/°F and SG/°P display and entry; APIs and CSV exports retain Fahrenheit and SG
+- **Duplicate batches** — Review and reuse yeast, targets, batch size, notes, and nutrient setup with a fresh available hydrometer
+- **Scanner health** — ESP32 heartbeats distinguish scanner connectivity from hydrometer reception; shows Wi-Fi/Bluetooth signal, upload backlog, and reading gaps
+- **Batch reports** — Preview selected journal entries, publish a read-only snapshot, refresh or revoke its link, and print/save as PDF; notes and photos are opt-in
 - **Dark/light theme** — System-aware theme with manual toggle
 - **Single binary deployment** — Server, API, and web frontend served from one Rocket binary
 - **Docker ready** — Multi-stage Dockerfile for easy self-hosting
@@ -148,6 +152,8 @@ docker compose -f docker-compose.prod.yml start server
 
 The scripts in `deploy/backup/` were tested with a dump, a restore into an empty database, and a row-count comparison. Try a restore on a scratch copy before you need one.
 
+**Health checks.** `GET /api/v1/health` is liveness (the process is up; no database access). `GET /api/v1/health/ready` is readiness: it pings Postgres with a 2s timeout and returns `200 {"status":"ok","database":"ok"}` or `503 {"status":"unavailable","database":"error"}` (details go to the server log). The prod compose healthcheck uses the readiness endpoint, so the server (and Caddy, which waits on it) only reports healthy when the database is reachable. Neither endpoint needs auth or counts toward rate limits.
+
 **Logs.** Set `LOG_FORMAT=json` for one JSON object per line, for a log shipper.
 
 ## ESP32 Client
@@ -202,3 +208,9 @@ or restart the homelab service; deployment remains managed by the homelab repo.
 If publishing fails before release creation, rerun the failed jobs for the same
 workflow run. Completed releases are immutable by convention; use a new version
 for subsequent changes.
+
+### Brewer feature rollout
+
+Deploy the server before updating ESP32 firmware. Startup migrations add account preferences, scanner status, report snapshots, and an optional scanner association on readings. Existing firmware and reading clients remain compatible; scanners appear after their first heartbeat from updated firmware. Updated firmware needs the same account API key used for readings.
+
+Set units in **Account**. **Duplicate** and **Report** are available on batch details. Reports default to selected interventions and measurements; general notes, tasting entries and photos require explicit selection. Public report links are bearer links: anyone with a link can read that snapshot until it is revoked or the batch/account is deleted. Refresh updates the snapshot at the same link. Deleting an original photo makes it unavailable in reports. Report curves use the existing bounded chart sampling; CSV exports remain available for full readings. Each batch supports up to 20 active links and each account up to 32 scanners.

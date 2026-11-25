@@ -22,7 +22,7 @@ describe("FermentationStats", () => {
   it("computes attenuation and ABV from the newest reading", async () => {
     serve([readingRow(0, { gravity: 1.05 }), readingRow(5, { gravity: 1.02 })])
     renderWithProviders(<FermentationStats brewId="b1" og={1.06} targetFg={1.01} />)
-    expect(await screen.findByText("1.020")).toBeInTheDocument()
+    expect(await screen.findByText("1.020 SG")).toBeInTheDocument()
     expect(screen.getByText("66.7%")).toBeInTheDocument() // (1.06-1.02)/0.06
     expect(screen.getByText("5.3%")).toBeInTheDocument() // 0.04*131.25
     expect(screen.getByText("6.6%")).toBeInTheDocument() // 0.05*131.25
@@ -85,7 +85,7 @@ describe("ReadingsTable", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Export CSV/ }))
     expect(click).toHaveBeenCalled()
     const text = await blob!.text()
-    expect(text.split("\n")[0]).toBe("Recorded At,Temperature (°F),Gravity,RSSI")
+    expect(text.split("\n")[0]).toBe("Recorded At,Temperature (°F),Gravity (SG),RSSI")
     expect(text.split("\n")).toHaveLength(3)
     click.mockRestore()
   })

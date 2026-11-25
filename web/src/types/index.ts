@@ -21,6 +21,10 @@ export interface TiltReading {
 export type CreateReadingsBatch = TiltReading[];
 
 export interface CreateBrew {
+  batchSizeGallons?: number | null;
+  yeastStrain?: string | null;
+  yeastNitrogenRequirement?: string | null;
+  nutrientProtocol?: string | null;
   name: string;
   hydrometerId: string;
   style?: string | null;
@@ -311,4 +315,65 @@ export interface FirmwareManifest {
     app: FirmwareFile;
   };
   signature?: string;
+}
+
+export interface ScannerResponse {
+  id: string;
+  deviceId: string;
+  firmwareVersion: string;
+  lastSeenAt: string;
+  uptimeSeconds: number;
+  wifiRssi: number | null;
+  scanIntervalSeconds: number;
+  bufferedReadings: number;
+  scanOk: boolean;
+  uploadOk: boolean;
+}
+
+export interface MeasurementPreferences {
+  temperature: "F" | "C";
+  gravity: "SG" | "P";
+}
+
+export interface BrewReportEvent {
+  label: string;
+  eventType: string;
+  eventTime: string;
+  gravityAtEvent: number | null;
+  tempAtEvent: number | null;
+  notes: string | null;
+  photos: { id: string; filename: string; url: string }[];
+}
+
+/** A published report snapshot (`GET /reports/:token`). */
+export interface BrewReportSnapshot {
+  name: string;
+  style: string | null;
+  status: string;
+  og: number | null;
+  fg: number | null;
+  targetFg: number | null;
+  abv: number | null;
+  yeastStrain: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  notes: string | null;
+  units: MeasurementPreferences;
+  events: BrewReportEvent[];
+  readings: { recordedAt: string; gravity: number; temperatureF: number }[];
+  createdAt: string;
+}
+
+/** A live share link for a brew report. */
+export interface BrewReportLink {
+  id: string;
+  token: string;
+  createdAt: string;
+}
+
+export interface PublishBrewReport {
+  eventIds: string[];
+  includeNotes: boolean;
+  includePhotos: boolean;
+  units: MeasurementPreferences;
 }

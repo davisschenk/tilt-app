@@ -30,8 +30,8 @@ describe("AlertRules page", () => {
       alertRule({ id: "r3", name: "Stuck", metric: "gravity_plateau", operator: "plateau", threshold: 0.002, windowHours: 12, enabled: false, alertTargetId: "gone", lastTriggeredAt: "2026-01-02T00:00:00Z" }),
     ])
     renderWithProviders(<AlertRules />)
-    expect(await screen.findByText("Gravity ≤ 1.010")).toBeInTheDocument()
-    expect(screen.getByText("Temperature (°F) > 78.0")).toBeInTheDocument()
+    expect(await screen.findByText("Gravity ≤ 1.010 SG")).toBeInTheDocument()
+    expect(screen.getByText("Temperature (°F) > 78.0°F")).toBeInTheDocument()
     expect(screen.getByText("Gravity flat ±0.0020 over 12h")).toBeInTheDocument()
     expect(screen.getByText("Unknown")).toBeInTheDocument()
     expect(screen.getByText("Disabled")).toBeInTheDocument()
@@ -58,7 +58,7 @@ describe("AlertRules page", () => {
     await userEvent.type(within(dialog).getByLabelText("Name *"), "Done")
     await create()
     expect(within(dialog).getByText("Threshold is required")).toBeInTheDocument()
-    await userEvent.type(within(dialog).getByLabelText("Threshold *"), "1.010")
+    await userEvent.type(within(dialog).getByLabelText(/^Threshold/), "1.010")
     await create()
     expect(within(dialog).getByText("Webhook target is required")).toBeInTheDocument()
 

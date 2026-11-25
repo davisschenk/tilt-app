@@ -17,6 +17,9 @@ import RegisterHydrometerDialog from "@/components/hydrometer/register-hydromete
 import EditHydrometerDialog from "@/components/hydrometer/edit-hydrometer-dialog";
 import DeleteHydrometerDialog from "@/components/hydrometer/delete-hydrometer-dialog";
 import { Badge } from "@/components/ui/badge";
+import ScannerHealth from "@/components/device/scanner-health";
+import ReadingGaps from "@/components/hydrometer/reading-gaps";
+import { useUnits } from "@/lib/units";
 import type { HydrometerResponse } from "@/types";
 
 function isStale(recordedAt: string): boolean {
@@ -25,7 +28,8 @@ function isStale(recordedAt: string): boolean {
 }
 
 export default function HydrometerList() {
-  const { data: hydrometers, isLoading } = useHydrometers();
+  const u = useUnits();
+  const { data: hydrometers, isLoading } = useHydrometers({ live: true });
   const { data: activeBrews } = useBrews("Active");
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<HydrometerResponse | null>(null);
@@ -63,6 +67,7 @@ export default function HydrometerList() {
         }
       />
 
+      <ScannerHealth />
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -100,11 +105,11 @@ export default function HydrometerList() {
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div>
                         <p className="text-muted-foreground">Gravity</p>
-                        <p className="font-medium">{h.latestReading.gravity.toFixed(3)} SG</p>
+                        <p className="font-medium">{u.formatGravity(h.latestReading.gravity)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Temperature</p>
-                        <p className="font-medium">{h.latestReading.temperatureF.toFixed(1)}°F</p>
+                        <p className="font-medium">{u.formatTemperature(h.latestReading.temperatureF)}</p>
                       </div>
                     </div>
                   )}
@@ -112,11 +117,11 @@ export default function HydrometerList() {
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
                       <p className="text-muted-foreground">Temp Offset</p>
-                      <p className="font-medium">{h.tempOffsetF?.toFixed(1) ?? "0.0"}°F</p>
+                      <p className="font-medium">{u.formatTemperatureDelta(h.tempOffsetF)}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Gravity Offset</p>
-                      <p className="font-medium">{h.gravityOffset?.toFixed(3) ?? "0.000"}</p>
+                      <p className="font-medium">{u.formatGravityDelta(h.gravityOffset)}</p>
                     </div>
                   </div>
 
@@ -127,6 +132,7 @@ export default function HydrometerList() {
                     </p>
                   </div>
 
+                  {activeBrew && <ReadingGaps brewId={activeBrew.id} />}
                   {activeBrew && (
                     <div className="text-sm">
                       <p className="text-muted-foreground">Active Brew</p>
@@ -141,6 +147,7 @@ export default function HydrometerList() {
 
                   {h.latestReading && (
                     <div className="text-sm">
+                      <p>Bluetooth signal: {h.latestReading.rssi == null ? "Unavailable" : `${h.latestReading.rssi} dBm`}</p>
                       <p className="text-muted-foreground">Last Reading</p>
                       <p className="font-medium">
                         {formatDistanceToNow(new Date(h.latestReading.recordedAt), { addSuffix: true })}

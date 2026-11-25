@@ -1,3 +1,5 @@
+import { useUnits } from "@/lib/units";
+import { MeasurementInput } from "@/components/ui/measurement-input";
 import { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import {
@@ -129,6 +131,7 @@ export interface CreateEventDialogProps {
 }
 
 export function CreateEventDialog({ brewId, open, onOpenChange, initialEventTime }: CreateEventDialogProps) {
+  const u = useUnits();
   const create = useCreateBrewEvent(brewId);
   const [eventType, setEventType] = useState<BrewEventType>("note");
   const [label, setLabel] = useState("");
@@ -216,8 +219,8 @@ export function CreateEventDialog({ brewId, open, onOpenChange, initialEventTime
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Gravity at Event</Label>
-              <Input
+              <Label>Gravity at Event ({u.gravityLabel})</Label>
+              <MeasurementInput measurement="gravity"
                 type="number"
                 step="0.001"
                 placeholder="1.012"
@@ -226,8 +229,8 @@ export function CreateEventDialog({ brewId, open, onOpenChange, initialEventTime
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Temp (°F)</Label>
-              <Input
+              <Label>Temp ({u.temperatureLabel})</Label>
+              <MeasurementInput measurement="temperature"
                 type="number"
                 step="0.1"
                 placeholder="68.0"
@@ -262,6 +265,7 @@ interface EditEventDialogProps {
 }
 
 function EditEventDialog({ brewId, event, open, onOpenChange }: EditEventDialogProps) {
+  const u = useUnits();
   const update = useUpdateBrewEvent(brewId, event.id);
   const [label, setLabel] = useState(event.label);
   const [notes, setNotes] = useState(event.notes ?? "");
@@ -303,12 +307,12 @@ function EditEventDialog({ brewId, event, open, onOpenChange }: EditEventDialogP
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Gravity</Label>
-              <Input type="number" step="0.001" value={gravity} onChange={(e) => setGravity(e.target.value)} />
+              <Label>Gravity ({u.gravityLabel})</Label>
+              <MeasurementInput measurement="gravity" type="number" step="0.001" value={gravity} onChange={(e) => setGravity(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label>Temp (°F)</Label>
-              <Input type="number" step="0.1" value={temp} onChange={(e) => setTemp(e.target.value)} />
+              <Label>Temp ({u.temperatureLabel})</Label>
+              <MeasurementInput measurement="temperature" type="number" step="0.1" value={temp} onChange={(e) => setTemp(e.target.value)} />
             </div>
           </div>
           <div className="space-y-1.5">
@@ -490,6 +494,7 @@ interface BrewEventLogProps {
 }
 
 export default function BrewEventLog({ brewId }: BrewEventLogProps) {
+  const u = useUnits();
   const { data: events, isLoading } = useBrewEvents(brewId);
   const [expanded, setExpanded] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
@@ -541,10 +546,10 @@ export default function BrewEventLog({ brewId }: BrewEventLogProps) {
                         {EVENT_TYPE_LABELS[ev.eventType]}
                       </Badge>
                       {ev.gravityAtEvent != null && (
-                        <span className="text-xs text-muted-foreground">SG {ev.gravityAtEvent.toFixed(3)}</span>
+                        <span className="text-xs text-muted-foreground">{u.formatGravity(ev.gravityAtEvent)}</span>
                       )}
                       {ev.tempAtEvent != null && (
-                        <span className="text-xs text-muted-foreground">{ev.tempAtEvent.toFixed(1)}°F</span>
+                        <span className="text-xs text-muted-foreground">{u.formatTemperature(ev.tempAtEvent)}</span>
                       )}
                     </div>
                     {ev.notes && (

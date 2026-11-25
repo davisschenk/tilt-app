@@ -17,3 +17,9 @@ pub const MAX_READINGS_PER_BATCH: usize = 1_000;
 /// Readings one account may ingest in a rolling 24 hours. Eight Tilts reporting
 /// every 15 seconds is about 46,000, so this leaves room for legitimate use.
 pub const MAX_READINGS_PER_DAY: u64 = 100_000;
+/// ESP32 scanners one account may register (by heartbeat).
+pub const MAX_SCANNERS: u64 = 32;
+/// Live public share links per brew.
+pub const MAX_REPORTS_PER_BREW: u64 = 20;
+/// Log entries one report may include.
+pub const MAX_REPORT_EVENTS: usize = 1_000;

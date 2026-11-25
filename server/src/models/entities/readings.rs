@@ -9,6 +9,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub brew_id: Option<Uuid>,
+    pub scanner_id: Option<Uuid>,
     pub hydrometer_id: Uuid,
     #[sea_orm(column_type = "Double")]
     pub temperature_f: f64,

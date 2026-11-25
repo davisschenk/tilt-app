@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MeasurementInput } from "@/components/ui/measurement-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -14,25 +15,39 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { useCreateBrew, useBrews } from "@/hooks/use-brews";
+import { useBrew, useCreateBrew, useBrews } from "@/hooks/use-brews";
 import { useHydrometers } from "@/hooks/use-hydrometers";
 import ColorDot from "@/components/ui/color-dot";
 import * as toast from "@/lib/toast";
+import { useUnits } from "@/lib/units";
+import type { BrewResponse, HydrometerResponse } from "@/types";
 
 export default function BrewNew() {
+  const [params] = useSearchParams();
+  const sourceId = params.get("duplicate") ?? "";
+  const source = useBrew(sourceId);
+  if (sourceId && source.isPending) return <p>Loading original batch…</p>;
+  if (sourceId && source.isError) return <p>Could not load the original batch.</p>;
+  return <BrewForm key={sourceId} source={source.data} />;
+}
+
+function BrewForm({ source }: { source?: BrewResponse }) {
+  const u = useUnits();
   const navigate = useNavigate();
   const { data: hydrometers } = useHydrometers();
   const { data: activeBrews } = useBrews("Active");
   const createBrew = useCreateBrew();
 
   const usedHydrometerIds = new Set(activeBrews?.map((b) => b.hydrometerId) ?? []);
+  const isAvailable = (h: HydrometerResponse) =>
+    !h.isDisabled && !usedHydrometerIds.has(h.id);
 
-  const [name, setName] = useState("");
-  const [style, setStyle] = useState("");
+  const [name, setName] = useState(source ? `${source.name} (copy)` : "");
+  const [style, setStyle] = useState(source?.style ?? "");
   const [hydrometerId, setHydrometerId] = useState("");
-  const [og, setOg] = useState("");
-  const [targetFg, setTargetFg] = useState("");
-  const [notes, setNotes] = useState("");
+  const [og, setOg] = useState(source?.og?.toString() ?? "");
+  const [targetFg, setTargetFg] = useState(source?.targetFg?.toString() ?? "");
+  const [notes, setNotes] = useState(source?.notes ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   function handleHydrometerChange(id: string) {
@@ -47,6 +62,10 @@ export default function BrewNew() {
     const errs: Record<string, string> = {};
     if (!name.trim()) errs.name = "Name is required";
     if (!hydrometerId) errs.hydrometerId = "Hydrometer is required";
+    const selected = hydrometers?.find((h) => h.id === hydrometerId);
+    if (usedHydrometerIds.has(hydrometerId) || selected?.isDisabled) {
+      errs.hydrometerId = "Choose an available, enabled hydrometer";
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -57,6 +76,10 @@ export default function BrewNew() {
 
     createBrew.mutate(
       {
+        batchSizeGallons: source?.batchSizeGallons,
+        yeastStrain: source?.yeastStrain,
+        yeastNitrogenRequirement: source?.yeastNitrogenRequirement,
+        nutrientProtocol: source?.nutrientProtocol,
         name: name.trim(),
         hydrometerId,
         style: style.trim() || null,
@@ -80,10 +103,19 @@ export default function BrewNew() {
     <div>
       <Breadcrumbs />
       <PageHeader
-        title="New Brew"
+        title={source ? "Duplicate Brew" : "New Brew"}
         description="Create a new brew."
       />
 
+      {source && (
+        <p className="mb-4">
+          Review the copied recipe and select a hydrometer. Yeast:{" "}
+          {source.yeastStrain ?? "—"}; batch size:{" "}
+          {source.batchSizeGallons ?? "—"} gal; nutrient protocol:{" "}
+          {source.nutrientProtocol ?? "—"}. Dates, readings and log entries
+          start fresh.
+        </p>
+      )}
       <Card className="max-w-2xl">
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -118,8 +150,7 @@ export default function BrewNew() {
                 </SelectTrigger>
                 <SelectContent>
                   {hydrometers?.map((h) => {
-                    const inUse = usedHydrometerIds.has(h.id);
-                    if (inUse) {
+                    if (!isAvailable(h)) {
                       return (
                         <div
                           key={h.id}
@@ -142,6 +173,12 @@ export default function BrewNew() {
                   })}
                 </SelectContent>
               </Select>
+              {hydrometers && !hydrometers.some(isAvailable) && (
+                <p className="text-sm text-muted-foreground">
+                  No hydrometer is available. Finish an active batch or register
+                  an enabled hydrometer first.
+                </p>
+              )}
               {errors.hydrometerId && (
                 <p className="text-sm text-destructive">{errors.hydrometerId}</p>
               )}
@@ -149,8 +186,8 @@ export default function BrewNew() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="og">Original Gravity</Label>
-                <Input
+                <Label htmlFor="og">Original Gravity ({u.gravityLabel})</Label>
+                <MeasurementInput measurement="gravity"
                   id="og"
                   type="number"
                   step="0.001"
@@ -162,8 +199,8 @@ export default function BrewNew() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="targetFg">Target FG</Label>
-                <Input
+                <Label htmlFor="targetFg">Target FG ({u.gravityLabel})</Label>
+                <MeasurementInput measurement="gravity"
                   id="targetFg"
                   type="number"
                   step="0.001"

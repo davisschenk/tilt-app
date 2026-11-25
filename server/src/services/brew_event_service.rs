@@ -77,6 +77,21 @@ pub async fn find_in_brew_raw(
         .await
 }
 
+/// The events among `ids` that belong to `brew_id`, in time order. Callers
+/// must already have verified that the caller owns the brew.
+pub async fn find_in_brew_by_ids_raw(
+    db: &DatabaseConnection,
+    brew_id: Uuid,
+    ids: impl IntoIterator<Item = Uuid>,
+) -> Result<Vec<brew_events::Model>, DbErr> {
+    BrewEvent::find()
+        .filter(Column::BrewId.eq(brew_id))
+        .filter(Column::Id.is_in(ids))
+        .order_by_asc(Column::EventTime)
+        .all(db)
+        .await
+}
+
 pub async fn find_by_id(
     db: &DatabaseConnection,
     brew_id: Uuid,

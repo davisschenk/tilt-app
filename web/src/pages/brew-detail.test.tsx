@@ -59,7 +59,7 @@ describe("BrewDetail", () => {
     expect(screen.getByText("IPA")).toBeInTheDocument()
     expect(screen.getByText("Active")).toBeInTheDocument()
     expect(screen.getByText("Live")).toBeInTheDocument()
-    expect(screen.getAllByText("1.060").length).toBeGreaterThan(0) // OG
+    expect(screen.getAllByText("1.060 SG").length).toBeGreaterThan(0) // OG
     expect(screen.getAllByText("Red").length).toBeGreaterThan(0) // hydrometer color
   })
 
@@ -71,7 +71,7 @@ describe("BrewDetail", () => {
   it("finishes a brew, recording the latest gravity as FG", async () => {
     const puts = setup()
     await userEvent.click(await screen.findByRole("button", { name: /Finish Brew/ }))
-    await waitFor(() => expect(success).toHaveBeenCalledWith("Brew finished with FG 1.050"))
+    await waitFor(() => expect(success).toHaveBeenCalledWith("Brew finished with FG 1.050 SG"))
     expect(puts[0]).toMatchObject({ status: "Completed", fg: 1.05 })
     expect(typeof puts[0].endDate).toBe("string")
   })
@@ -129,7 +129,7 @@ describe("BrewDetail", () => {
     setup(brew(), { rules: [alertRule({ lastTriggeredAt: new Date().toISOString() }), alertRule({ id: "r2", name: "never fired" })] })
     const toggle = await screen.findByRole("button", { name: /Recent Alerts/ })
     await userEvent.click(toggle)
-    expect((await screen.findAllByText(/Gravity ≤ 1\.010 → Discord Alerts/)).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/Gravity ≤ 1\.010 SG → Discord Alerts/)).length).toBeGreaterThan(0)
     expect(screen.queryByText("never fired")).not.toBeInTheDocument()
   })
 

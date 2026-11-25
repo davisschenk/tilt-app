@@ -50,7 +50,7 @@ describe("BrewEventLog", () => {
     const first = await screen.findByText("Dry hop addition")
     const second = screen.getByText("Cold crash started")
     expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.getByText("SG 1.020")).toBeInTheDocument()
+    expect(screen.getByText("1.020 SG")).toBeInTheDocument()
     expect(screen.getByText("66.5°F")).toBeInTheDocument()
     expect(screen.getByText("2oz Citra")).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: /Fermentation Log/ }))

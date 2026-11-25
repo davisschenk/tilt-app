@@ -5,6 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogCancel,
   AlertDialogContent,
@@ -18,9 +25,11 @@ import { LegalFooterLinks } from "@/components/legal-layout";
 import { apiPost, downloadFile } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import * as toast from "@/lib/toast";
+import { useUnits, type Preferences } from "@/lib/units";
 
 export default function AccountPage() {
   const { user } = useAuth();
+  const { units, save } = useUnits();
   const [exporting, setExporting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmEmail, setConfirmEmail] = useState("");
@@ -28,6 +37,10 @@ export default function AccountPage() {
 
   const emailMatches =
     !!user && confirmEmail.trim().toLowerCase() === user.email.trim().toLowerCase();
+
+  function savePreferences(next: Preferences) {
+    save.mutate(next, { onError: () => toast.error("Could not save preferences") });
+  }
 
   async function handleExport() {
     setExporting(true);
@@ -57,6 +70,46 @@ export default function AccountPage() {
       <PageHeader title="Account" description="Your profile and your data." />
 
       <div className="space-y-6 max-w-2xl">
+        <Card>
+          <CardHeader>
+            <CardTitle>Measurement preferences</CardTitle>
+            <CardDescription>Used across your devices, charts, forms and alerts.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="temperature-unit">Temperature</Label>
+              <Select
+                value={units.temperature}
+                disabled={save.isPending}
+                onValueChange={(v) => savePreferences({ ...units, temperature: v as Preferences["temperature"] })}
+              >
+                <SelectTrigger id="temperature-unit" aria-label="Temperature unit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="F">°F</SelectItem>
+                  <SelectItem value="C">°C</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gravity-unit">Gravity</Label>
+              <Select
+                value={units.gravity}
+                disabled={save.isPending}
+                onValueChange={(v) => savePreferences({ ...units, gravity: v as Preferences["gravity"] })}
+              >
+                <SelectTrigger id="gravity-unit" aria-label="Gravity unit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SG">SG</SelectItem>
+                  <SelectItem value="P">°P</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader>
             <CardTitle>Profile</CardTitle>

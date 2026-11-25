@@ -1,3 +1,5 @@
+import { useUnits } from "@/lib/units";
+import { MeasurementInput } from "@/components/ui/measurement-input";
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -24,6 +26,7 @@ export default function EditHydrometerDialog({
   open,
   onOpenChange,
 }: EditHydrometerDialogProps) {
+  const u = useUnits();
   const updateHydrometer = useUpdateHydrometer(hydrometer.id);
 
   const [name, setName] = useState(hydrometer.name ?? "");
@@ -80,8 +83,8 @@ export default function EditHydrometerDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-h-temp-offset">Temperature Offset (°F)</Label>
-            <Input
+            <Label htmlFor="edit-h-temp-offset">Temperature Offset ({u.temperatureLabel})</Label>
+            <MeasurementInput measurement="tempOffset"
               id="edit-h-temp-offset"
               type="number"
               step="0.1"
@@ -94,8 +97,8 @@ export default function EditHydrometerDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-h-gravity-offset">Gravity Offset</Label>
-            <Input
+            <Label htmlFor="edit-h-gravity-offset">Gravity Offset ({u.gravityLabel}, reference SG 1.000)</Label>
+            <MeasurementInput measurement="gravityOffset"
               id="edit-h-gravity-offset"
               type="number"
               step="0.001"

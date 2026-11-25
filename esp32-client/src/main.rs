@@ -214,7 +214,7 @@ fn run() -> Result<()> {
     feed_watchdog_or_warn();
 
     // Initialize HTTP uploader
-    let uploader = http::HttpUploader::new(cfg.server_url, cfg.api_key);
+    let mut uploader = http::HttpUploader::new(cfg.server_url, cfg.api_key);
 
     let mut state = LoopState {
         scan_count: 0,
@@ -227,6 +227,8 @@ fn run() -> Result<()> {
     };
 
     let scan_interval = Duration::from_secs(cfg.scan_interval_secs as u64);
+    let scanner_device_id = wifi_manager.device_id().context("Read scanner MAC address")?;
+    uploader.set_device_id(scanner_device_id.clone());
     let start_time = Instant::now();
     let mut slot_confirmed = false;
 
@@ -242,6 +244,9 @@ fn run() -> Result<()> {
             Err(e) => {
                 log::warn!("BLE scan error: {:?}", e);
                 ble_scanner.attempt_recovery(&e);
+                if heartbeat_due(state.scan_count, cfg.scan_interval_secs) {
+                    send_heartbeat(&uploader, &mut wifi_manager, &state, &cfg, &scanner_device_id, &start_time, false);
+                }
                 state.consecutive_errors += 1;
                 if state.consecutive_errors >= config::CONSECUTIVE_ERROR_WARN_THRESHOLD {
                     log::error!(
@@ -268,8 +273,11 @@ fn run() -> Result<()> {
         // Phase 2: Upload readings
         run_upload_phase(&mut state, &uploader, &mut wifi_manager, &readings, &cfg);
 
-        // Phase 3: Periodic health report
+        // Phase 3: Periodic health report (local log, plus a server heartbeat)
         run_health_phase(&state, &start_time, &wifi_manager, &cfg);
+        if heartbeat_due(state.scan_count, cfg.scan_interval_secs) {
+            send_heartbeat(&uploader, &mut wifi_manager, &state, &cfg, &scanner_device_id, &start_time, true);
+        }
 
         // Phase 4: Periodic OTA version check
         if let Err(e) = run_ota_phase(&uploader, &cfg, state.scan_count) {
@@ -527,4 +535,41 @@ fn run_ota_phase(
 
     feed_watchdog_or_warn();
     Ok(())
+}
+
+/// Whether this scan cycle should send a scanner heartbeat: the first cycle,
+/// then about every `config::HEARTBEAT_INTERVAL_SECS`, however short the scan
+/// interval is. BLE-error retries share the same cadence.
+fn heartbeat_due(scan_count: u32, scan_interval_secs: u32) -> bool {
+    let every = (config::HEARTBEAT_INTERVAL_SECS / scan_interval_secs.max(1)).max(1);
+    scan_count == 1 || scan_count % every == 0
+}
+
+/// Report scanner health to the server (shown on the web's scanner page).
+/// Failures are logged and otherwise ignored.
+fn send_heartbeat(
+    uploader: &http::HttpUploader,
+    wifi: &mut wifi::WifiManager,
+    state: &LoopState,
+    cfg: &config::Config,
+    device: &str,
+    started: &Instant,
+    scan_ok: bool,
+) {
+    if wifi.ensure_connected().is_err() {
+        return;
+    }
+    let payload = serde_json::json!({
+        "deviceId": device,
+        "firmwareVersion": config::FIRMWARE_VERSION,
+        "uptimeSeconds": started.elapsed().as_secs(),
+        "wifiRssi": wifi.rssi(),
+        "scanIntervalSeconds": cfg.scan_interval_secs,
+        "bufferedReadings": state.reading_buffer.len(),
+        "scanOk": scan_ok,
+        "uploadOk": state.reading_buffer.is_empty(),
+    });
+    if let Err(e) = uploader.heartbeat(&payload) {
+        log::warn!("Scanner heartbeat: {e:?}");
+    }
 }
