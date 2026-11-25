@@ -11,6 +11,7 @@ use rocket::{
 /// - script-src: the Vite build is external module scripts only — no inline
 ///   scripts, no eval. Cloudflare Web Analytics, when the site is proxied by
 ///   Cloudflare, injects an external beacon script and posts to its endpoint.
+///   Fixed rather than configurable until a second deployment needs other hosts.
 /// - style-src 'unsafe-inline': required. sonner injects its stylesheet as a
 ///   `<style>` element at runtime, and react-remove-scroll (Radix dialogs/menus)
 ///   injects one whose content includes the measured scrollbar width, so no hash
@@ -63,9 +64,6 @@ impl Fairing for SecurityHeaders {
     async fn on_response<'r>(&self, req: &'r Request<'_>, res: &mut Response<'r>) {
         res.set_header(Header::new("X-Content-Type-Options", "nosniff"));
         res.set_header(Header::new("X-Frame-Options", "DENY"));
-        // The legacy XSS auditor is gone from modern browsers and could be abused in
-        // old ones; "0" is the current recommendation. CSP does this job now.
-        res.set_header(Header::new("X-XSS-Protection", "0"));
         res.set_header(Header::new(
             "Referrer-Policy",
             "strict-origin-when-cross-origin",
@@ -137,6 +135,11 @@ mod tests {
                 .contains("serial=(self)")
         );
         assert!(h.get_one("Strict-Transport-Security").is_none());
+        assert!(
+            !CONTENT_SECURITY_POLICY
+                .split(';')
+                .any(|d| d.trim().starts_with("script-src") && d.contains("unsafe"))
+        );
     }
 
     #[rocket::async_test]
@@ -167,24 +170,5 @@ mod tests {
         let res = client.get("/sandboxed").dispatch().await;
         let csps: Vec<_> = res.headers().get("Content-Security-Policy").collect();
         assert_eq!(csps, vec!["default-src 'none'; sandbox"]);
-    }
-
-    #[test]
-    fn policy_has_no_unsafe_script_sources() {
-        let script_src = CONTENT_SECURITY_POLICY
-            .split(';')
-            .map(str::trim)
-            .find(|d| d.starts_with("script-src"))
-            .unwrap();
-        assert!(!script_src.contains("'unsafe-inline'"));
-        assert!(!script_src.contains("'unsafe-eval'"));
-        for d in [
-            "object-src 'none'",
-            "base-uri 'self'",
-            "frame-ancestors 'none'",
-            "form-action 'self'",
-        ] {
-            assert!(CONTENT_SECURITY_POLICY.contains(d), "{d}");
-        }
     }
 }

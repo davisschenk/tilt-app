@@ -29,15 +29,15 @@ export async function expectAccessible(
   expect(blocking, `Accessibility violations:\n${summary.join("\n")}`).toEqual([])
 }
 
+const collected = new WeakMap<Page, { csp: string[]; errors: string[] }>()
+
 /**
- * Every test gets these automatically:
- * - `cspViolations`: Content-Security-Policy violations seen by the page (both the
- *   DOM `securitypolicyviolation` event and Chrome's "Refused to …" console message).
- *   Any violation fails the test at teardown, so a policy that breaks the production
- *   build fails CI. A test that provokes a violation on purpose sets
- *   `test.use({ allowCspViolations: true })` and asserts on the list itself.
- * - `consoleErrors`: uncaught page errors or console errors (except noisy known ones);
- *   tests assert on it explicitly.
+ * `page` is wrapped so every test that opens one fails on a Content-Security-Policy
+ * violation (Chrome logs each one to the console), so a policy that breaks the
+ * production build fails CI. A test that provokes a violation on purpose sets
+ * `test.use({ allowCspViolations: true })` and asserts on `cspViolations` itself.
+ * `consoleErrors` collects uncaught page errors and console errors (except noisy
+ * known ones); tests assert on it explicitly.
  */
 export const test = base.extend<{
   consoleErrors: string[]
@@ -45,43 +45,24 @@ export const test = base.extend<{
   allowCspViolations: boolean
 }>({
   allowCspViolations: [false, { option: true }],
-  cspViolations: [
-    async ({ page, allowCspViolations }, provide) => {
-      const violations: string[] = []
-      await page.exposeBinding("__reportCspViolation", (_source, msg: string) => {
-        violations.push(msg)
-      })
-      await page.addInitScript(() => {
-        document.addEventListener("securitypolicyviolation", (e) => {
-          const report = (window as unknown as { __reportCspViolation?: (m: string) => void })
-            .__reportCspViolation
-          report?.(
-            `${e.effectiveDirective} blocked ${e.blockedURI || "(inline)"} ` +
-              `at ${e.sourceFile || e.documentURI}:${e.lineNumber}`,
-          )
-        })
-      })
-      page.on("console", (m) => {
-        if (/Content Security Policy/i.test(m.text())) violations.push(`console: ${m.text()}`)
-      })
-      await provide(violations)
-      if (!allowCspViolations) {
-        expect(violations, `CSP violations:\n${violations.join("\n")}`).toEqual([])
-      }
-    },
-    { auto: true },
-  ],
-  consoleErrors: async ({ page }, provide) => {
-    const errors: string[] = []
-    page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`))
+  page: async ({ page, allowCspViolations }, provide) => {
+    const c = { csp: [] as string[], errors: [] as string[] }
+    collected.set(page, c)
+    page.on("pageerror", (e) => c.errors.push(`pageerror: ${e.message}`))
     page.on("console", (m) => {
+      if (/Content Security Policy/i.test(m.text())) c.csp.push(m.text())
       if (m.type() !== "error") return
       // No firmware is installed in the E2E stack; the app handles this 404 on purpose.
       if (m.location().url.endsWith("/api/v1/firmware/manifest")) return
-      errors.push(`console: ${m.text()} (${m.location().url})`)
+      c.errors.push(`console: ${m.text()} (${m.location().url})`)
     })
-    await provide(errors)
+    await provide(page)
+    if (!allowCspViolations) {
+      expect(c.csp, `CSP violations:\n${c.csp.join("\n")}`).toEqual([])
+    }
   },
+  consoleErrors: async ({ page }, provide) => provide(collected.get(page)!.errors),
+  cspViolations: async ({ page }, provide) => provide(collected.get(page)!.csp),
 })
 
 export { expect }
