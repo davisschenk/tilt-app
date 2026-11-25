@@ -26,11 +26,7 @@ impl<'r> FromRequest<'r> for AuthOrApiKey {
         let raw_key = req
             .headers()
             .get_one("X-API-Key")
-            .or_else(|| {
-                req.headers()
-                    .get_one("Authorization")
-                    .and_then(|v| v.strip_prefix("Bearer "))
-            })
+            .or_else(|| super::bearer_token(req))
             .map(|s| s.to_string());
 
         if let Some(raw_key) = raw_key {

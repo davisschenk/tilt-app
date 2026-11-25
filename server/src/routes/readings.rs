@@ -9,6 +9,7 @@ use shared::{CreateReadingsBatch, ReadingResponse, ReadingsQuery, TiltReading};
 use crate::fairings::rate_limit::RateLimitGuard;
 use crate::guards::auth_or_api_key::AuthOrApiKey;
 use crate::guards::current_user::CurrentUser;
+use crate::metrics;
 use crate::services::{
     alert_rule_service, alert_target_service, brew_service, hydrometer_service, limits,
     preferences_service, reading_service, scanner_service, tosna_service, webhook_dispatcher,
@@ -41,6 +42,7 @@ async fn create_batch(
         return Ok((Status::Created, Json(serde_json::json!({ "count": 0 }))));
     }
     if readings.len() > limits::MAX_READINGS_PER_BATCH {
+        metrics::reading_batch_capped();
         return Err(Status::PayloadTooLarge);
     }
     let since = (chrono::Utc::now() - chrono::Duration::hours(24)).fixed_offset();
@@ -52,6 +54,7 @@ async fn create_batch(
         })?;
     if recent + readings.len() as u64 > limits::MAX_READINGS_PER_DAY {
         tracing::warn!(owner = %owner, recent, "daily reading cap reached");
+        metrics::reading_batch_capped();
         return Err(Status::TooManyRequests);
     }
 
@@ -219,6 +222,7 @@ async fn create_batch(
         }
     }
 
+    metrics::readings_accepted(total_count);
     Ok((
         Status::Created,
         Json(serde_json::json!({ "count": total_count })),

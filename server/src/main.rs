@@ -1,5 +1,6 @@
 mod fairings;
 mod guards;
+mod metrics;
 mod oidc;
 mod routes;
 mod services;
@@ -233,6 +234,7 @@ async fn rocket() -> Rocket<Build> {
             fairings::rate_limit::ApiUserLimiter::DEFAULT_PER_MINUTE,
         ))
         .manage(firmware_dir)
+        .manage(metrics::MetricsToken::from_env())
         .attach(cors)
         .attach(fairings::rate_limit::RateLimit::new())
         .attach(fairings::request_logger::RequestLogger)
@@ -243,6 +245,8 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes::preferences::routes())
         .mount("/api/v1", routes::scanners::routes())
         .mount("/api/v1", routes::reports::routes())
+        // Outside /api/v1: not rate limited, and ranked above the static/SPA fallbacks.
+        .mount("/", metrics::routes())
         .mount("/api/v1", routes::hydrometers::routes())
         .mount("/api/v1", routes::brews::routes())
         .mount("/api/v1", routes::readings::routes())
