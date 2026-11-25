@@ -8,6 +8,7 @@ pub mod auth;
 pub mod brew_events;
 pub mod brews;
 pub mod firmware;
+pub mod health;
 pub mod hydrometers;
 pub mod readings;
 pub mod tosna;

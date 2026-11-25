@@ -148,6 +148,8 @@ docker compose -f docker-compose.prod.yml start server
 
 The scripts in `deploy/backup/` were tested with a dump, a restore into an empty database, and a row-count comparison. Try a restore on a scratch copy before you need one.
 
+**Health checks.** `GET /api/v1/health` is liveness (the process is up; no database access). `GET /api/v1/health/ready` is readiness: it pings Postgres with a 2s timeout and returns `200 {"status":"ok","database":"ok"}` or `503 {"status":"unavailable","database":"error"}` (details go to the server log). The prod compose healthcheck uses the readiness endpoint, so the server (and Caddy, which waits on it) only reports healthy when the database is reachable. Neither endpoint needs auth or counts toward rate limits.
+
 **Logs.** Set `LOG_FORMAT=json` for one JSON object per line, for a log shipper.
 
 ## ESP32 Client
