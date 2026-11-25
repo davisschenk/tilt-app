@@ -18,7 +18,10 @@ vi.mock("@uiw/react-md-editor", () => {
   return { default: MDEditor }
 })
 
-beforeEach(() => { resetChart(); success.mockClear(); error.mockClear() })
+const media = vi.hoisted(() => ({ mobile: false }))
+vi.mock("@/hooks/use-media-query", () => ({ useIsMobile: () => media.mobile, useMediaQuery: () => false }))
+
+beforeEach(() => { resetChart(); success.mockClear(); error.mockClear(); media.mobile = false })
 
 function setup(b = brew(), extra: { analytics?: object; rules?: unknown[] } = {}) {
   const puts: Record<string, unknown>[] = []
@@ -144,6 +147,14 @@ describe("BrewDetail", () => {
     const [add] = await screen.findAllByRole("button", { name: /Add Alert/ })
     await userEvent.click(add)
     expect(await screen.findByRole("dialog", { name: "Add Alert Rule" })).toBeInTheDocument()
+  })
+
+  it("mounts only the tabbed layout on mobile, with the chart behind the Chart tab", async () => {
+    media.mobile = true
+    setup()
+    await userEvent.click(await screen.findByRole("tab", { name: "Chart" }))
+    expect(await screen.findAllByTestId("echart")).toHaveLength(1)
+    expect(screen.queryByRole("button", { name: /Recent Readings/ })).not.toBeInTheDocument()
   })
 
   it("expands the readings table", async () => {

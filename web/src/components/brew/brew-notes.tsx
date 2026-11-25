@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import MDEditor from "@uiw/react-md-editor";
 import { Pencil, Check, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useUpdateBrew } from "@/hooks/use-brews";
 import { useTheme } from "@/components/theme-provider";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import * as toast from "@/lib/toast";
 
 interface BrewNotesProps {
@@ -15,16 +16,9 @@ interface BrewNotesProps {
 export default function BrewNotes({ brewId, notes }: BrewNotesProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(notes ?? "");
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+  const isMobile = useMediaQuery("(max-width: 639px)");
   const updateBrew = useUpdateBrew(brewId);
   const { theme } = useTheme();
-
-  useEffect(() => {
-    const mql = window.matchMedia("(max-width: 639px)");
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, []);
 
   const colorMode =
     theme === "system"
