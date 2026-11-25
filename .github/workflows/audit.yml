@@ -9,6 +9,7 @@ on:
     # Weekly, Monday 06:00 UTC: catches advisories published against unchanged lockfiles.
     - cron: '0 6 * * 1'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -26,16 +27,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-audit
+      - name: Install cargo-audit and just
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-audit
+          tool: cargo-audit,just
 
       - name: Audit Cargo.lock
-        run: cargo audit
+        run: just audit-rust
 
   # Production (non-dev) npm dependencies of the web UI; fails on high or critical.
   npm-audit:
@@ -44,10 +42,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Install just
+        uses: taiki-e/install-action@v2
         with:
-          node-version: '22'
+          tool: just
 
       - name: Audit web dependencies
-        run: cd web && npm audit --omit=dev --audit-level=high
+        run: just audit-web

@@ -58,8 +58,12 @@ jobs:
     needs: validate
     uses: ./.github/workflows/ci.yml
 
+  audit:
+    needs: validate
+    uses: ./.github/workflows/audit.yml
+
   publish:
-    needs: [validate, test]
+    needs: [validate, test, audit]
     permissions:
       contents: read
       packages: write

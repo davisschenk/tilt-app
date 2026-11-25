@@ -1,30 +1,26 @@
 # cargo-audit configuration (read automatically by `cargo audit` from the workspace root).
-# Every ignore must say why it is safe and what would let us drop it. Revisit when the
-# blocking upstream crate releases a compatible version (Dependabot will propose it).
+# Every ignore says why it is safe, when it was last reviewed, and what would let us drop
+# it. Re-check them when upgrading openidconnect or sqlx/rust_decimal.
 
 [advisories]
 ignore = [
-    # h2 0.3.x: unbounded empty DATA frames (DoS). No patched 0.3 release exists; h2 0.3
-    # comes only from rocket 0.5.1 -> hyper 0.14, which we cannot move off without a
-    # Rocket major upgrade. Production traffic reaches Rocket through Caddy over HTTP/1.1.
-    "RUSTSEC-2026-0258",
-
     # rsa 0.9 Marvin attack: timing leak in RSA *private-key* decryption. Pulled in by
     # openidconnect 4 (no rsa 0.10 support yet), which only uses public-key signature
-    # verification of ID tokens; we never hold or use an RSA private key.
+    # verification of ID tokens; we never hold or use an RSA private key. Reviewed 2026-11.
     "RUSTSEC-2023-0071",
 
     # crypto-bigint 0.5 timing variability: via openidconnect -> p256/p384 ECDSA, used
     # only to verify ID-token signatures with public keys (no secret scalars involved).
     # Fix requires crypto-bigint 0.7, i.e. a new RustCrypto elliptic-curve major release.
+    # Reviewed 2026-11.
     "RUSTSEC-2026-0387",
 
     # libsqlite3-sys 0.30: listed in Cargo.lock as an optional sqlx backend but never
     # compiled (`cargo tree -i libsqlite3-sys --target all` is empty; we only enable
-    # sqlx-postgres). Fixed version needs a sqlx major bump.
+    # sqlx-postgres). Fixed version needs a sqlx major bump. Reviewed 2026-11.
     "RUSTSEC-2026-0459",
 
     # rkyv 0.7: optional rust_decimal feature that is never enabled, so the crate is in
-    # Cargo.lock but not compiled (`cargo tree -i rkyv --target all` is empty).
+    # Cargo.lock but not compiled (`cargo tree -i rkyv --target all` is empty). Reviewed 2026-11.
     "RUSTSEC-2026-0235",
 ]

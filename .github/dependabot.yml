@@ -11,7 +11,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
     groups:
       cargo-minor-patch:
         update-types: [minor, patch]
@@ -20,23 +19,21 @@ updates:
     directory: /web
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
 
+  # Actions are pinned to major tags, so updates are majors; batch them all monthly.
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
-      github-actions:
-        update-types: [minor, patch]
+      github-actions-all:
+        patterns: ["*"]
 
+  # Base images use floating tags, so only major/codename bumps are proposed.
   - package-ecosystem: docker
     directory: /server
     schedule:
-      interval: weekly
-    groups:
-      docker-minor-patch:
-        update-types: [minor, patch]
+      interval: monthly
