@@ -93,7 +93,12 @@ async fn create_batch(
         let active_brew =
             brew_service::find_active_for_hydrometer(db.inner(), owner, hydrometer.id)
                 .await
-                .unwrap_or(None);
+                .map_err(|e| {
+                    // Storing these unlinked would drop them from the brew and skip
+                    // its alerts; fail so the scanner retries the batch.
+                    tracing::error!(hydrometer_id = %hydrometer.id, error = %e, "Failed to look up active brew");
+                    Status::InternalServerError
+                })?;
         let brew_id = active_brew.as_ref().map(|b| b.id);
 
         // Apply calibration offsets before storing

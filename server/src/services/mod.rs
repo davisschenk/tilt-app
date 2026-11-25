@@ -12,6 +12,7 @@ pub mod limits;
 pub mod preferences_service;
 pub mod reading_service;
 pub mod report_service;
+pub mod retention_service;
 pub mod scanner_service;
 pub mod sessions;
 pub mod tosna_service;

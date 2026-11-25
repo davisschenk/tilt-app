@@ -110,6 +110,7 @@ Copy `.env.example` to `.env` and fill in the required values:
 | `OIDC_REDIRECT_URL` | OAuth2 callback URL (e.g. `https://yourdomain.com/api/v1/auth/callback`) |
 | `FRONTEND_URL` | Your public URL for CORS (e.g. `https://yourdomain.com`) |
 | `UPLOAD_DIR` | Path for photo attachment storage (default: `./uploads`) |
+| `READINGS_RETENTION_DAYS` | Optional. Delete readings that are not part of any brew (a hydrometer idle between batches) once older than this many days, checked hourly. Readings that belong to a brew are kept forever. Unset or `0` (default) keeps everything; any other non-number refuses to start. |
 | `METRICS_TOKEN` | Optional. Enables `GET /metrics` for Prometheus, readable only with this bearer token (`openssl rand -hex 32`). Unset: the endpoint returns 404 |
 
 > **Security note:** `AUTH_MODE` defaults to `oidc`, so an unconfigured server refuses to start rather than running open. `AUTH_MODE=disabled` (local development only) also requires `AUTH_DISABLED_ACK=true`. The older `AUTHENTIK_*` variable names still work as fallbacks for the `OIDC_*` ones.
