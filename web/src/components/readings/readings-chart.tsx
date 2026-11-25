@@ -12,6 +12,7 @@ import { useBrewEvents } from "@/hooks/use-brew-events";
 import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
 import type { BrewEventType, BrewEventResponse } from "@/types";
 import { useEChartsTheme } from "@/lib/echarts-theme";
+import { useElementWidth } from "@/hooks/use-element-width";
 import { CreateEventDialog } from "@/components/brew/brew-event-log";
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
@@ -75,23 +76,13 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
   const [addEventOpen, setAddEventOpen] = useState(false);
   const [addEventTime, setAddEventTime] = useState<string | undefined>(undefined);
   const [showEvents, setShowEvents] = useState(true);
-  const [containerWidth, setContainerWidth] = useState(800);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const { ref: containerRef, element: container, width: containerWidth } = useElementWidth<HTMLDivElement>(800);
   const echartsRef = useRef<ReactECharts>(null);
   const theme = useEChartsTheme();
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? el.clientWidth;
-      setContainerWidth(width);
-      echartsRef.current?.getEchartsInstance().resize();
-    });
-    ro.observe(el);
-    setContainerWidth(el.clientWidth);
-    return () => ro.disconnect();
-  }, []);
+    echartsRef.current?.getEchartsInstance().resize();
+  }, [containerWidth]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -528,7 +519,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
               const ev = eventTooltip.event;
               const color = EVENT_COLORS[ev.eventType];
               const label = EVENT_LABELS[ev.eventType];
-              const containerWidth = containerRef.current?.clientWidth ?? 400;
+              const containerWidth = container?.clientWidth ?? 400;
               const tipWidth = 220;
               const rawLeft = eventTooltip.x + 14;
               const left = Math.min(rawLeft, containerWidth - tipWidth - 8);

@@ -146,6 +146,24 @@ describe("BrewDetail", () => {
     expect(await screen.findByRole("dialog", { name: "Add Alert Rule" })).toBeInTheDocument()
   })
 
+  it("mounts only the tabbed layout on mobile, with the chart behind the Chart tab", async () => {
+    const original = window.matchMedia
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query === "(max-width: 767.98px)",
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })) as unknown as typeof window.matchMedia
+    try {
+      setup()
+      await userEvent.click(await screen.findByRole("tab", { name: "Chart" }))
+      expect(await screen.findAllByTestId("echart")).toHaveLength(1)
+      expect(screen.queryByRole("button", { name: /Recent Readings/ })).not.toBeInTheDocument()
+    } finally {
+      window.matchMedia = original
+    }
+  })
+
   it("expands the readings table", async () => {
     setup()
     await userEvent.click(await screen.findByRole("button", { name: /Recent Readings/ }))

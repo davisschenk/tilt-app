@@ -33,6 +33,7 @@ import NutrientSetupPanel from "@/components/brew/nutrient-setup-panel";
 import * as toast from "@/lib/toast";
 import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
 import { useUnits } from "@/lib/units";
+import { useIsMobile } from "@/hooks/use-media-query";
 import { formatCondition } from "@/lib/alerts";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
@@ -54,6 +55,7 @@ export default function BrewDetail() {
   const u = useUnits();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const { data: brew, isLoading } = useBrew(id!);
   const updateBrew = useUpdateBrew(id!);
   const { data: hydrometer } = useHydrometer(brew?.hydrometerId ?? "");
@@ -221,8 +223,10 @@ export default function BrewDetail() {
         })()}
       </div>
 
-      {/* Mobile tabs layout */}
-      <div className="block md:hidden">
+      {/* Only one layout is mounted: CSS-hiding the other (hidden md:block) left its
+          ReadingsChart mounted under display:none, where ECharts sizes its canvas to 0×0. */}
+      {isMobile ? (
+      <div>
         <Tabs defaultValue="info">
           <TabsList className="w-full mb-4">
             <TabsTrigger value="info" className="flex-1 text-xs">Info</TabsTrigger>
@@ -377,8 +381,8 @@ export default function BrewDetail() {
         </Tabs>
       </div>
 
-      {/* Desktop layout */}
-      <div className="hidden md:block">
+      ) : (
+      <div>
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
@@ -573,6 +577,7 @@ export default function BrewDetail() {
           {readingsExpanded && <ReadingsTable brewId={brew.id} exportFilename={`${brew.name.replace(/[^a-z0-9]/gi, "_")}_readings.csv`} />}
         </div>
       </div>
+      )}
 
       <EditBrewDialog brew={brew} open={editOpen} onOpenChange={setEditOpen} />
       <DeleteBrewDialog brewId={brew.id} brewName={brew.name} open={deleteOpen} onOpenChange={setDeleteOpen} />

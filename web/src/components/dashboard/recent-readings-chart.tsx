@@ -1,11 +1,12 @@
 import { useUnits } from "@/lib/units";
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useReadings } from "@/hooks/use-readings";
 import { useEChartsTheme } from "@/lib/echarts-theme";
+import { useElementWidth } from "@/hooks/use-element-width";
 
 const BREW_COLORS: Record<string, string> = {
   Red: "#E03131",
@@ -21,20 +22,7 @@ const BREW_COLORS: Record<string, string> = {
 export default function RecentReadingsChart() {
   const u = useUnits();
   const theme = useEChartsTheme();
-  const [containerWidth, setContainerWidth] = useState(800);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? el.clientWidth;
-      setContainerWidth(width);
-    });
-    ro.observe(el);
-    setContainerWidth(el.clientWidth);
-    return () => ro.disconnect();
-  }, []);
+  const { ref: containerRef, width: containerWidth } = useElementWidth<HTMLDivElement>(800);
 
   const { since, xMin, xMax } = useMemo(() => {
     const now = Date.now();
@@ -125,6 +113,7 @@ export default function RecentReadingsChart() {
         color: theme.mutedColor,
         fontFamily: theme.fontFamily,
         fontSize: isMobile ? 9 : 11,
+        hideOverlap: true,
         formatter: (val: number) => {
           const d = new Date(val);
           return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
