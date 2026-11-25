@@ -1,4 +1,4 @@
-FROM node:22-slim AS web-builder
+FROM node:25-slim AS web-builder
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json ./
 RUN --mount=type=cache,id=tilt-npm-v1,target=/root/.npm,sharing=locked \
