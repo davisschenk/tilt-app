@@ -44,10 +44,7 @@ interface ReadingsTableProps {
 
 export default function ReadingsTable({ brewId, exportFilename = "readings.csv" }: ReadingsTableProps) {
   const u = useUnits();
-  // Page is remembered per brew; switching brews starts back at page 0 (derived, no reset effect).
-  const [pageState, setPageState] = useState({ brewId, page: 0 });
-  const page = pageState.brewId === brewId ? pageState.page : 0;
-  const setPage = (update: (p: number) => number) => setPageState({ brewId, page: update(page) });
+  const [page, setPage] = useState(0);
   const { data: readings, isLoading } = useReadings({ brewId });
 
   const sorted = useMemo(() => {

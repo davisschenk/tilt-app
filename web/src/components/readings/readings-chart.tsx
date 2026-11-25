@@ -26,6 +26,13 @@ const RANGE_HOURS: Record<TimeRange, number | null> = {
   all: null,
 };
 
+function rangeWindow(range: TimeRange, now: number) {
+  const hours = RANGE_HOURS[range];
+  if (!hours) return { range, xMin: undefined, xMax: undefined, since: undefined };
+  const start = now - hours * 60 * 60 * 1000;
+  return { range, xMin: start, xMax: now, since: new Date(start).toISOString() };
+}
+
 const EVENT_COLORS: Record<BrewEventType, string> = {
   yeast_pitch: "#2f9e44",
   dry_hop: "#e67700",
@@ -72,14 +79,13 @@ interface EventTooltipState {
 
 export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: ReadingsChartProps) {
   const u = useUnits();
-  const [range, setRange] = useState<TimeRange>("all");
-  // "Now" for the selected range window, captured on mount and whenever the range changes
-  // (not read during render, which would make the window drift on every re-render).
-  const [rangeAnchor, setRangeAnchor] = useState(() => Date.now());
+  // The range and its time window change together; "now" is captured when the range is
+  // picked (and on mount), never during render.
+  const [{ range, xMin, xMax, since }, setRangeWindow] = useState(() => rangeWindow("all", Date.now()));
   const [eventTooltip, setEventTooltip] = useState<EventTooltipState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; isoTime: string } | null>(null);
   const [addEventOpen, setAddEventOpen] = useState(false);
-  const [addEventTime, setAddEventTime] = useState<string | undefined>(undefined);
+  const [addEventTime, setAddEventTime] = useState(() => new Date().toISOString());
   const [showEvents, setShowEvents] = useState(true);
   const { ref: containerRef, width: containerWidth } = useElementWidth<HTMLDivElement>(800);
   // Only the breakpoint feeds the option, so resizing doesn't rebuild it every pixel;
@@ -116,18 +122,6 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       window.removeEventListener("keydown", close);
     };
   }, [contextMenu]);
-
-  const { xMin, xMax, since } = useMemo(() => {
-    const now = rangeAnchor;
-    const hours = RANGE_HOURS[range];
-    if (!hours) return { xMin: undefined, xMax: undefined, since: undefined };
-    const start = now - hours * 60 * 60 * 1000;
-    return {
-      xMin: start,
-      xMax: now,
-      since: new Date(start).toISOString(),
-    };
-  }, [range, rangeAnchor]);
 
   const { data: readings, isLoading } = useReadings({ brewId, since });
   const { data: events } = useBrewEvents(brewId);
@@ -476,9 +470,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
                 size="sm"
                 className="h-7 px-2 text-xs"
                 onClick={() => {
-                  if (r === range) return;
-                  setRange(r);
-                  setRangeAnchor(Date.now());
+                  if (r !== range) setRangeWindow(rangeWindow(r, Date.now()));
                 }}
               >
                 {r === "all" ? "All" : r}

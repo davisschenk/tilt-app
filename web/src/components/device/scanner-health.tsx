@@ -1,12 +1,8 @@
-import { useState, useEffect } from "react";
+import { useNow } from "@/hooks/use-now";
 import { useScanners } from "@/hooks/use-scanners";
 
 export default function ScannerHealth() {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
+  const now = useNow(30_000);
   const q = useScanners();
   return (
     <section className="mb-6 space-y-3">

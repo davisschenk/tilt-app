@@ -1,41 +1,37 @@
-import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { AuthContext, type AuthUser } from "@/lib/auth-context";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "/api/v1";
 
-/** Fetch the session user: the user, `null` when signed out (401), or `undefined` on other errors. */
-async function fetchSessionUser(): Promise<AuthUser | null | undefined> {
+const AUTH_ME_KEY = ["auth", "me"] as const;
+
+/** The session user, or `null` when signed out (401). Other errors throw, so React Query
+ *  keeps the last known user on transient failures. */
+async function fetchSessionUser(): Promise<AuthUser | null> {
   try {
     return await apiGet<AuthUser>("/auth/me");
   } catch (err) {
-    return err instanceof ApiError && err.status === 401 ? null : undefined;
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
   }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const applySessionUser = useCallback((me: AuthUser | null | undefined) => {
-    // Transient (non-401) errors keep whatever user we already had.
-    if (me !== undefined) setUser(me);
-    setIsLoading(false);
-  }, []);
+  const queryClient = useQueryClient();
+  const { data, isPending, refetch } = useQuery({
+    queryKey: AUTH_ME_KEY,
+    queryFn: fetchSessionUser,
+    retry: false,
+    // Fetched once on mount; `refresh()` re-checks explicitly.
+    staleTime: Infinity,
+  });
+  const user = data ?? null;
 
   const refresh = useCallback(async () => {
-    applySessionUser(await fetchSessionUser());
-  }, [applySessionUser]);
-
-  useEffect(() => {
-    let active = true;
-    fetchSessionUser().then((me) => {
-      if (active) applySessionUser(me);
-    });
-    return () => {
-      active = false;
-    };
-  }, [applySessionUser]);
+    await refetch();
+  }, [refetch]);
 
   const login = useCallback(() => {
     window.location.href = `${API_BASE_URL}/auth/login`;
@@ -47,15 +43,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore errors on logout
     }
-    setUser(null);
+    queryClient.setQueryData(AUTH_ME_KEY, null);
     window.location.href = "/";
-  }, []);
+  }, [queryClient]);
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isLoading,
+        isLoading: isPending,
         isAuthenticated: user !== null,
         login,
         logout,

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
 import { Plus, Pencil, Trash2, PowerOff, Power } from "lucide-react";
-import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
+import { isStale } from "@/lib/constants";
+import { useNow } from "@/hooks/use-now";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -22,9 +23,14 @@ import ReadingGaps from "@/components/hydrometer/reading-gaps";
 import { useUnits } from "@/lib/units";
 import type { HydrometerResponse } from "@/types";
 
-function isStale(recordedAt: string): boolean {
-  const ageMs = Date.now() - new Date(recordedAt).getTime();
-  return ageMs > OFFLINE_THRESHOLD_MINUTES * 60 * 1000;
+// Owns its clock so the periodic tick re-renders just the badge.
+function LiveStatusBadge({ recordedAt }: { recordedAt: string }) {
+  const now = useNow();
+  return isStale(recordedAt, now) ? (
+    <Badge className="bg-red-700 text-white text-xs px-1.5 py-0.5">Offline</Badge>
+  ) : (
+    <Badge className="bg-green-700 text-white text-xs px-1.5 py-0.5">Live</Badge>
+  );
 }
 
 export default function HydrometerList() {
@@ -89,10 +95,8 @@ export default function HydrometerList() {
                         <p className="font-semibold text-lg">{h.color}</p>
                         {h.isDisabled ? (
                           <Badge variant="secondary" className="text-xs px-1.5 py-0.5">Disabled</Badge>
-                        ) : h.latestReading && isStale(h.latestReading.recordedAt) ? (
-                          <Badge className="bg-red-700 text-white text-xs px-1.5 py-0.5">Offline</Badge>
                         ) : h.latestReading ? (
-                          <Badge className="bg-green-700 text-white text-xs px-1.5 py-0.5">Live</Badge>
+                          <LiveStatusBadge recordedAt={h.latestReading.recordedAt} />
                         ) : null}
                       </div>
                       {h.name && (
