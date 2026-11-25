@@ -260,6 +260,18 @@ pub async fn list(
         .collect())
 }
 
+/// Every report the owner has published, oldest first (for account export).
+pub async fn find_all(
+    db: &DatabaseConnection,
+    owner: Uuid,
+) -> Result<Vec<brew_reports::Model>, DbErr> {
+    Report::find()
+        .filter(Column::OwnerId.eq(owner))
+        .order_by_asc(Column::CreatedAt)
+        .all(db)
+        .await
+}
+
 /// Revoke a report. Returns whether one was deleted.
 pub async fn revoke(
     db: &DatabaseConnection,
