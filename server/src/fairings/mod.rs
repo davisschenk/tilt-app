@@ -1,3 +1,4 @@
+pub mod periodic;
 pub mod rate_limit;
 pub mod readings_retention;
 pub mod request_logger;

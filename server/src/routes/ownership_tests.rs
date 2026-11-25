@@ -8,10 +8,9 @@
 use rocket::http::{ContentType, Cookie, Header, Method, Status};
 use rocket::local::asynchronous::Client;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-    EntityTrait, PaginatorTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, Set,
 };
-use sea_orm_migration::MigratorTrait;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -22,12 +21,12 @@ use crate::services::{
     sessions::{self, CreateSessionParams},
     user_service,
 };
+use crate::test_db::TestDb;
 
 struct Harness {
     client: Client,
     db: DatabaseConnection,
-    admin: DatabaseConnection,
-    schema: String,
+    test_db: TestDb,
     upload_dir: std::path::PathBuf,
     a: Cookie<'static>,
     b: Cookie<'static>,
@@ -35,25 +34,9 @@ struct Harness {
 
 impl Harness {
     async fn new() -> Self {
-        let url = std::env::var("DATABASE_URL")
-            .expect("DATABASE_URL must point at a Postgres the tests may create schemas in");
-        let schema = format!("t_{}", Uuid::new_v4().simple());
-
-        let admin = Database::connect(&url).await.expect("connect to Postgres");
-        admin
-            .execute_unprepared(&format!("CREATE SCHEMA {schema}"))
-            .await
-            .expect("create test schema");
-
-        let mut opts = ConnectOptions::new(url);
-        opts.set_schema_search_path(schema.clone())
-            .max_connections(5);
-        let db = Database::connect(opts)
-            .await
-            .expect("connect to test schema");
-        migration::Migrator::up(&db, None)
-            .await
-            .expect("migrations apply to an empty schema");
+        let test_db = TestDb::new().await;
+        let db = test_db.db.clone();
+        let schema = test_db.schema.clone();
 
         let upload_dir = std::env::temp_dir().join(format!("tilt-test-{schema}"));
         std::fs::create_dir_all(&upload_dir).unwrap();
@@ -90,8 +73,7 @@ impl Harness {
         Harness {
             client,
             db,
-            admin,
-            schema,
+            test_db,
             upload_dir,
             a,
             b,
@@ -114,10 +96,7 @@ impl Harness {
     }
 
     async fn cleanup(self) {
-        let _ = self
-            .admin
-            .execute_unprepared(&format!("DROP SCHEMA {} CASCADE", self.schema))
-            .await;
+        self.test_db.cleanup().await;
         let _ = std::fs::remove_dir_all(&self.upload_dir);
     }
 

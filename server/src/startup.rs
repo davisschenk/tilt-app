@@ -28,6 +28,32 @@ pub fn cookie_secure(redirect_url: &str) -> bool {
     !redirect_url.starts_with("http://")
 }
 
+/// Upper bound on the setting (100 years); anything bigger is a typo.
+const MAX_DAYS: u32 = 36_500;
+
+/// Parse `READINGS_RETENTION_DAYS`. Unset, empty or `0` disables retention
+/// (`Ok(None)`); a positive whole number of days enables it; anything else is a
+/// configuration error the server refuses to start with.
+pub fn readings_retention_days(
+    get: impl Fn(&str) -> Option<String>,
+) -> Result<Option<u32>, String> {
+    let Some(raw) = get("READINGS_RETENTION_DAYS") else {
+        return Ok(None);
+    };
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    match raw.parse::<u32>() {
+        Ok(0) => Ok(None),
+        Ok(days) if days <= MAX_DAYS => Ok(Some(days)),
+        _ => Err(format!(
+            "READINGS_RETENTION_DAYS must be a whole number of days between 0 (disabled) and \
+             {MAX_DAYS}, got {raw:?}"
+        )),
+    }
+}
+
 /// Every reason this configuration is unsafe to run. Empty means fine.
 /// `secret_key_configured` is whether Rocket has a real (non-zero) secret key.
 pub fn problems(
@@ -36,6 +62,9 @@ pub fn problems(
     secret_key_configured: bool,
 ) -> Vec<String> {
     let mut out = Vec::new();
+    if let Err(e) = readings_retention_days(&get) {
+        out.push(e);
+    }
     match mode {
         AuthMode::Disabled => {
             if !truthy(get("AUTH_DISABLED_ACK")) {
@@ -218,5 +247,34 @@ mod tests {
     fn cookie_is_secure_except_for_plain_http() {
         assert!(cookie_secure("https://tilt.example.com/cb"));
         assert!(!cookie_secure("http://localhost:8000/cb"));
+    }
+
+    #[test]
+    fn retention_unset_empty_or_zero_disables() {
+        for v in [None, Some(""), Some(" "), Some("0")] {
+            let pairs: Vec<(&str, &str)> = v
+                .map(|v| ("READINGS_RETENTION_DAYS", v))
+                .into_iter()
+                .collect();
+            assert_eq!(readings_retention_days(env(&pairs)), Ok(None), "{v:?}");
+        }
+    }
+
+    #[test]
+    fn retention_positive_days_enable() {
+        let days = |v| readings_retention_days(env(&[("READINGS_RETENTION_DAYS", v)]));
+        assert_eq!(days("90"), Ok(Some(90)));
+        assert_eq!(days(" 30 "), Ok(Some(30)));
+    }
+
+    #[test]
+    fn retention_garbage_refuses_to_start() {
+        for bad in ["-1", "abc", "1.5", "30d", "99999999999", "36501"] {
+            let mut pairs = GOOD.to_vec();
+            pairs.push(("READINGS_RETENTION_DAYS", bad));
+            let p = problems(AuthMode::Oidc, env(&pairs), true);
+            assert_eq!(p.len(), 1, "{bad} should be rejected");
+            assert!(p[0].contains("READINGS_RETENTION_DAYS"));
+        }
     }
 }

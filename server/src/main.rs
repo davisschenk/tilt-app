@@ -4,6 +4,8 @@ mod oidc;
 mod routes;
 mod services;
 mod startup;
+#[cfg(test)]
+mod test_db;
 
 // Re-export library modules so the binary's existing `crate::auth_mode::...`
 // and `crate::models::...` paths keep working.
@@ -143,14 +145,10 @@ async fn rocket() -> Rocket<Build> {
         std::process::exit(1);
     }
 
-    let retention_days =
-        match services::retention_service::retention_days(|k| std::env::var(k).ok()) {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::error!("refusing to start: {e}");
-                std::process::exit(1);
-            }
-        };
+    // Validated by `problems` above.
+    let retention_days = startup::readings_retention_days(|k| std::env::var(k).ok())
+        .ok()
+        .flatten();
     match retention_days {
         Some(days) => tracing::info!(
             "readings retention: deleting readings not linked to a brew after {days} days"
