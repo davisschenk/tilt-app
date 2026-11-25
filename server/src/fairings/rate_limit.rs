@@ -19,8 +19,8 @@ pub struct RateLimit {
 
 impl RateLimit {
     pub fn new() -> Self {
-        let auth_quota = Quota::per_minute(NonZeroU32::new(20).unwrap());
-        let api_quota = Quota::per_minute(NonZeroU32::new(300).unwrap());
+        let auth_quota = Quota::per_minute(NonZeroU32::new(20).expect("20 is non-zero"));
+        let api_quota = Quota::per_minute(NonZeroU32::new(300).expect("300 is non-zero"));
 
         Self {
             auth_limiter: Arc::new(RateLimiter::keyed(auth_quota)),
@@ -93,7 +93,7 @@ pub struct TestFireLimiter(
 impl TestFireLimiter {
     pub fn new() -> Self {
         Self(RateLimiter::keyed(Quota::per_minute(
-            NonZeroU32::new(10).unwrap(),
+            NonZeroU32::new(10).expect("10 is non-zero"),
         )))
     }
 
@@ -117,7 +117,7 @@ impl ApiUserLimiter {
 
     pub fn new(per_minute: u32) -> Self {
         Self(RateLimiter::keyed(Quota::per_minute(
-            NonZeroU32::new(per_minute.max(1)).unwrap(),
+            NonZeroU32::new(per_minute).unwrap_or(NonZeroU32::MIN),
         )))
     }
 
@@ -182,5 +182,13 @@ mod tests {
             "third request in a minute is refused"
         );
         assert!(l.0.check_key(&b).is_ok(), "another user is unaffected");
+    }
+
+    #[test]
+    fn zero_per_minute_limit_is_clamped_to_one() {
+        let l = ApiUserLimiter::new(0);
+        let a = uuid::Uuid::new_v4();
+        assert!(l.0.check_key(&a).is_ok(), "first request is allowed");
+        assert!(l.0.check_key(&a).is_err(), "second request is refused");
     }
 }

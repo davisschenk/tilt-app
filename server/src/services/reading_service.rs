@@ -183,7 +183,7 @@ async fn load_downsampled(
     let first_ms = first.timestamp_millis();
     let span = (last.timestamp_millis() - first_ms).max(1);
     // At least 1ms: a zero-width bucket would never advance past rows that share a timestamp.
-    let bucket_ms = (span / target as i64).max(1);
+    let bucket_ms = (span / target.max(1) as i64).max(1);
 
     let mut stream = select.order_by_asc(Column::RecordedAt).stream(db).await?;
     let mut out: Vec<readings::Model> = Vec::with_capacity(target + 1);
@@ -215,11 +215,14 @@ fn downsample(mut models: Vec<readings::Model>, target: usize) -> Vec<readings::
         return models;
     }
     models.sort_by_key(|m| m.recorded_at);
-    let first = models.first().unwrap().recorded_at.timestamp_millis();
-    let last = models.last().unwrap().recorded_at.timestamp_millis();
+    let (Some(first), Some(last)) = (models.first(), models.last()) else {
+        return models;
+    };
+    let first = first.recorded_at.timestamp_millis();
+    let last = last.recorded_at.timestamp_millis();
     let span = (last - first).max(1);
     // At least 1ms so rows sharing a timestamp cannot stall the loop below.
-    let bucket_ms = (span / target as i64).max(1);
+    let bucket_ms = (span / target.max(1) as i64).max(1);
 
     let mut result: Vec<readings::Model> = Vec::with_capacity(target);
     let mut bucket_start = first;
@@ -238,4 +241,45 @@ fn downsample(mut models: Vec<readings::Model>, target: usize) -> Vec<readings::
         bucket_start = bucket_end;
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn reading(ms: i64) -> readings::Model {
+        let t = chrono::Utc
+            .timestamp_millis_opt(ms)
+            .single()
+            .expect("valid test timestamp")
+            .fixed_offset();
+        readings::Model {
+            id: Uuid::new_v4(),
+            brew_id: None,
+            hydrometer_id: Uuid::nil(),
+            temperature_f: 68.0,
+            gravity: 1.050,
+            rssi: None,
+            recorded_at: t,
+            created_at: t,
+        }
+    }
+
+    #[test]
+    fn downsample_empty_input_with_zero_target_is_empty() {
+        assert!(downsample(Vec::new(), 0).is_empty());
+    }
+
+    #[test]
+    fn downsample_with_zero_target_does_not_panic() {
+        let models: Vec<_> = (0..10).map(|i| reading(i * 1_000)).collect();
+        assert!(!downsample(models, 0).is_empty());
+    }
+
+    #[test]
+    fn downsample_identical_timestamps_terminates() {
+        let models: Vec<_> = (0..50).map(|_| reading(1_000)).collect();
+        assert_eq!(downsample(models, 5).len(), 1);
+    }
 }

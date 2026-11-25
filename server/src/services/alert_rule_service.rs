@@ -268,17 +268,12 @@ pub async fn find_triggered_rules(
                 }
             }
 
-            // Plateau rules are evaluated separately (need historical readings)
-            let metric = parse_metric(&rule.metric);
-            if metric == AlertMetric::GravityPlateau {
-                return false; // plateau rules skipped in per-reading evaluation
-            }
-
             // Get the actual value based on metric
-            let actual = match metric {
+            let actual = match parse_metric(&rule.metric) {
                 AlertMetric::Gravity => gravity,
                 AlertMetric::TemperatureF => temperature_f,
-                AlertMetric::GravityPlateau => unreachable!(),
+                // Plateau rules are evaluated separately (need historical readings)
+                AlertMetric::GravityPlateau => return false,
             };
 
             // Evaluate the operator
@@ -360,7 +355,9 @@ pub async fn find_triggered_plateau_rules(
         }
 
         // Convert to (hours_elapsed, gravity) format expected by evaluate_plateau_rule
-        let earliest = readings.iter().map(|r| r.recorded_at).min().unwrap();
+        let Some(earliest) = readings.iter().map(|r| r.recorded_at).min() else {
+            continue;
+        };
         let window_data: Vec<(f64, f64)> = readings
             .iter()
             .map(|r| {

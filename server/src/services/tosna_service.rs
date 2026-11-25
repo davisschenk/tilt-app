@@ -770,6 +770,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn schedule_with_degenerate_inputs_does_not_panic() {
+        let pitch = Utc::now();
+        let odd = [0.0, -1.0, 1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
+        for protocol in [
+            NutrientProtocol::Tosna2,
+            NutrientProtocol::Tosna3,
+            NutrientProtocol::AdvancedSna,
+        ] {
+            for &og in &odd {
+                for &fg in &odd {
+                    for &gal in &odd {
+                        let _ = compute_schedule(protocol, og, fg, gal, "medium", pitch);
+                        let _ = compute_schedule(protocol, og, fg, gal, "bogus", pitch);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn og_to_brix_known_value() {
         let brix = og_to_brix(1.100);
         assert!((brix - 23.77).abs() < 0.1, "Expected ~23.77, got {brix}");
