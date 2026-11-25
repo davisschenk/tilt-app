@@ -29,8 +29,48 @@ export async function expectAccessible(
   expect(blocking, `Accessibility violations:\n${summary.join("\n")}`).toEqual([])
 }
 
-/** Fails the test on uncaught page errors or console errors (except noisy known ones). */
-export const test = base.extend<{ consoleErrors: string[] }>({
+/**
+ * Every test gets these automatically:
+ * - `cspViolations`: Content-Security-Policy violations seen by the page (both the
+ *   DOM `securitypolicyviolation` event and Chrome's "Refused to …" console message).
+ *   Any violation fails the test at teardown, so a policy that breaks the production
+ *   build fails CI. A test that provokes a violation on purpose sets
+ *   `test.use({ allowCspViolations: true })` and asserts on the list itself.
+ * - `consoleErrors`: uncaught page errors or console errors (except noisy known ones);
+ *   tests assert on it explicitly.
+ */
+export const test = base.extend<{
+  consoleErrors: string[]
+  cspViolations: string[]
+  allowCspViolations: boolean
+}>({
+  allowCspViolations: [false, { option: true }],
+  cspViolations: [
+    async ({ page, allowCspViolations }, provide) => {
+      const violations: string[] = []
+      await page.exposeBinding("__reportCspViolation", (_source, msg: string) => {
+        violations.push(msg)
+      })
+      await page.addInitScript(() => {
+        document.addEventListener("securitypolicyviolation", (e) => {
+          const report = (window as unknown as { __reportCspViolation?: (m: string) => void })
+            .__reportCspViolation
+          report?.(
+            `${e.effectiveDirective} blocked ${e.blockedURI || "(inline)"} ` +
+              `at ${e.sourceFile || e.documentURI}:${e.lineNumber}`,
+          )
+        })
+      })
+      page.on("console", (m) => {
+        if (/Content Security Policy/i.test(m.text())) violations.push(`console: ${m.text()}`)
+      })
+      await provide(violations)
+      if (!allowCspViolations) {
+        expect(violations, `CSP violations:\n${violations.join("\n")}`).toEqual([])
+      }
+    },
+    { auto: true },
+  ],
   consoleErrors: async ({ page }, provide) => {
     const errors: string[] = []
     page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`))
