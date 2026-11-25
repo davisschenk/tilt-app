@@ -1,3 +1,4 @@
+import { useUnits } from "@/lib/units";
 import { useState, useCallback, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -26,6 +27,7 @@ function isStale(recordedAt: string): boolean {
 const REFRESH_INTERVAL = 30_000;
 
 function ActiveBrewCard({ brew }: { brew: BrewResponse }) {
+ const u=useUnits();
   const { data: analytics, isLoading: analyticsLoading } = useBrewAnalytics(brew.id);
   const { data: recentReadings } = useReadings({ brewId: brew.id, limit: 3 });
 
@@ -86,13 +88,13 @@ function ActiveBrewCard({ brew }: { brew: BrewResponse }) {
               <div>
                 <p className="text-xs text-muted-foreground">Gravity</p>
                 <p className="text-sm font-semibold">
-                  {analytics?.currentGravity?.toFixed(3) ?? brew.latestReading?.gravity.toFixed(3) ?? "—"}
+                  {u.formatGravity(analytics?.currentGravity ?? brew.latestReading?.gravity)}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Temp</p>
                 <p className="text-sm font-semibold">
-                  {analytics?.currentTempF?.toFixed(1) ?? brew.latestReading?.temperatureF.toFixed(1) ?? "—"}°F
+                  {u.formatTemperature(analytics?.currentTempF ?? brew.latestReading?.temperatureF)}
                 </p>
               </div>
               <div>
@@ -155,6 +157,7 @@ function StatCard({
 }
 
 export default function Dashboard() {
+ const u=useUnits();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -272,7 +275,7 @@ export default function Dashboard() {
           title="Latest Reading"
           value={
             latestReading
-              ? `${latestReading.gravity.toFixed(3)} SG / ${latestReading.temperatureF.toFixed(1)}°F`
+              ? `${u.formatGravity(latestReading.gravity)} / ${u.formatTemperature(latestReading.temperatureF)}`
               : "—"
           }
           description={latestReading ? `${latestReading.color} hydrometer` : "No readings yet"}

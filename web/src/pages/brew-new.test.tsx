@@ -43,8 +43,8 @@ describe("BrewNew", () => {
     await userEvent.type(screen.getByLabelText("Style"), "Mead")
     await userEvent.click(screen.getByRole("combobox"))
     await userEvent.click(await screen.findByRole("option", { name: /Kitchen Tilt/ }))
-    expect(screen.getByLabelText("Original Gravity")).toHaveValue(1.05)
-    await userEvent.type(screen.getByLabelText("Target FG"), "1.010")
+    expect(screen.getByLabelText("Original Gravity (SG)")).toHaveValue(1.05)
+    await userEvent.type(screen.getByLabelText("Target FG (SG)"), "1.010")
     await userEvent.click(screen.getByRole("button", { name: "Create Brew" }))
     expect(await screen.findByText("detail b9")).toBeInTheDocument()
     expect(body).toMatchObject({ name: "My Mead", style: "Mead", hydrometerId: "h1", og: 1.05, targetFg: 1.01, notes: null })
@@ -67,3 +67,51 @@ describe("BrewNew", () => {
     expect(await screen.findByText("brews list")).toBeInTheDocument()
   })
 })
+describe("duplicate batch", () => {
+  it("reviews copied setup and creates a fresh batch without historical data", async () => {
+    let body: Record<string, unknown> | undefined;
+    server.use(
+      http.get("/api/v1/brews/b1", () =>
+        HttpResponse.json(
+          brew({
+            status: "Completed",
+            name: "House IPA",
+            yeastStrain: "US-05",
+            batchSizeGallons: 5,
+            nutrientProtocol: "tosna_3",
+            pitchTime: "2026-01-01T00:00:00Z",
+            fg: 1.01,
+          }),
+        ),
+      ),
+      http.get("/api/v1/brews", () => HttpResponse.json([])),
+      http.get("/api/v1/hydrometers", () =>
+        HttpResponse.json([hydrometer({ id: "h2", name: "Free Tilt" })]),
+      ),
+      http.post("/api/v1/brews", async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(brew({ id: "new" }), { status: 201 });
+      }),
+    );
+    renderWithProviders(<BrewNew />, { route: "/brews/new?duplicate=b1" });
+    expect(
+      await screen.findByDisplayValue("House IPA (copy)"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Yeast: US-05/)).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("combobox"));
+    await user.click(await screen.findByRole("option", { name: /Free Tilt/ }));
+    await user.click(screen.getByRole("button", { name: "Create Brew" }));
+    await screen.findByRole("heading", { name: "Duplicate Brew" });
+    expect(body).toMatchObject({
+      name: "House IPA (copy)",
+      hydrometerId: "h2",
+      yeastStrain: "US-05",
+      batchSizeGallons: 5,
+      nutrientProtocol: "tosna_3",
+    });
+    expect(body).not.toHaveProperty("fg");
+    expect(body).not.toHaveProperty("pitchTime");
+    expect(body).not.toHaveProperty("endDate");
+  });
+});

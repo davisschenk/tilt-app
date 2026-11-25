@@ -1,3 +1,4 @@
+import { useUnits, type unitTools } from "@/lib/units";
 import { format } from "date-fns";
 import { CheckCircle2, Clock, Droplets, AlertCircle, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -36,11 +37,11 @@ function gramsToTsp(product: NutrientProduct, grams: number): number {
   return grams / (G_PER_TSP[product] ?? 1);
 }
 
-function triggerLabel(addition: NutrientAddition): string {
+function triggerLabel(addition: NutrientAddition, u: ReturnType<typeof unitTools>): string {
   if (addition.primaryTrigger === "at_pitch") return "At pitch";
   if (addition.primaryTrigger === "gravity_threshold" && addition.gravityThreshold != null) {
     const fallback = addition.fallbackHours != null ? ` (fallback: ${addition.fallbackHours}h)` : "";
-    return `Gravity ≤ ${addition.gravityThreshold.toFixed(3)}${fallback}`;
+    return `Gravity ≤ ${u.formatGravity(addition.gravityThreshold)}${fallback}`;
   }
   if (addition.fallbackHours != null) return `${addition.fallbackHours}h elapsed`;
   return "—";
@@ -59,6 +60,7 @@ function AdditionRow({
   onLog: () => void;
   isLogging: boolean;
 }) {
+  const u=useUnits();
   const tsp = gramsToTsp(addition.product, addition.amountGrams);
 
   return (
@@ -97,7 +99,7 @@ function AdditionRow({
           )}
         </div>
 
-        <p className="text-sm text-muted-foreground mt-1">{triggerLabel(addition)}</p>
+        <p className="text-sm text-muted-foreground mt-1">{triggerLabel(addition, u)}</p>
 
         {addition.dueAt && (
           <p className="text-xs text-muted-foreground mt-0.5">

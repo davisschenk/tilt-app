@@ -1,3 +1,4 @@
+import { useUnits } from "@/lib/units";
 import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
@@ -17,7 +18,7 @@ import { useReadings } from "@/hooks/use-readings";
 const PAGE_SIZE = 25;
 
 function exportToCsv(rows: { recordedAt: string; temperatureF: number; gravity: number; rssi: number | null }[], filename: string) {
-  const header = "Recorded At,Temperature (°F),Gravity,RSSI";
+  const header = "Recorded At,Temperature (°F),Gravity (SG),RSSI";
   const lines = rows.map((r) =>
     [
       format(new Date(r.recordedAt), "yyyy-MM-dd HH:mm:ss"),
@@ -42,6 +43,7 @@ interface ReadingsTableProps {
 }
 
 export default function ReadingsTable({ brewId, exportFilename = "readings.csv" }: ReadingsTableProps) {
+  const u = useUnits();
   const [page, setPage] = useState(0);
   const { data: readings, isLoading } = useReadings({ brewId });
 
@@ -92,7 +94,7 @@ export default function ReadingsTable({ brewId, exportFilename = "readings.csv" 
                 <TableHeader>
                   <TableRow>
                     <TableHead>Recorded At</TableHead>
-                    <TableHead>Temp (°F)</TableHead>
+                    <TableHead>Temp ({u.temperatureLabel})</TableHead>
                     <TableHead>Gravity</TableHead>
                     <TableHead className="hidden sm:table-cell">RSSI</TableHead>
                   </TableRow>
@@ -103,8 +105,8 @@ export default function ReadingsTable({ brewId, exportFilename = "readings.csv" 
                       <TableCell>
                         {format(new Date(r.recordedAt), "MMM d, HH:mm")}
                       </TableCell>
-                      <TableCell>{r.temperatureF.toFixed(1)}</TableCell>
-                      <TableCell>{r.gravity.toFixed(3)}</TableCell>
+                      <TableCell>{u.formatTemperature(r.temperatureF)}</TableCell>
+                      <TableCell>{u.formatGravity(r.gravity)}</TableCell>
                       <TableCell className="hidden sm:table-cell">{r.rssi ?? "—"}</TableCell>
                     </TableRow>
                   ))}

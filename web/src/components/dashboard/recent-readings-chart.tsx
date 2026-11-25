@@ -1,3 +1,4 @@
+import { useUnits } from "@/lib/units";
 import { useMemo, useRef, useState, useEffect } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
@@ -18,6 +19,7 @@ const BREW_COLORS: Record<string, string> = {
 };
 
 export default function RecentReadingsChart() {
+  const u = useUnits();
   const theme = useEChartsTheme();
   const [containerWidth, setContainerWidth] = useState(800);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -99,7 +101,7 @@ export default function RecentReadingsChart() {
           html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${item.color}"></span>
             <span>${item.seriesName}</span>
-            <span style="margin-left:auto;font-weight:600">${val.toFixed(3)} SG</span>
+            <span style="margin-left:auto;font-weight:600">${u.formatGravity(val)}</span>
           </div>`;
         }
         return html;
@@ -139,7 +141,7 @@ export default function RecentReadingsChart() {
         color: theme.mutedColor,
         fontFamily: theme.fontFamily,
         fontSize: isMobile ? 9 : 11,
-        formatter: (val: number) => val.toFixed(3),
+        formatter: (val: number) => u.gravity(val).toFixed(u.units.gravity === "P" ? 2 : 3),
       },
       splitLine: { lineStyle: { color: theme.gridColor } },
       axisLine: { lineStyle: { color: theme.borderColor } },
@@ -153,7 +155,7 @@ export default function RecentReadingsChart() {
       showSymbol: false,
       smooth: true,
     })),
-  }), [theme, seriesData, xMin, xMax, gMin, gMax, isMobile]);
+  }), [theme, seriesData, xMin, xMax, gMin, gMax, isMobile, u]);
 
   return (
     <Card className="mt-8">

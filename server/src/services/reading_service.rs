@@ -24,6 +24,7 @@ pub async fn batch_create(
     readings: Vec<TiltReading>,
     hydrometer_id: Uuid,
     brew_id: Option<Uuid>,
+    scanner_id: Option<Uuid>,
 ) -> Result<u64, DbErr> {
     if readings.is_empty() {
         return Ok(0);
@@ -34,6 +35,7 @@ pub async fn batch_create(
         .map(|r| ActiveModel {
             id: Set(Uuid::new_v4()),
             brew_id: Set(brew_id),
+            scanner_id: Set(scanner_id),
             hydrometer_id: Set(hydrometer_id),
             temperature_f: Set(r.temperature_f),
             gravity: Set(r.gravity),

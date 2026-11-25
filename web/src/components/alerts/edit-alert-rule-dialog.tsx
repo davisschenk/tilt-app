@@ -1,3 +1,5 @@
+import { useUnits } from "@/lib/units";
+import { MeasurementInput } from "@/components/ui/measurement-input";
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -35,6 +37,7 @@ export default function EditAlertRuleDialog({
   open,
   onOpenChange,
 }: EditAlertRuleDialogProps) {
+  const u = useUnits();
   const updateRule = useUpdateAlertRule(rule.id);
   const { data: targets } = useAlertTargets();
   const { data: brews } = useBrews("Active");
@@ -121,7 +124,7 @@ export default function EditAlertRuleDialog({
                 <SelectTrigger id="edit-rule-metric"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="gravity">Gravity</SelectItem>
-                  <SelectItem value="temperature_f">Temperature (°F)</SelectItem>
+                  <SelectItem value="temperature_f">Temperature ({u.temperatureLabel})</SelectItem>
                   <SelectItem value="gravity_plateau">Gravity Plateau</SelectItem>
                 </SelectContent>
               </Select>
@@ -146,8 +149,8 @@ export default function EditAlertRuleDialog({
           {isPlateau ? (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="edit-rule-threshold">Plateau Threshold (SG) *</Label>
-                <Input
+                <Label htmlFor="edit-rule-threshold">Plateau Threshold ({u.gravityLabel}, reference SG 1.000) *</Label>
+                <MeasurementInput measurement={isPlateau ? "gravityOffset" : metric === "gravity" ? "gravity" : "temperature"}
                   id="edit-rule-threshold"
                   type="number"
                   step="0.0001"
@@ -169,8 +172,8 @@ export default function EditAlertRuleDialog({
             </div>
           ) : (
             <div className="space-y-2">
-              <Label htmlFor="edit-rule-threshold">Threshold *</Label>
-              <Input
+              <Label htmlFor="edit-rule-threshold">Threshold ({metric === "gravity" ? u.gravityLabel : u.temperatureLabel}) *</Label>
+              <MeasurementInput measurement={isPlateau ? "gravityOffset" : metric === "gravity" ? "gravity" : "temperature"}
                 id="edit-rule-threshold"
                 type="number"
                 step={thresholdStep}
@@ -182,7 +185,7 @@ export default function EditAlertRuleDialog({
 
           {isPlateau && (
             <p className="text-xs text-muted-foreground">
-              Alert fires when gravity has not moved more than {threshold} SG over the last {windowHours} hours.
+              Alert fires when gravity has not moved more than {(u.gravity(1+Number(threshold))-u.gravity(1)).toFixed(u.units.gravity === "P" ? 2 : 4)} {u.gravityLabel} over the last {windowHours} hours.
             </p>
           )}
 

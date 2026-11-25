@@ -14,15 +14,40 @@ use crate::services::{
     reading_service, tosna_service, webhook_dispatcher,
 };
 
+struct ScannerDevice(Option<String>);
+#[rocket::async_trait]
+impl<'r> rocket::request::FromRequest<'r> for ScannerDevice {
+    type Error = ();
+    async fn from_request(
+        req: &'r rocket::Request<'_>,
+    ) -> rocket::request::Outcome<Self, Self::Error> {
+        rocket::request::Outcome::Success(Self(
+            req.headers().get_one("X-Scanner-Id").map(str::to_owned),
+        ))
+    }
+}
 #[post("/readings", data = "<batch>")]
 async fn create_batch(
     auth: AuthOrApiKey,
+    scanner: ScannerDevice,
     _rate_limit: RateLimitGuard,
     db: &State<DatabaseConnection>,
     http_client: &State<reqwest::Client>,
     batch: Json<CreateReadingsBatch>,
 ) -> Result<(Status, Json<serde_json::Value>), Status> {
     let owner = auth.owner_id;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    let scanner_id = if let Some(device) = scanner.0 {
+        crate::models::entities::scanners::Entity::find()
+            .filter(crate::models::entities::scanners::Column::OwnerId.eq(owner))
+            .filter(crate::models::entities::scanners::Column::DeviceId.eq(device))
+            .one(db.inner())
+            .await
+            .map_err(|_| Status::InternalServerError)?
+            .map(|s| s.id)
+    } else {
+        None
+    };
     let readings: Vec<TiltReading> = batch.into_inner().0;
     if readings.is_empty() {
         return Ok((Status::Created, Json(serde_json::json!({ "count": 0 }))));
@@ -84,6 +109,7 @@ async fn create_batch(
             adjusted_readings.clone(),
             hydrometer.id,
             brew_id,
+            scanner_id,
         )
         .await
         .map_err(|e| {
@@ -245,6 +271,9 @@ async fn evaluate_alerts(
 
         let rule_id = rule.id;
         match webhook_dispatcher::dispatch(
+            &crate::routes::brewer_features::preferences(db, owner)
+                .await
+                .unwrap_or_default(),
             http_client,
             &target,
             &rule,
@@ -298,6 +327,9 @@ async fn evaluate_alerts(
 
         let rule_id = rule.id;
         match webhook_dispatcher::dispatch(
+            &crate::routes::brewer_features::preferences(db, owner)
+                .await
+                .unwrap_or_default(),
             http_client,
             &target,
             &rule,

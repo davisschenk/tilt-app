@@ -177,6 +177,7 @@ fn build_slack_payload(
 }
 
 pub async fn dispatch(
+    preferences: &crate::routes::brewer_features::Preferences,
     client: &reqwest::Client,
     target: &alert_targets::Model,
     rule: &alert_rules::Model,
@@ -192,7 +193,7 @@ pub async fn dispatch(
     let operator = parse_operator(&rule.operator);
     let actual = actual_value(&metric, gravity, temperature_f);
 
-    let payload = match format {
+    let mut payload = match format {
         WebhookFormat::GenericJson => {
             build_generic_json(rule, &metric, &operator, actual, recorded_at)
         }
@@ -201,6 +202,64 @@ pub async fn dispatch(
         }
         WebhookFormat::Slack => build_slack_payload(rule, &metric, &operator, actual, recorded_at),
     };
+
+    let value = |v: f64, difference: bool| -> String {
+        use crate::routes::brewer_features::{GravityUnit, TemperatureUnit};
+        if matches!(metric, AlertMetric::TemperatureF) {
+            match preferences.temperature {
+                TemperatureUnit::C => format!("{:.1}°C", (v - 32.0) * 5.0 / 9.0),
+                TemperatureUnit::F => format!("{v:.1}°F"),
+            }
+        } else {
+            match preferences.gravity {
+                GravityUnit::SG => format!("{v:.4} SG"),
+                GravityUnit::P => {
+                    let p = |g: f64| -616.868 + 1111.14 * g - 630.272 * g * g + 135.997 * g * g * g;
+                    format!(
+                        "{:.2}°P",
+                        if difference {
+                            p(1.0 + v) - p(1.0)
+                        } else {
+                            p(v)
+                        }
+                    )
+                }
+            }
+        }
+    };
+    let metric_name = match metric {
+        AlertMetric::TemperatureF => "Temperature",
+        AlertMetric::Gravity => "Gravity",
+        AlertMetric::GravityPlateau => "Gravity Plateau",
+    };
+    let condition = format!(
+        "{} {} {}",
+        metric_name,
+        format_operator(&operator),
+        value(
+            rule.threshold,
+            matches!(metric, AlertMetric::GravityPlateau)
+        )
+    );
+    let actual_display = value(actual, false);
+    match format {
+        WebhookFormat::GenericJson => {
+            payload["display_condition"] = json!(condition);
+            payload["display_actual"] = json!(actual_display);
+            payload["display_units"] = json!(preferences);
+        }
+        WebhookFormat::Discord => {
+            payload["embeds"][0]["fields"][0]["value"] = json!(metric_name);
+            payload["embeds"][0]["fields"][1]["value"] = json!(condition);
+            payload["embeds"][0]["fields"][2]["value"] = json!(actual_display);
+        }
+        WebhookFormat::Slack => {
+            payload["blocks"][1]["fields"][0]["text"] = json!(format!("*Metric:*\n{metric_name}"));
+            payload["blocks"][1]["fields"][1]["text"] = json!(format!("*Condition:*\n{condition}"));
+            payload["blocks"][1]["fields"][2]["text"] =
+                json!(format!("*Actual Value:*\n{actual_display}"));
+        }
+    }
 
     // Re-check at send time: the row may predate validation, or the env may have changed.
     super::webhook_guard::validate_url(&target.url).map_err(DispatchError::InvalidUrl)?;
@@ -234,6 +293,7 @@ pub async fn dispatch(
 }
 
 pub async fn dispatch_nutrient_notification(
+    preferences: &crate::routes::brewer_features::Preferences,
     client: &reqwest::Client,
     target: &alert_targets::Model,
     p: &NutrientWebhookPayload,
@@ -249,8 +309,8 @@ pub async fn dispatch_nutrient_notification(
 
     let trigger_detail = if p.trigger_reason == "gravity" {
         format!(
-            "Gravity reached {:.4}",
-            p.threshold_gravity.unwrap_or(p.current_gravity)
+            "Gravity reached {}",
+            preferences.format_gravity(p.threshold_gravity.unwrap_or(p.current_gravity))
         )
     } else {
         format!("Time fallback ({})", p.trigger_reason)
@@ -266,6 +326,7 @@ pub async fn dispatch_nutrient_notification(
             "amount_tsp": p.amount_tsp,
             "trigger_reason": p.trigger_reason,
             "current_gravity": p.current_gravity,
+            "display_current_gravity": preferences.format_gravity(p.current_gravity),
             "threshold_gravity": p.threshold_gravity,
             "recorded_at": p.recorded_at.to_rfc3339(),
         }),
@@ -283,7 +344,7 @@ pub async fn dispatch_nutrient_notification(
                     { "name": "Trigger", "value": trigger_detail, "inline": true },
                     {
                         "name": "Current Gravity",
-                        "value": format!("{:.4}", p.current_gravity),
+                        "value": preferences.format_gravity(p.current_gravity),
                         "inline": true
                     },
                 ],
@@ -302,7 +363,7 @@ pub async fn dispatch_nutrient_notification(
                         { "type": "mrkdwn", "text": format!("*Product:*\n{}", p.nutrient_product) },
                         { "type": "mrkdwn", "text": format!("*Amount:*\n{:.1}g / {:.1} tsp", p.amount_grams, p.amount_tsp) },
                         { "type": "mrkdwn", "text": format!("*Trigger:*\n{}", trigger_detail) },
-                        { "type": "mrkdwn", "text": format!("*Current Gravity:*\n{:.4}", p.current_gravity) },
+                        { "type": "mrkdwn", "text": format!("*Current Gravity:*\n{}", preferences.format_gravity(p.current_gravity)) },
                     ]
                 }
             ]

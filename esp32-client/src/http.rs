@@ -18,6 +18,7 @@ const HTTP_RESPONSE_MAX_BYTES: usize = 1024;
 pub struct HttpUploader {
     server_url: &'static str,
     api_key: &'static str,
+    device_id: String,
 }
 
 impl HttpUploader {
@@ -28,9 +29,20 @@ impl HttpUploader {
         Self {
             server_url,
             api_key,
+            device_id: String::new(),
         }
     }
 
+    pub fn set_device_id(&mut self, device_id: String) { self.device_id=device_id; }
+    pub fn heartbeat(&self, payload: &serde_json::Value) -> Result<()> {
+        let url=format!("{}/api/v1/scanners/heartbeat",self.server_url.trim_end_matches('/'));
+        let body=serde_json::to_vec(payload)?;
+        let mut conn=EspHttpConnection::new(&HttpConfig { crt_bundle_attach:Some(esp_idf_svc::sys::esp_crt_bundle_attach), timeout:Some(std::time::Duration::from_secs(10)), ..Default::default() })?;
+        let length=body.len().to_string();
+        conn.initiate_request(esp_idf_svc::http::Method::Post,&url,&[("Content-Type","application/json"),("Content-Length",&length),("X-API-Key",self.api_key)])?;
+        conn.write_all(&body)?; conn.initiate_response()?;
+        if !(200..300).contains(&conn.status()) { anyhow::bail!("Heartbeat failed: {}",conn.status()); } Ok(())
+    }
     /// POST a batch of readings as JSON to `/api/v1/readings`.
     ///
     /// Returns `Ok(())` on any 2xx response. On non-2xx responses the server's
@@ -51,6 +63,7 @@ impl HttpUploader {
 
         let content_len_str = payload.len().to_string();
         let mut headers: Vec<(&str, &str)> = vec![
+            ("X-Scanner-Id", self.device_id.as_str()),
             ("Content-Type", "application/json"),
             ("Content-Length", content_len_str.as_str()),
         ];

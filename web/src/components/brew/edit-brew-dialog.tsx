@@ -1,3 +1,5 @@
+import { useUnits } from "@/lib/units";
+import { MeasurementInput } from "@/components/ui/measurement-input";
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -28,6 +30,7 @@ interface EditBrewDialogProps {
 }
 
 export default function EditBrewDialog({ brew, open, onOpenChange }: EditBrewDialogProps) {
+  const u = useUnits();
   const updateBrew = useUpdateBrew(brew.id);
 
   const [name, setName] = useState(brew.name);
@@ -94,17 +97,17 @@ export default function EditBrewDialog({ brew, open, onOpenChange }: EditBrewDia
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="edit-og">OG</Label>
-              <Input id="edit-og" type="number" step="0.001" value={og} onChange={(e) => setOg(e.target.value)} />
+              <MeasurementInput measurement="gravity" id="edit-og" type="number" step="0.001" value={og} onChange={(e) => setOg(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-fg">FG</Label>
-              <Input id="edit-fg" type="number" step="0.001" value={fg} onChange={(e) => setFg(e.target.value)} />
+              <MeasurementInput measurement="gravity" id="edit-fg" type="number" step="0.001" value={fg} onChange={(e) => setFg(e.target.value)} />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-target-fg">Target FG</Label>
-            <Input id="edit-target-fg" type="number" step="0.001" value={targetFg} onChange={(e) => setTargetFg(e.target.value)} />
+            <Label htmlFor="edit-target-fg">Target FG ({u.gravityLabel})</Label>
+            <MeasurementInput measurement="gravity" id="edit-target-fg" type="number" step="0.001" value={targetFg} onChange={(e) => setTargetFg(e.target.value)} />
           </div>
 
           <div className="space-y-2">

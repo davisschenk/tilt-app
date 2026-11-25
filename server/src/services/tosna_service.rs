@@ -183,15 +183,25 @@ pub async fn evaluate_temperature_safety(
         return;
     }
 
+    let preferences = crate::routes::brewer_features::preferences(db, owner)
+        .await
+        .unwrap_or_default();
     let excess = temperature_f - strain.temp_max_f;
     let fusel_note = if strain.name == "D47" {
-        " D47 produces significant fusel alcohols above 65°F."
+        format!(
+            " D47 produces significant fusel alcohols above {}.",
+            preferences.format_temperature(65.0, false)
+        )
     } else {
-        ""
+        String::new()
     };
     let notes = format!(
-        "Temperature warning: {:.1}°F exceeds safe max {:.1}°F for {} by {:.1}°F.{}",
-        temperature_f, strain.temp_max_f, strain.name, excess, fusel_note
+        "Temperature warning: {} exceeds safe max {} for {} by {}.{}",
+        preferences.format_temperature(temperature_f, false),
+        preferences.format_temperature(strain.temp_max_f, false),
+        strain.name,
+        preferences.format_temperature(excess, true),
+        fusel_note
     );
 
     if let Err(e) = brew_event_service::create(
@@ -756,9 +766,15 @@ pub async fn evaluate_due_additions(
         };
 
         if let Some(target) = &target_opt
-            && let Err(e) =
-                webhook_dispatcher::dispatch_nutrient_notification(http_client, target, &payload)
+            && let Err(e) = webhook_dispatcher::dispatch_nutrient_notification(
+                &crate::routes::brewer_features::preferences(db, owner)
                     .await
+                    .unwrap_or_default(),
+                http_client,
+                target,
+                &payload,
+            )
+            .await
         {
             tracing::warn!(target_name = %target.name, error = %e, "Nutrient notification dispatch failed");
         }

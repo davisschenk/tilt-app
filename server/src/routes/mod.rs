@@ -6,6 +6,7 @@ pub mod api_keys;
 pub mod attachments;
 pub mod auth;
 pub mod brew_events;
+pub mod brewer_features;
 pub mod brews;
 pub mod firmware;
 pub mod hydrometers;

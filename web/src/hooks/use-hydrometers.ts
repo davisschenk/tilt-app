@@ -10,6 +10,7 @@ export function useHydrometers() {
   return useQuery<HydrometerResponse[]>({
     queryKey: ["hydrometers"],
     queryFn: () => apiGet<HydrometerResponse[]>("/hydrometers"),
+    refetchInterval: 30_000,
   });
 }
 

@@ -21,6 +21,10 @@ export interface TiltReading {
 export type CreateReadingsBatch = TiltReading[];
 
 export interface CreateBrew {
+  batchSizeGallons?: number | null;
+  yeastStrain?: string | null;
+  yeastNitrogenRequirement?: string | null;
+  nutrientProtocol?: string | null;
   name: string;
   hydrometerId: string;
   style?: string | null;

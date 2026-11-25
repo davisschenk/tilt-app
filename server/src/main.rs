@@ -232,6 +232,7 @@ async fn rocket() -> Rocket<Build> {
         .attach(fairings::session_cleanup::SessionCleanup)
         .mount("/api/v1", routes![health])
         .mount("/", routes![preflight])
+        .mount("/api/v1", routes::brewer_features::routes())
         .mount("/api/v1", routes::hydrometers::routes())
         .mount("/api/v1", routes::brews::routes())
         .mount("/api/v1", routes::readings::routes())

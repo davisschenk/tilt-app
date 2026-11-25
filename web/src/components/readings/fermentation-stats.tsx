@@ -1,3 +1,4 @@
+import { useUnits } from "@/lib/units";
 import { useMemo } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
@@ -12,6 +13,7 @@ interface FermentationStatsProps {
 }
 
 export default function FermentationStats({ brewId, og, targetFg }: FermentationStatsProps) {
+  const u = useUnits();
   const { data: readings, isLoading } = useReadings({ brewId });
 
   const stats = useMemo(() => {
@@ -74,7 +76,7 @@ export default function FermentationStats({ brewId, og, targetFg }: Fermentation
       <Card>
         <CardContent className="pt-4 pb-4">
           <p className="text-xs text-muted-foreground">Current Gravity</p>
-          <p className="text-xl font-bold">{stats.currentGravity.toFixed(3)}</p>
+          <p className="text-xl font-bold">{u.formatGravity(stats.currentGravity)}</p>
         </CardContent>
       </Card>
       <Card>
@@ -106,7 +108,7 @@ export default function FermentationStats({ brewId, og, targetFg }: Fermentation
           <p className="text-xs text-muted-foreground">Temperature Trend</p>
           <div className="flex items-center gap-2">
             <TrendIcon className="h-5 w-5" />
-            <span className="text-xl font-bold">{stats.latestTemp.toFixed(1)}°F</span>
+            <span className="text-xl font-bold">{u.formatTemperature(stats.latestTemp)}</span>
           </div>
         </CardContent>
       </Card>

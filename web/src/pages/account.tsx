@@ -1,3 +1,4 @@
+import { useUnits } from "@/lib/units";
 import { useState } from "react";
 import { Download, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import * as toast from "@/lib/toast";
 
 export default function AccountPage() {
   const { user } = useAuth();
+  const { units, save } = useUnits();
   const [exporting, setExporting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmEmail, setConfirmEmail] = useState("");
@@ -57,6 +59,13 @@ export default function AccountPage() {
       <PageHeader title="Account" description="Your profile and your data." />
 
       <div className="space-y-6 max-w-2xl">
+        <Card>
+          <CardHeader><CardTitle>Measurement preferences</CardTitle><CardDescription>Used across your devices, charts, forms and alerts.</CardDescription></CardHeader>
+          <CardContent className="flex gap-6">
+            <label>Temperature <select aria-label="Temperature unit" value={units.temperature} disabled={save.isPending} onChange={e=>save.mutate({...units,temperature:e.target.value as "F"|"C"},{onError:()=>toast.error("Could not save preferences")})}><option value="F">°F</option><option value="C">°C</option></select></label>
+            <label>Gravity <select aria-label="Gravity unit" value={units.gravity} disabled={save.isPending} onChange={e=>save.mutate({...units,gravity:e.target.value as "SG"|"P"},{onError:()=>toast.error("Could not save preferences")})}><option value="SG">SG</option><option value="P">°P</option></select></label>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader>
             <CardTitle>Profile</CardTitle>

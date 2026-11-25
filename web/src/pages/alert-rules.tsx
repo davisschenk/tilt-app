@@ -1,3 +1,4 @@
+import { useUnits, type unitTools } from "@/lib/units";
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Plus, Pencil, Trash2 } from "lucide-react";
@@ -36,17 +37,18 @@ const OPERATOR_SYMBOLS: Record<AlertOperator, string> = {
   plateau: "plateau",
 };
 
-function formatCondition(metric: AlertMetric, operator: AlertOperator, threshold: number, windowHours?: number): string {
+function formatCondition(metric: AlertMetric, operator: AlertOperator, threshold: number, windowHours: number | undefined, u: ReturnType<typeof unitTools>): string {
   if (metric === "gravity_plateau") {
-    return `Gravity flat ±${threshold.toFixed(4)} over ${windowHours ?? 24}h`;
+    return `Gravity flat ±${(u.gravity(1+threshold)-u.gravity(1)).toFixed(u.units.gravity === "P" ? 2 : 4)} over ${windowHours ?? 24}h`;
   }
-  const metricLabel = METRIC_LABELS[metric] ?? metric;
+  const metricLabel = metric === "temperature_f" ? `Temperature (${u.temperatureLabel})` : METRIC_LABELS[metric] ?? metric;
   const opSymbol = OPERATOR_SYMBOLS[operator] ?? operator;
-  const value = metric === "gravity" ? threshold.toFixed(3) : threshold.toFixed(1);
+  const value = metric === "gravity" ? u.formatGravity(threshold) : u.formatTemperature(threshold);
   return `${metricLabel} ${opSymbol} ${value}`;
 }
 
 export default function AlertRules() {
+ const u=useUnits();
   const { data: rules, isLoading } = useAlertRules();
   const { data: targets } = useAlertTargets();
   const [createOpen, setCreateOpen] = useState(false);
@@ -95,7 +97,7 @@ export default function AlertRules() {
                   <TableCell className="font-medium py-3">{r.name}</TableCell>
                   <TableCell className="hidden sm:table-cell">
                     <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                      {formatCondition(r.metric, r.operator, r.threshold, r.windowHours)}
+                      {formatCondition(r.metric, r.operator, r.threshold, r.windowHours, u)}
                     </code>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-sm">

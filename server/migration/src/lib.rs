@@ -18,6 +18,8 @@ mod m20260414_234520_create_event_attachments_table;
 mod m20261117_000001_add_user_ownership;
 mod m20261118_000001_readings_composite_indexes;
 
+mod m20261118_000002_brewer_features;
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -41,6 +43,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260414_234520_create_event_attachments_table::Migration),
             Box::new(m20261117_000001_add_user_ownership::Migration),
             Box::new(m20261118_000001_readings_composite_indexes::Migration),
+            Box::new(m20261118_000002_brewer_features::Migration),
         ]
     }
 }

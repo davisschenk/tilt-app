@@ -236,6 +236,7 @@ async fn seed_brews_and_readings(
     while t <= total_minutes {
         let recorded_at = active_start + Duration::seconds((t * 60.0) as i64);
         active_readings.push(readings::ActiveModel {
+            scanner_id: Set(None),
             id: Set(Uuid::new_v4()),
             brew_id: Set(Some(ids::BREW_ACTIVE)),
             hydrometer_id: Set(ids::HYDROMETER_RED),
@@ -257,6 +258,7 @@ async fn seed_brews_and_readings(
     while t <= completed_total_minutes {
         let recorded_at = completed_start + Duration::seconds((t * 60.0) as i64);
         completed_readings.push(readings::ActiveModel {
+            scanner_id: Set(None),
             id: Set(Uuid::new_v4()),
             brew_id: Set(Some(ids::BREW_COMPLETED)),
             hydrometer_id: Set(ids::HYDROMETER_BLACK),

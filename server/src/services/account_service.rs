@@ -95,6 +95,8 @@ pub async fn export(db: &DatabaseConnection, user: &users::Model) -> Result<Valu
 
     Ok(json!({
         "exportedAt": chrono::Utc::now(),
+        "preferences": crate::models::entities::brewer_preferences::Entity::find_by_id(owner).one(db).await?.map(|r|r.payload),
+        "scanners": crate::models::entities::scanners::Entity::find().filter(crate::models::entities::scanners::Column::OwnerId.eq(owner)).all(db).await?.into_iter().map(|r|json!({"deviceId":r.device_id,"lastSeenAt":r.last_seen_at,"health":r.payload})).collect::<Vec<_>>(),
         "account": { "id": user.id, "email": user.email, "name": user.name, "createdAt": user.created_at },
         "hydrometers": hydros.iter().map(|m| row(m, &[])).collect::<Vec<_>>(),
         "brews": brews_.iter().map(|m| row(m, &[])).collect::<Vec<_>>(),

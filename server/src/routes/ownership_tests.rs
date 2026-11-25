@@ -81,6 +81,7 @@ impl Harness {
             .mount("/api/v1", routes::analytics::routes())
             .mount("/api/v1", routes::tosna::routes())
             .mount("/api/v1", routes::api_keys::routes())
+            .mount("/api/v1", routes::brewer_features::routes())
             .mount("/api/v1", routes::account::routes());
         let client = Client::tracked(rocket).await.expect("rocket builds");
 
@@ -188,6 +189,7 @@ fn reading(color: &str) -> Value {
 #[rocket::async_test]
 async fn users_cannot_see_or_touch_each_others_data() {
     let h = Harness::new().await;
+    brewer_features_scenario(&h).await;
     scenario(&h).await;
     limits_scenario(&h).await;
     h.cleanup().await;
@@ -344,11 +346,30 @@ async fn scenario(h: &Harness) {
         "B nutrient schedule"
     );
 
+    // Keep one active brew per hydrometer while testing a second historical brew.
+    assert_eq!(
+        h.put(&format!("/brews/{brew}"), a, json!({"status":"Completed"}))
+            .await
+            .0,
+        Status::Ok
+    );
     // An event is only reachable through the brew it belongs to.
     let (_, brew2) = h
         .post("/brews", a, json!({"name": "A brew 2", "hydrometerId": ha}))
         .await;
     let brew2 = id(&brew2);
+    assert_eq!(
+        h.put(&format!("/brews/{brew2}"), a, json!({"status":"Completed"}))
+            .await
+            .0,
+        Status::Ok
+    );
+    assert_eq!(
+        h.put(&format!("/brews/{brew}"), a, json!({"status":"Active"}))
+            .await
+            .0,
+        Status::Ok
+    );
     assert_eq!(
         h.get(&format!("/brews/{brew2}/events/{ev}"), a).await.0,
         Status::NotFound,
@@ -1008,9 +1029,18 @@ async fn limits_scenario(h: &Harness) {
         nutrient_alert_target_id: None,
     };
     for _ in 0..limits::MAX_BREWS {
-        brew_service::create(&h.db, c_id, brew())
+        let created = brew_service::create(&h.db, c_id, brew())
             .await
             .expect("under the cap");
+        crate::models::entities::brews::Entity::update_many()
+            .col_expr(
+                crate::models::entities::brews::Column::Status,
+                sea_orm::sea_query::Expr::value("Completed"),
+            )
+            .filter(crate::models::entities::brews::Column::Id.eq(created.id))
+            .exec(&h.db)
+            .await
+            .unwrap();
     }
     assert!(
         matches!(
@@ -1124,5 +1154,262 @@ async fn limits_scenario(h: &Harness) {
         h.post("/readings", &h.a, reading("Red")).await.0,
         Status::Created,
         "A is unaffected"
+    );
+}
+
+async fn brewer_features_scenario(h: &Harness) {
+    let a = login(&h.db, "feature-a", "feature-a@example.com").await;
+    let b = login(&h.db, "feature-b", "feature-b@example.com").await;
+    assert_eq!(
+        h.get("/account/preferences", &a).await.1,
+        json!({"temperature":"F","gravity":"SG"})
+    );
+    assert_eq!(
+        h.put(
+            "/account/preferences",
+            &a,
+            json!({"temperature":"C","gravity":"P"})
+        )
+        .await
+        .0,
+        Status::Ok
+    );
+    assert_eq!(
+        h.get("/account/preferences", &a).await.1["temperature"],
+        "C"
+    );
+    assert_eq!(
+        h.get("/account/preferences", &b).await.1["temperature"],
+        "F"
+    );
+    assert_eq!(
+        h.put(
+            "/account/preferences",
+            &a,
+            json!({"temperature":"K","gravity":"P"})
+        )
+        .await
+        .0,
+        Status::UnprocessableEntity
+    );
+    let heartbeat = json!({"deviceId":"scanner-a","firmwareVersion":"v1","uptimeSeconds":100,"wifiRssi":-50,"scanIntervalSeconds":60,"bufferedReadings":0,"scanOk":false,"uploadOk":true});
+    assert_eq!(
+        h.post("/scanners/heartbeat", &a, heartbeat.clone()).await.0,
+        Status::NoContent
+    );
+    assert_eq!(
+        h.post("/scanners/heartbeat", &a, heartbeat).await.0,
+        Status::NoContent
+    );
+    let scanners = h.get("/scanners", &a).await.1;
+    assert_eq!(
+        scanners.as_array().unwrap().len(),
+        1,
+        "heartbeat upserts stable device"
+    );
+    assert_eq!(h.get("/scanners", &b).await.1, json!([]));
+    let (_, hydro) = h.post("/hydrometers", &a, json!({"color":"Blue"})).await;
+    let hd = id(&hydro);
+    let (status,brew)=h.post("/brews",&a,json!({"name":"Report batch","hydrometerId":hd,"og":1.05,"targetFg":1.01,"notes":"private recipe","yeastStrain":"US-05","batchSizeGallons":5})).await;
+    assert_eq!(status, Status::Created);
+    let brew_id = id(&brew);
+    assert_eq!(
+        h.post(
+            "/brews",
+            &a,
+            json!({"name":"Conflicting duplicate","hydrometerId":hd})
+        )
+        .await
+        .0,
+        Status::UnprocessableEntity
+    );
+
+    let (_, key) = h.post("/api-keys", &a, json!({"name":"scanner key"})).await;
+    let raw = key["key"].as_str().unwrap();
+    let response=h.client.post("/api/v1/scanners/heartbeat").header(Header::new("X-API-Key",raw.to_owned())).json(&json!({"deviceId":"scanner-a","firmwareVersion":"v2","uptimeSeconds":200,"wifiRssi":-45,"scanIntervalSeconds":60,"bufferedReadings":0,"scanOk":true,"uploadOk":true})).dispatch().await;
+    assert_eq!(
+        response.status(),
+        Status::NoContent,
+        "firmware authenticates with existing API key"
+    );
+    let response = h
+        .client
+        .post("/api/v1/readings")
+        .header(Header::new("X-API-Key", raw.to_owned()))
+        .header(Header::new("X-Scanner-Id", "scanner-a"))
+        .json(&reading("Blue"))
+        .dispatch()
+        .await;
+    assert_eq!(response.status(), Status::Created);
+    let row = crate::models::entities::readings::Entity::find()
+        .filter(
+            crate::models::entities::readings::Column::HydrometerId.eq(hd.parse::<Uuid>().unwrap()),
+        )
+        .one(&h.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        row.scanner_id,
+        Some(scanners[0]["id"].as_str().unwrap().parse().unwrap())
+    );
+    let (_,event)=h.post(&format!("/brews/{brew_id}/events"),&a,json!({"brewId":brew_id,"eventType":"dry_hop","label":"Dry hop","notes":"private entry","eventTime":"2026-01-01T00:00:00Z"})).await;
+    let event_id = id(&event);
+    let options = json!({"eventIds":[event_id],"includeNotes":false,"includePhotos":false,"units":{"temperature":"C","gravity":"P"}});
+    assert_eq!(
+        h.post(&format!("/brews/{brew_id}/reports"), &b, options.clone())
+            .await
+            .0,
+        Status::NotFound
+    );
+    let (status, r) = h
+        .post(&format!("/brews/{brew_id}/reports"), &a, options.clone())
+        .await;
+    assert_eq!(status, Status::Ok);
+    let token = r["token"].as_str().unwrap();
+    let report_id = id(&r);
+    let (status, snapshot) = h
+        .call(Method::Get, &format!("/reports/{token}"), None, None)
+        .await;
+    assert_eq!(status, Status::Ok);
+    assert_eq!(snapshot["name"], "Report batch");
+    assert!(snapshot["notes"].is_null());
+    assert!(snapshot["events"][0]["notes"].is_null());
+    assert!(snapshot.get("hydrometerId").is_none());
+    assert_eq!(snapshot["units"]["temperature"], "C");
+    h.put(&format!("/brews/{brew_id}"), &a, json!({"name":"Renamed"}))
+        .await;
+    assert_eq!(
+        h.call(Method::Get, &format!("/reports/{token}"), None, None)
+            .await
+            .1["name"],
+        "Report batch",
+        "published snapshot stays fixed"
+    );
+    assert_eq!(
+        h.put(
+            &format!("/brews/{brew_id}/reports/{report_id}"),
+            &b,
+            options.clone()
+        )
+        .await
+        .0,
+        Status::NotFound
+    );
+    let refreshed = h
+        .put(
+            &format!("/brews/{brew_id}/reports/{report_id}"),
+            &a,
+            options.clone(),
+        )
+        .await;
+    assert_eq!(refreshed.0, Status::Ok);
+    assert_eq!(refreshed.1["token"], token, "refresh keeps existing link");
+    assert_eq!(
+        h.call(Method::Get, &format!("/reports/{token}"), None, None)
+            .await
+            .1["name"],
+        "Renamed"
+    );
+
+    let photo_id = Uuid::new_v4();
+    let storage_path = format!("{event_id}/{photo_id}.png");
+    std::fs::create_dir_all(h.upload_dir.join(&event_id)).unwrap();
+    std::fs::write(h.upload_dir.join(&storage_path), b"\x89PNG\r\n\x1a\nphoto").unwrap();
+    event_attachments::ActiveModel {
+        id: Set(photo_id),
+        event_id: Set(event_id.parse().unwrap()),
+        filename: Set("photo.png".into()),
+        storage_path: Set(storage_path),
+        content_type: Set("image/png".into()),
+        size_bytes: Set(13),
+        created_at: Set(chrono::Utc::now().into()),
+    }
+    .insert(&h.db)
+    .await
+    .unwrap();
+    let photo_uri = format!("/api/v1/reports/{token}/photos/{photo_id}");
+    assert_eq!(
+        h.client.get(&photo_uri).dispatch().await.status(),
+        Status::NotFound,
+        "unselected photo is private"
+    );
+    let mut with_photos = options.clone();
+    with_photos["includePhotos"] = json!(true);
+    with_photos["includeNotes"] = json!(true);
+    assert_eq!(
+        h.put(
+            &format!("/brews/{brew_id}/reports/{report_id}"),
+            &a,
+            with_photos
+        )
+        .await
+        .0,
+        Status::Ok
+    );
+    let response = h.client.get(&photo_uri).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    assert_eq!(
+        response.headers().get_one("Cache-Control"),
+        Some("no-store")
+    );
+    assert_eq!(
+        h.delete(&format!("/brews/{brew_id}/reports/{report_id}"), &b)
+            .await,
+        Status::NotFound
+    );
+    assert_eq!(
+        h.delete(&format!("/brews/{brew_id}/reports/{report_id}"), &a)
+            .await,
+        Status::NoContent
+    );
+    assert_eq!(
+        h.call(Method::Get, &format!("/reports/{token}"), None, None)
+            .await
+            .0,
+        Status::NotFound
+    );
+    assert_eq!(
+        h.client.get(&photo_uri).dispatch().await.status(),
+        Status::NotFound,
+        "revocation also removes public photo access"
+    );
+    let (_, r) = h
+        .post(&format!("/brews/{brew_id}/reports"), &a, options)
+        .await;
+    assert_eq!(
+        h.delete(&format!("/brews/{brew_id}"), &a).await,
+        Status::NoContent
+    );
+    assert_eq!(
+        h.call(
+            Method::Get,
+            &format!("/reports/{}", r["token"].as_str().unwrap()),
+            None,
+            None
+        )
+        .await
+        .0,
+        Status::NotFound
+    );
+    assert_eq!(
+        h.post(
+            "/account/delete",
+            &a,
+            json!({"confirmEmail":"feature-a@example.com"})
+        )
+        .await
+        .0,
+        Status::NoContent
+    );
+    assert_eq!(
+        h.post(
+            "/account/delete",
+            &b,
+            json!({"confirmEmail":"feature-b@example.com"})
+        )
+        .await
+        .0,
+        Status::NoContent
     );
 }
