@@ -41,8 +41,7 @@ fn is_api_path(path: &str) -> bool {
     path.starts_with("/api/v1/")
 }
 
-/// Liveness/readiness probes are polled by the orchestrator, so they never count
-/// against (or get refused by) the per-IP limits.
+/// Orchestrator health probes are exempt.
 fn is_health_path(path: &str) -> bool {
     path == "/api/v1/health" || path.starts_with("/api/v1/health/")
 }

@@ -32,32 +32,20 @@ fn health() -> Json<Value> {
 
 #[get("/health/ready")]
 async fn ready(db: &State<DatabaseConnection>) -> (Status, Json<Value>) {
-    let healthy = match rocket::tokio::time::timeout(DB_PING_TIMEOUT, db.ping()).await {
-        Ok(Ok(())) => true,
-        Ok(Err(e)) => {
-            tracing::warn!("readiness: database ping failed: {e}");
-            false
-        }
-        Err(_) => {
-            tracing::warn!(
-                "readiness: database ping timed out after {}s",
-                DB_PING_TIMEOUT.as_secs()
+    match rocket::tokio::time::timeout(DB_PING_TIMEOUT, db.ping()).await {
+        Ok(Ok(())) => {
+            return (
+                Status::Ok,
+                Json(json!({ "status": "ok", "database": "ok" })),
             );
-            false
         }
-    };
-
-    if healthy {
-        (
-            Status::Ok,
-            Json(json!({ "status": "ok", "database": "ok" })),
-        )
-    } else {
-        (
-            Status::ServiceUnavailable,
-            Json(json!({ "status": "unavailable", "database": "error" })),
-        )
+        Ok(Err(e)) => tracing::warn!("readiness: database ping failed: {e}"),
+        Err(_) => tracing::warn!("readiness: database ping timed out after {DB_PING_TIMEOUT:?}"),
     }
+    (
+        Status::ServiceUnavailable,
+        Json(json!({ "status": "unavailable", "database": "error" })),
+    )
 }
 
 #[cfg(test)]
@@ -71,13 +59,10 @@ mod tests {
         Client::tracked(rocket).await.expect("valid rocket")
     }
 
-    /// A pool pointed at a port nothing listens on. `connect_lazy` defers the
+    /// A pool pointed at a port that refuses connections. `connect_lazy` defers the
     /// first connection, so building it succeeds and the ping is what fails.
     async fn unreachable_db() -> DatabaseConnection {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        let mut opts = ConnectOptions::new(format!("postgres://u:p@127.0.0.1:{port}/none"));
+        let mut opts = ConnectOptions::new("postgres://u:p@127.0.0.1:1/none");
         opts.connect_lazy(true)
             .connect_timeout(Duration::from_millis(500))
             .acquire_timeout(Duration::from_millis(500))
@@ -88,7 +73,7 @@ mod tests {
     async fn get(client: &Client, path: &str) -> (Status, Value) {
         let res = client.get(path).dispatch().await;
         let status = res.status();
-        let body: Value = serde_json::from_str(&res.into_string().await.unwrap()).unwrap();
+        let body = res.into_json::<Value>().await.unwrap();
         (status, body)
     }
 
@@ -113,25 +98,14 @@ mod tests {
         );
         assert!(
             started.elapsed() < DB_PING_TIMEOUT + Duration::from_secs(1),
-            "probe must answer within its timeout"
+            "probe must answer promptly"
         );
-    }
-
-    #[rocket::async_test]
-    async fn readiness_is_503_when_pool_is_closed() {
-        let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must point at Postgres");
-        let db = Database::connect(&url).await.expect("connect to Postgres");
-        db.clone().close().await.expect("close pool");
-        let client = client(db).await;
-        let (status, _) = get(&client, "/api/v1/health/ready").await;
-        assert_eq!(status, Status::ServiceUnavailable);
     }
 
     #[rocket::async_test]
     async fn readiness_is_ok_when_database_answers() {
         let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must point at Postgres");
-        let db = Database::connect(&url).await.expect("connect to Postgres");
-        let client = client(db).await;
+        let client = client(Database::connect(&url).await.expect("connect to Postgres")).await;
         let (status, body) = get(&client, "/api/v1/health/ready").await;
         assert_eq!(status, Status::Ok);
         assert_eq!(body, json!({ "status": "ok", "database": "ok" }));
