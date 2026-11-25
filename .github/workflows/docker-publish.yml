@@ -26,20 +26,20 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install system packages
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libusb-1.0-0 libudev-dev python3-venv ccache
 
       - name: Install ESP Rust toolchain
-        uses: esp-rs/xtensa-toolchain@v1.6.0
+        uses: esp-rs/xtensa-toolchain@v1.7.0
         with:
           version: "1.93.0.0"
           ldproxy: true
           buildtargets: esp32
 
       - name: Cache ESP-IDF and build output
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.espressif
@@ -71,7 +71,7 @@ jobs:
           rm -f "$RUNNER_TEMP/ota-signing.pem"
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-dist
           path: |
@@ -88,16 +88,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download firmware
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: firmware-dist
           path: firmware-dist
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -105,7 +105,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -115,10 +115,10 @@ jobs:
             type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: server/Dockerfile
