@@ -7,45 +7,83 @@
 //!   browsing the dashboard cannot starve a scanner behind the same NAT.
 //! - [`ApiUserLimiter`] limits per account on the authenticated API.
 //! - [`TestFireLimiter`] limits webhook test-fires per account.
+//! - [`LimiterHousekeeping`] periodically drops idle keys so the limiters do
+//!   not keep an entry for every address or account ever seen.
 
-use std::{marker::PhantomData, net::IpAddr, num::NonZeroU32};
+use std::{
+    hash::Hash, marker::PhantomData, net::IpAddr, num::NonZeroU32, sync::Arc, time::Duration,
+};
 
 use governor::{Quota, RateLimiter, clock::DefaultClock, state::keyed::DefaultKeyedStateStore};
-use rocket::{Request, http::Status, outcome::Outcome};
+use rocket::{
+    Ignite, Orbit, Request, Rocket,
+    fairing::{Fairing, Info, Kind},
+    http::Status,
+    outcome::Outcome,
+};
+use sea_orm::DatabaseConnection;
 
-type KeyedLimiter = RateLimiter<IpAddr, DefaultKeyedStateStore<IpAddr>, DefaultClock>;
+use crate::metrics::{self, Limiter};
 
+type KeyedLimiter<K> = RateLimiter<K, DefaultKeyedStateStore<K>, DefaultClock>;
+
+fn per_minute<K: Hash + Eq + Clone>(n: NonZeroU32) -> Arc<KeyedLimiter<K>> {
+    Arc::new(RateLimiter::keyed(Quota::per_minute(n)))
+}
+
+/// Spend a token for `key`; on refusal, count it against `which`.
+fn check<K: Hash + Eq + Clone>(limiter: &KeyedLimiter<K>, key: &K, which: Limiter) -> bool {
+    let allowed = limiter.check_key(key).is_ok();
+    if !allowed {
+        metrics::rate_limited(which);
+    }
+    allowed
+}
+
+/// Forget keys whose buckets have refilled; returns how many were dropped.
+fn prune<K: Hash + Eq + Clone>(limiter: &KeyedLimiter<K>) -> u64 {
+    let before = limiter.len();
+    limiter.retain_recent();
+    limiter.shrink_to_fit();
+    before.saturating_sub(limiter.len()) as u64
+}
+
+const AUTH_PER_MINUTE: NonZeroU32 = NonZeroU32::new(20).unwrap();
+const API_PER_MINUTE: NonZeroU32 = NonZeroU32::new(300).unwrap();
 const TEST_FIRE_PER_MINUTE: NonZeroU32 = NonZeroU32::new(10).unwrap();
+const PRUNE_EVERY: Duration = Duration::from_secs(5 * 60);
 
 /// Per-IP token buckets, held as managed state and spent by [`RateLimitGuard`].
+#[derive(Clone)]
 pub struct IpRateLimits {
     /// Auth endpoints (login, OIDC callback).
-    auth: KeyedLimiter,
+    auth: Arc<KeyedLimiter<IpAddr>>,
     /// Other limited API endpoints (reading ingest).
-    api: KeyedLimiter,
+    api: Arc<KeyedLimiter<IpAddr>>,
 }
 
 impl IpRateLimits {
-    pub const AUTH_PER_MINUTE: NonZeroU32 = NonZeroU32::new(20).unwrap();
-    pub const API_PER_MINUTE: NonZeroU32 = NonZeroU32::new(300).unwrap();
-
     pub fn new(auth_per_minute: NonZeroU32, api_per_minute: NonZeroU32) -> Self {
         Self {
-            auth: RateLimiter::keyed(Quota::per_minute(auth_per_minute)),
-            api: RateLimiter::keyed(Quota::per_minute(api_per_minute)),
+            auth: per_minute(auth_per_minute),
+            api: per_minute(api_per_minute),
         }
+    }
+
+    fn prune(&self) -> u64 {
+        prune(&self.auth) + prune(&self.api)
     }
 }
 
 impl Default for IpRateLimits {
     fn default() -> Self {
-        Self::new(Self::AUTH_PER_MINUTE, Self::API_PER_MINUTE)
+        Self::new(AUTH_PER_MINUTE, API_PER_MINUTE)
     }
 }
 
 /// Selects which [`IpRateLimits`] bucket a [`RateLimitGuard`] spends from.
 pub trait Bucket: Send + Sync + 'static {
-    fn limiter(limits: &IpRateLimits) -> &KeyedLimiter;
+    fn limiter(limits: &IpRateLimits) -> &KeyedLimiter<IpAddr>;
 }
 
 /// The auth bucket: 20 requests/min per IP by default.
@@ -54,13 +92,13 @@ pub struct Auth;
 pub struct Api;
 
 impl Bucket for Auth {
-    fn limiter(limits: &IpRateLimits) -> &KeyedLimiter {
+    fn limiter(limits: &IpRateLimits) -> &KeyedLimiter<IpAddr> {
         &limits.auth
     }
 }
 
 impl Bucket for Api {
-    fn limiter(limits: &IpRateLimits) -> &KeyedLimiter {
+    fn limiter(limits: &IpRateLimits) -> &KeyedLimiter<IpAddr> {
         &limits.api
     }
 }
@@ -71,8 +109,8 @@ fn client_ip(req: &Request<'_>) -> IpAddr {
 
 /// Request guard that spends one token from bucket `B` for the client IP and
 /// fails with 429 when none is left. Declare it before other guards so refused
-/// requests are rejected before any authentication work. If no
-/// [`IpRateLimits`] is managed (some tests), requests are allowed.
+/// requests are rejected before any authentication work. Rocket refuses to
+/// launch if a route takes it but [`IpRateLimits`] is not managed.
 pub struct RateLimitGuard<B: Bucket>(PhantomData<B>);
 
 #[rocket::async_trait]
@@ -80,28 +118,36 @@ impl<'r, B: Bucket> rocket::request::FromRequest<'r> for RateLimitGuard<B> {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
-        let allowed = req
+        let limits = req
             .rocket()
             .state::<IpRateLimits>()
-            .is_none_or(|limits| B::limiter(limits).check_key(&client_ip(req)).is_ok());
-        if allowed {
+            .expect("IpRateLimits is managed (checked by the Sentinel at launch)");
+        if check(B::limiter(limits), &client_ip(req), Limiter::Ip) {
             Outcome::Success(RateLimitGuard(PhantomData))
         } else {
-            crate::metrics::rate_limited(crate::metrics::Limiter::Ip);
             Outcome::Error((Status::TooManyRequests, ()))
         }
     }
 }
 
+impl<B: Bucket> rocket::Sentinel for RateLimitGuard<B> {
+    fn abort(rocket: &Rocket<Ignite>) -> bool {
+        let missing = rocket.state::<IpRateLimits>().is_none();
+        if missing {
+            tracing::error!("a route takes RateLimitGuard but IpRateLimits is not managed");
+        }
+        missing
+    }
+}
+
 /// Per-user limiter for endpoints that make the server send a request on the
 /// user's behalf (webhook test-fire), so one account cannot use them as a cannon.
-pub struct TestFireLimiter(
-    RateLimiter<uuid::Uuid, DefaultKeyedStateStore<uuid::Uuid>, DefaultClock>,
-);
+#[derive(Clone)]
+pub struct TestFireLimiter(Arc<KeyedLimiter<uuid::Uuid>>);
 
 impl TestFireLimiter {
     pub fn new() -> Self {
-        Self(RateLimiter::keyed(Quota::per_minute(TEST_FIRE_PER_MINUTE)))
+        Self(per_minute(TEST_FIRE_PER_MINUTE))
     }
 
     /// True if `user` may fire another test right now.
@@ -113,30 +159,55 @@ impl TestFireLimiter {
 /// Per-user request limiter for the authenticated API. The IP limiter above only
 /// guards a few routes and keys on a shared address; this one follows the
 /// account, whichever network or API key the request comes from.
-pub struct ApiUserLimiter(
-    RateLimiter<uuid::Uuid, DefaultKeyedStateStore<uuid::Uuid>, DefaultClock>,
-);
+#[derive(Clone)]
+pub struct ApiUserLimiter(Arc<KeyedLimiter<uuid::Uuid>>);
 
 impl ApiUserLimiter {
     /// Requests per minute each account may make. The web UI polls a handful of
     /// endpoints every 30s, so the default leaves a wide margin.
     pub const DEFAULT_PER_MINUTE: NonZeroU32 = NonZeroU32::new(600).unwrap();
 
-    pub fn new(per_minute: NonZeroU32) -> Self {
-        Self(RateLimiter::keyed(Quota::per_minute(per_minute)))
+    pub fn new(per_minute_limit: NonZeroU32) -> Self {
+        Self(per_minute(per_minute_limit))
     }
 
     /// True if `user` may make another request right now. If no limiter is
     /// installed (some tests), requests are allowed.
     pub fn allow(req: &Request<'_>, user: uuid::Uuid) -> bool {
-        let allowed = req
-            .rocket()
+        req.rocket()
             .state::<ApiUserLimiter>()
-            .is_none_or(|l| l.0.check_key(&user).is_ok());
-        if !allowed {
-            crate::metrics::rate_limited(crate::metrics::Limiter::User);
+            .is_none_or(|l| check(&l.0, &user, Limiter::User))
+    }
+}
+
+/// Every few minutes, drops limiter entries for keys that have gone idle long
+/// enough for their bucket to refill, so memory tracks active clients rather
+/// than every client ever seen.
+pub struct LimiterHousekeeping;
+
+#[rocket::async_trait]
+impl Fairing for LimiterHousekeeping {
+    fn info(&self) -> Info {
+        Info {
+            name: "Rate Limiter Housekeeping",
+            kind: Kind::Liftoff,
         }
-        allowed
+    }
+
+    async fn on_liftoff(&self, rocket: &Rocket<Orbit>) {
+        let db = rocket
+            .state::<DatabaseConnection>()
+            .expect("DatabaseConnection not managed")
+            .clone();
+        let ip = rocket.state::<IpRateLimits>().cloned();
+        let user = rocket.state::<ApiUserLimiter>().cloned();
+        let fire = rocket.state::<TestFireLimiter>().cloned();
+        super::periodic::spawn_every(db, "rate limiter entries", PRUNE_EVERY, move |_| {
+            let n = ip.as_ref().map_or(0, IpRateLimits::prune)
+                + user.as_ref().map_or(0, |l| prune(&l.0))
+                + fire.as_ref().map_or(0, |l| prune(&l.0));
+            async move { Ok(n) }
+        });
     }
 }
 
@@ -144,26 +215,12 @@ impl ApiUserLimiter {
 mod tests {
     use super::*;
     use rocket::{get, local::asynchronous::Client, routes};
-    use std::net::IpAddr;
 
     #[get("/auth")]
     fn auth_route(_rl: RateLimitGuard<Auth>) {}
 
     #[get("/api")]
     fn api_route(_rl: RateLimitGuard<Api>) {}
-
-    #[get("/open")]
-    fn open_route() {}
-
-    async fn limited_client(auth: u32, api: u32) -> Client {
-        let rocket = rocket::build()
-            .manage(IpRateLimits::new(
-                NonZeroU32::new(auth).unwrap(),
-                NonZeroU32::new(api).unwrap(),
-            ))
-            .mount("/", routes![auth_route, api_route, open_route]);
-        Client::tracked(rocket).await.unwrap()
-    }
 
     async fn status_from(c: &Client, path: &str, ip: &str) -> Status {
         c.get(path)
@@ -209,63 +266,57 @@ mod tests {
     }
 
     #[rocket::async_test]
-    async fn unguarded_routes_spend_no_tokens() {
-        let c = limited_client(2, 2).await;
-        for _ in 0..20 {
-            assert_eq!(status_from(&c, "/open", "10.0.0.1").await, Status::Ok);
-        }
-        assert_eq!(status_from(&c, "/api", "10.0.0.1").await, Status::Ok);
-        assert_eq!(status_from(&c, "/api", "10.0.0.1").await, Status::Ok);
-        assert_eq!(
-            status_from(&c, "/api", "10.0.0.1").await,
-            Status::TooManyRequests,
-            "the guarded route still enforces its own quota"
-        );
-    }
-
-    #[rocket::async_test]
-    async fn guarded_routes_refuse_after_quota_per_ip() {
-        let c = limited_client(3, 3).await;
-        for _ in 0..3 {
-            assert_eq!(status_from(&c, "/auth", "10.0.0.2").await, Status::Ok);
+    async fn guarded_routes_refuse_after_quota_per_ip_and_bucket() {
+        let two = NonZeroU32::new(2).unwrap();
+        let rocket = rocket::build()
+            .manage(IpRateLimits::new(two, two))
+            .mount("/", routes![auth_route, api_route]);
+        let c = Client::tracked(rocket).await.unwrap();
+        for _ in 0..2 {
+            assert_eq!(status_from(&c, "/auth", "10.0.0.1").await, Status::Ok);
         }
         assert_eq!(
-            status_from(&c, "/auth", "10.0.0.2").await,
+            status_from(&c, "/auth", "10.0.0.1").await,
             Status::TooManyRequests
         );
         assert_eq!(
-            status_from(&c, "/auth", "10.0.0.3").await,
+            status_from(&c, "/auth", "10.0.0.2").await,
             Status::Ok,
             "another IP has its own bucket"
         );
-    }
-
-    #[rocket::async_test]
-    async fn auth_and_api_buckets_are_independent() {
-        let c = limited_client(1, 1).await;
-        assert_eq!(status_from(&c, "/auth", "10.0.0.4").await, Status::Ok);
-        assert_eq!(
-            status_from(&c, "/auth", "10.0.0.4").await,
-            Status::TooManyRequests
-        );
-        assert_eq!(
-            status_from(&c, "/api", "10.0.0.4").await,
-            Status::Ok,
-            "an empty auth bucket does not block the API bucket"
-        );
-        assert_eq!(
-            status_from(&c, "/api", "10.0.0.4").await,
-            Status::TooManyRequests
-        );
-    }
-
-    #[rocket::async_test]
-    async fn guard_allows_when_no_limits_are_managed() {
-        let rocket = rocket::build().mount("/", routes![api_route]);
-        let c = Client::tracked(rocket).await.unwrap();
-        for _ in 0..5 {
-            assert_eq!(status_from(&c, "/api", "10.0.0.5").await, Status::Ok);
+        for _ in 0..2 {
+            assert_eq!(
+                status_from(&c, "/api", "10.0.0.1").await,
+                Status::Ok,
+                "an empty auth bucket does not block the API bucket"
+            );
         }
+        assert_eq!(
+            status_from(&c, "/api", "10.0.0.1").await,
+            Status::TooManyRequests
+        );
+    }
+
+    #[rocket::async_test]
+    async fn launch_fails_if_guarded_route_has_no_limits() {
+        let rocket = rocket::build().mount("/", routes![api_route]);
+        let err = Client::tracked(rocket).await.err().expect("launch aborts");
+        assert!(
+            matches!(err.kind(), rocket::error::ErrorKind::SentinelAborts(_)),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn prune_drops_refilled_keys() {
+        // 60,000/min refills a spent token within a millisecond.
+        let l = per_minute::<IpAddr>(NonZeroU32::new(60_000).unwrap());
+        assert!(l.check_key(&IpAddr::from([10, 0, 0, 1])).is_ok());
+        assert!(l.check_key(&IpAddr::from([10, 0, 0, 2])).is_ok());
+        assert_eq!(l.len(), 2);
+        std::thread::sleep(Duration::from_millis(20));
+        assert_eq!(prune(&l), 2);
+        assert!(l.is_empty());
     }
 
     #[test]

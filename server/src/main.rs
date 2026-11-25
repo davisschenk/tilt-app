@@ -240,12 +240,13 @@ async fn rocket() -> Rocket<Build> {
         .attach(fairings::request_logger::RequestLogger)
         .attach(fairings::security_headers::SecurityHeaders)
         .attach(fairings::session_cleanup::SessionCleanup)
+        .attach(fairings::rate_limit::LimiterHousekeeping)
         .mount("/api/v1", routes::health::routes())
         .mount("/", routes![preflight])
         .mount("/api/v1", routes::preferences::routes())
         .mount("/api/v1", routes::scanners::routes())
         .mount("/api/v1", routes::reports::routes())
-        // Outside /api/v1, and ranked above the static/SPA fallbacks.
+        // Ranked above the static/SPA fallbacks.
         .mount("/", metrics::routes())
         .mount("/api/v1", routes::hydrometers::routes())
         .mount("/api/v1", routes::brews::routes())
