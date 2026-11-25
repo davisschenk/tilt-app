@@ -1,7 +1,7 @@
 import { useUnits } from "@/lib/units";
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import ReactECharts from "echarts-for-react";
-import type { EChartsOption } from "echarts";
+import type { EChartsOption, MarkLineComponentOption } from "echarts";
 import { format } from "date-fns";
 import { CalendarPlus, Milestone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,8 @@ import { useElementWidth } from "@/hooks/use-element-width";
 import { CreateEventDialog } from "@/components/brew/brew-event-log";
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
+
+type MarkLineData = NonNullable<MarkLineComponentOption["data"]>;
 
 const RANGE_HOURS: Record<TimeRange, number | null> = {
   "24h": 24,
@@ -71,6 +73,9 @@ interface EventTooltipState {
 export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: ReadingsChartProps) {
   const u = useUnits();
   const [range, setRange] = useState<TimeRange>("all");
+  // "Now" for the selected range window, captured on mount and whenever the range changes
+  // (not read during render, which would make the window drift on every re-render).
+  const [rangeAnchor, setRangeAnchor] = useState(() => Date.now());
   const [eventTooltip, setEventTooltip] = useState<EventTooltipState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; isoTime: string } | null>(null);
   const [addEventOpen, setAddEventOpen] = useState(false);
@@ -113,7 +118,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
   }, [contextMenu]);
 
   const { xMin, xMax, since } = useMemo(() => {
-    const now = Date.now();
+    const now = rangeAnchor;
     const hours = RANGE_HOURS[range];
     if (!hours) return { xMin: undefined, xMax: undefined, since: undefined };
     const start = now - hours * 60 * 60 * 1000;
@@ -122,7 +127,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       xMax: now,
       since: new Date(start).toISOString(),
     };
-  }, [range]);
+  }, [range, rangeAnchor]);
 
   const { data: readings, isLoading } = useReadings({ brewId, since });
   const { data: events } = useBrewEvents(brewId);
@@ -201,7 +206,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       return range === "24h" ? format(d, "HH:mm") : format(d, "MMM d");
     };
 
-    const staticMarkLines: unknown[] = [];
+    const staticMarkLines: MarkLineData = [];
     if (targetFg != null) {
       staticMarkLines.push({
         name: "targetFg",
@@ -380,7 +385,6 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
           markLine: {
             silent: true,
             symbol: ["none", "none"],
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             data: [
               ...(showEvents ? visibleEvents.map((ev) => ({
                 xAxis: new Date(ev.eventTime).getTime(),
@@ -392,7 +396,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
                 label: { show: false },
               })) : []),
               ...staticMarkLines,
-            ] as any,
+            ],
           },
           markArea: gapMarkAreaData.length > 0
             ? {
@@ -471,7 +475,11 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
                 variant={range === r ? "default" : "outline"}
                 size="sm"
                 className="h-7 px-2 text-xs"
-                onClick={() => setRange(r)}
+                onClick={() => {
+                  if (r === range) return;
+                  setRange(r);
+                  setRangeAnchor(Date.now());
+                }}
               >
                 {r === "all" ? "All" : r}
               </Button>

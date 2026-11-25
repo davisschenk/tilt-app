@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components, react-hooks/immutability -- test mock records its latest props for assertions */
+/* eslint-disable react-refresh/only-export-components -- test mock records its latest props for assertions */
 import { forwardRef, useImperativeHandle, type CSSProperties } from "react"
 import { vi } from "vitest"
 

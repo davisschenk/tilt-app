@@ -1,5 +1,5 @@
 import { useUnits } from "@/lib/units";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,12 +44,11 @@ interface ReadingsTableProps {
 
 export default function ReadingsTable({ brewId, exportFilename = "readings.csv" }: ReadingsTableProps) {
   const u = useUnits();
-  const [page, setPage] = useState(0);
+  // Page is remembered per brew; switching brews starts back at page 0 (derived, no reset effect).
+  const [pageState, setPageState] = useState({ brewId, page: 0 });
+  const page = pageState.brewId === brewId ? pageState.page : 0;
+  const setPage = (update: (p: number) => number) => setPageState({ brewId, page: update(page) });
   const { data: readings, isLoading } = useReadings({ brewId });
-
-  useEffect(() => {
-    setPage(0);
-  }, [brewId]);
 
   const sorted = useMemo(() => {
     if (!readings) return [];

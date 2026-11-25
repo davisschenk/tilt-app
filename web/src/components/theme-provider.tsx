@@ -1,16 +1,5 @@
-import { createContext, useContext, useEffect, useState } from "react";
-
-type Theme = "dark" | "light" | "system";
-
-interface ThemeContextValue {
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
-}
-
-const ThemeContext = createContext<ThemeContextValue>({
-  theme: "system",
-  setTheme: () => {},
-});
+import { useEffect, useState } from "react";
+import { ThemeContext, type Theme } from "@/components/theme-context";
 
 const STORAGE_KEY = "tilt-theme";
 
@@ -48,8 +37,4 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       {children}
     </ThemeContext.Provider>
   );
-}
-
-export function useTheme() {
-  return useContext(ThemeContext);
 }

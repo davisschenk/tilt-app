@@ -19,6 +19,7 @@ import RecentReadingsChart from "@/components/dashboard/recent-readings-chart";
 import OnboardingChecklist from "@/components/dashboard/onboarding-checklist";
 import ColorDot from "@/components/ui/color-dot";
 import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
+import { useNow } from "@/hooks/use-now";
 
 function isStale(recordedAt: string): boolean {
   return Date.now() - new Date(recordedAt).getTime() > OFFLINE_THRESHOLD_MINUTES * 60 * 1000;
@@ -169,6 +170,7 @@ export default function Dashboard() {
   const { data: hydrometers, isLoading: hydrometersLoading } = useHydrometers({ live: true });
   const { data: readings, isLoading: readingsLoading } = useReadings({ limit: 1 });
   const { data: allAlertRules } = useAlertRules();
+  const now = useNow(REFRESH_INTERVAL);
 
   const todayStart = useMemo(() => {
     const d = new Date();
@@ -195,11 +197,11 @@ export default function Dashboard() {
 
   const recentAlertsCount = useMemo(() => {
     if (!allAlertRules) return 0;
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const cutoff = now - 24 * 60 * 60 * 1000;
     return allAlertRules.filter(
       (r) => r.lastTriggeredAt && new Date(r.lastTriggeredAt).getTime() > cutoff
     ).length;
-  }, [allAlertRules]);
+  }, [allAlertRules, now]);
 
   return (
     <div className="relative">

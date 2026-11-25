@@ -77,7 +77,7 @@ jobs:
           cargo llvm-cov report --ignore-filename-regex 'models/entities|src/bin/|migration/' --summary-only 2>/dev/null | tail -n 1 >> "$GITHUB_STEP_SUMMARY" || true
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
-  # Type-check + production build, then Vitest with coverage thresholds (web/vitest.config.ts).
+  # ESLint, type-check + production build, then Vitest with coverage thresholds (web/vitest.config.ts).
   web:
     runs-on: ubuntu-latest
 
@@ -93,6 +93,9 @@ jobs:
 
       - name: Install web dependencies
         run: cd web && npm ci
+
+      - name: Lint
+        run: cd web && npm run lint
 
       - name: Type-check and build
         run: cd web && npm run build

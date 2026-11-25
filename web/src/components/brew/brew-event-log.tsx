@@ -1,6 +1,6 @@
 import { useUnits } from "@/lib/units";
 import { MeasurementInput } from "@/components/ui/measurement-input";
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { format } from "date-fns";
 import {
   Beaker,
@@ -123,6 +123,10 @@ function nowDatetimeLocal(): string {
   return toDatetimeLocal(new Date().toISOString());
 }
 
+function openingEventTime(initialEventTime?: string): string {
+  return initialEventTime ? toDatetimeLocal(initialEventTime) : nowDatetimeLocal();
+}
+
 export interface CreateEventDialogProps {
   brewId: string;
   open: boolean;
@@ -138,13 +142,15 @@ export function CreateEventDialog({ brewId, open, onOpenChange, initialEventTime
   const [notes, setNotes] = useState("");
   const [gravity, setGravity] = useState("");
   const [temp, setTemp] = useState("");
-  const [eventTime, setEventTime] = useState(nowDatetimeLocal());
+  const [eventTime, setEventTime] = useState(() => openingEventTime(initialEventTime));
 
-  useEffect(() => {
-    if (open) {
-      setEventTime(initialEventTime ? toDatetimeLocal(initialEventTime) : nowDatetimeLocal());
-    }
-  }, [open, initialEventTime]);
+  // Re-seed the event time whenever the dialog opens (or its seed time changes while open).
+  // Adjusted during render rather than in an effect; other fields keep their draft values.
+  const [seededFor, setSeededFor] = useState({ open, initialEventTime });
+  if (seededFor.open !== open || seededFor.initialEventTime !== initialEventTime) {
+    setSeededFor({ open, initialEventTime });
+    if (open) setEventTime(openingEventTime(initialEventTime));
+  }
 
   function reset() {
     setEventType("note");

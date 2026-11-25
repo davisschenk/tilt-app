@@ -32,6 +32,7 @@ import BrewEventLog from "@/components/brew/brew-event-log";
 import NutrientSetupPanel from "@/components/brew/nutrient-setup-panel";
 import * as toast from "@/lib/toast";
 import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
+import { useNow } from "@/hooks/use-now";
 import { useUnits } from "@/lib/units";
 import { useIsMobile } from "@/hooks/use-media-query";
 import { formatCondition } from "@/lib/alerts";
@@ -57,6 +58,7 @@ export default function BrewDetail() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { data: brew, isLoading } = useBrew(id!);
+  const now = useNow();
   const updateBrew = useUpdateBrew(id!);
   const { data: hydrometer } = useHydrometer(brew?.hydrometerId ?? "");
   const [editOpen, setEditOpen] = useState(false);
@@ -276,7 +278,7 @@ export default function BrewDetail() {
           {brew.status}
         </Badge>
         {brew.latestReading && (() => {
-          const stale = Date.now() - new Date(brew.latestReading.recordedAt).getTime() > OFFLINE_THRESHOLD_MINUTES * 60 * 1000;
+          const stale = now - new Date(brew.latestReading.recordedAt).getTime() > OFFLINE_THRESHOLD_MINUTES * 60 * 1000;
           return stale ? (
             <span className="flex items-center gap-1.5 text-xs text-red-500">
               <span className="relative flex h-2 w-2">

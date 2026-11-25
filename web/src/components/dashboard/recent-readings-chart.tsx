@@ -1,5 +1,5 @@
 import { useUnits } from "@/lib/units";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +24,8 @@ export default function RecentReadingsChart() {
   const theme = useEChartsTheme();
   const { ref: containerRef, width: containerWidth } = useElementWidth<HTMLDivElement>(800);
 
-  const { since, xMin, xMax } = useMemo(() => {
+  // Fixed 24h window anchored at mount time.
+  const [{ since, xMin, xMax }] = useState(() => {
     const now = Date.now();
     const start = now - 24 * 60 * 60 * 1000;
     return {
@@ -32,7 +33,7 @@ export default function RecentReadingsChart() {
       xMin: start,
       xMax: now,
     };
-  }, []);
+  });
 
   const { data: readings, isLoading } = useReadings({ since });
 
