@@ -2,10 +2,12 @@
 //!
 //! The endpoint only exists when `METRICS_TOKEN` is set; otherwise it answers
 //! 404 so a default deployment exposes nothing. Labels are kept to bounded sets
-//! (method, route template, status class, fixed reasons): never users or devices.
+//! (method, route template, status code, fixed kinds): never users or devices.
+//! Each counter is recorded where the decision is made, not re-derived later.
 
 use std::sync::LazyLock;
 
+use prometheus::core::Collector;
 use prometheus::{
     Encoder, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGaugeVec, Opts, Registry,
     TextEncoder,
@@ -19,123 +21,120 @@ use subtle::ConstantTimeEq;
 
 struct Metrics {
     registry: Registry,
-    http_requests: IntCounterVec,
     http_duration: HistogramVec,
     readings_accepted: IntCounter,
-    reading_batches_rejected: IntCounterVec,
+    reading_batches_capped: IntCounter,
+    rate_limited: IntCounterVec,
     webhook_deliveries: IntCounterVec,
     db_pool_connections: IntGaugeVec,
 }
 
+/// Registers `metric` and hands it back, so each definition is one expression.
+fn reg<C: Collector + Clone + 'static>(registry: &Registry, metric: C) -> C {
+    registry.register(Box::new(metric.clone())).unwrap();
+    metric
+}
+
 static METRICS: LazyLock<Metrics> = LazyLock::new(|| {
-    let registry = Registry::new();
-    let http_requests = IntCounterVec::new(
-        Opts::new("tilt_http_requests_total", "HTTP requests handled"),
-        &["method", "route", "status"],
-    )
-    .unwrap();
-    let http_duration = HistogramVec::new(
-        HistogramOpts::new(
-            "tilt_http_request_duration_seconds",
-            "HTTP request latency in seconds",
-        ),
-        &["method", "route", "status"],
-    )
-    .unwrap();
-    let readings_accepted = IntCounter::new(
-        "tilt_readings_accepted_total",
-        "Hydrometer readings stored via POST /readings",
-    )
-    .unwrap();
-    let reading_batches_rejected = IntCounterVec::new(
-        Opts::new(
-            "tilt_reading_batches_rejected_total",
-            "POST /readings requests rejected, by reason",
-        ),
-        &["reason"],
-    )
-    .unwrap();
-    let webhook_deliveries = IntCounterVec::new(
-        Opts::new(
-            "tilt_webhook_deliveries_total",
-            "Outgoing webhook deliveries",
-        ),
-        &["kind", "outcome"],
-    )
-    .unwrap();
-    let db_pool_connections = IntGaugeVec::new(
-        Opts::new(
-            "tilt_db_pool_connections",
-            "Database pool connections by state (sampled at scrape time)",
-        ),
-        &["state"],
-    )
-    .unwrap();
-
-    registry.register(Box::new(http_requests.clone())).unwrap();
-    registry.register(Box::new(http_duration.clone())).unwrap();
-    registry
-        .register(Box::new(readings_accepted.clone()))
-        .unwrap();
-    registry
-        .register(Box::new(reading_batches_rejected.clone()))
-        .unwrap();
-    registry
-        .register(Box::new(webhook_deliveries.clone()))
-        .unwrap();
-    registry
-        .register(Box::new(db_pool_connections.clone()))
-        .unwrap();
-
+    let r = Registry::new();
     Metrics {
-        registry,
-        http_requests,
-        http_duration,
-        readings_accepted,
-        reading_batches_rejected,
-        webhook_deliveries,
-        db_pool_connections,
+        // `_count` of this histogram is the request counter.
+        http_duration: reg(
+            &r,
+            HistogramVec::new(
+                HistogramOpts::new(
+                    "tilt_http_request_duration_seconds",
+                    "HTTP request latency in seconds",
+                ),
+                &["method", "route", "status"],
+            )
+            .unwrap(),
+        ),
+        readings_accepted: reg(
+            &r,
+            IntCounter::new(
+                "tilt_readings_accepted_total",
+                "Hydrometer readings stored via POST /readings",
+            )
+            .unwrap(),
+        ),
+        reading_batches_capped: reg(
+            &r,
+            IntCounter::new(
+                "tilt_reading_batches_capped_total",
+                "POST /readings batches refused by the batch-size or daily cap",
+            )
+            .unwrap(),
+        ),
+        rate_limited: reg(
+            &r,
+            IntCounterVec::new(
+                Opts::new(
+                    "tilt_rate_limited_total",
+                    "Requests refused by a rate limiter",
+                ),
+                &["limiter"],
+            )
+            .unwrap(),
+        ),
+        webhook_deliveries: reg(
+            &r,
+            IntCounterVec::new(
+                Opts::new(
+                    "tilt_webhook_deliveries_total",
+                    "Outgoing webhook deliveries",
+                ),
+                &["kind", "outcome"],
+            )
+            .unwrap(),
+        ),
+        db_pool_connections: reg(
+            &r,
+            IntGaugeVec::new(
+                Opts::new(
+                    "tilt_db_pool_connections",
+                    "Database pool connections by state (sampled at scrape time)",
+                ),
+                &["state"],
+            )
+            .unwrap(),
+        ),
+        registry: r,
     }
 });
 
 /// Record one finished HTTP request. `route` must be a route template (or
 /// "unmatched"), never a raw path.
 pub fn observe_http(method: &str, route: &str, status: u16, seconds: f64) {
-    let class = match status {
-        100..=199 => "1xx",
-        200..=299 => "2xx",
-        300..=399 => "3xx",
-        400..=499 => "4xx",
-        _ => "5xx",
-    };
-    let labels = [method, route, class];
-    let m = &*METRICS;
-    m.http_requests.with_label_values(&labels).inc();
-    m.http_duration.with_label_values(&labels).observe(seconds);
+    METRICS
+        .http_duration
+        .with_label_values(&[method, route, &status.to_string()])
+        .observe(seconds);
 }
 
 pub fn readings_accepted(n: u64) {
     METRICS.readings_accepted.inc_by(n);
 }
 
-/// Why a reading batch was refused.
-#[derive(Clone, Copy)]
-pub enum RejectReason {
-    RateLimited,
-    Cap,
-    Invalid,
+pub fn reading_batch_capped() {
+    METRICS.reading_batches_capped.inc();
 }
 
-pub fn reading_batch_rejected(reason: RejectReason) {
-    let label = match reason {
-        RejectReason::RateLimited => "rate_limited",
-        RejectReason::Cap => "cap",
-        RejectReason::Invalid => "invalid",
+/// Which limiter refused a request.
+#[derive(Clone, Copy)]
+pub enum Limiter {
+    /// The per-IP limiter (`RateLimitGuard`).
+    Ip,
+    /// The per-account limiter (`ApiUserLimiter`).
+    User,
+}
+
+pub fn rate_limited(limiter: Limiter) {
+    let label = match limiter {
+        Limiter::Ip => "ip",
+        Limiter::User => "user",
     };
-    METRICS
-        .reading_batches_rejected
-        .with_label_values(&[label])
-        .inc();
+    METRICS.rate_limited.with_label_values(&[label]).inc();
 }
 
 /// `kind` is one of a fixed set: "alert", "nutrient", "test".
@@ -174,9 +173,9 @@ impl MetricsToken {
     }
 }
 
-/// The raw `Authorization: Bearer <token>` value, plus the app's managed state.
-/// State is looked up at runtime rather than via `&State` so a missing token (or
-/// database, in tests) is a 404 instead of a launch failure.
+/// The bearer token, plus the app's managed state. State is looked up at
+/// runtime rather than via `&State` so a missing token (or database, in tests)
+/// is a 404 instead of a launch failure.
 struct Scrape<'r> {
     bearer: Option<&'r str>,
     rocket: &'r rocket::Rocket<rocket::Orbit>,
@@ -188,10 +187,7 @@ impl<'r> FromRequest<'r> for Scrape<'r> {
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         Outcome::Success(Scrape {
-            bearer: req
-                .headers()
-                .get_one("Authorization")
-                .and_then(|v| v.strip_prefix("Bearer ")),
+            bearer: crate::guards::bearer_token(req),
             rocket: req.rocket(),
         })
     }
@@ -318,7 +314,8 @@ mod tests {
             Status::NotFound
         );
         readings_accepted(3);
-        reading_batch_rejected(RejectReason::Cap);
+        reading_batch_capped();
+        rate_limited(Limiter::Ip);
         webhook_delivery("test", true);
 
         let res = c
@@ -330,10 +327,11 @@ mod tests {
         assert_eq!(res.content_type().unwrap().media_type().sub(), "plain");
         let body = res.into_string().await.unwrap();
         for name in [
-            "tilt_http_requests_total",
+            "tilt_http_request_duration_seconds_count",
             "tilt_http_request_duration_seconds_bucket",
             "tilt_readings_accepted_total",
-            "tilt_reading_batches_rejected_total",
+            "tilt_reading_batches_capped_total",
+            "tilt_rate_limited_total",
             "tilt_webhook_deliveries_total",
         ] {
             assert!(body.contains(name), "missing {name} in:\n{body}");
@@ -348,10 +346,13 @@ mod tests {
         );
         assert!(body.contains(r#"route="unmatched""#), "404s are unmatched");
         assert!(
-            body.contains(r#"method="GET",route="/api/v1/health/ready",status="5xx""#),
+            body.contains(r#"method="GET",route="/api/v1/health/ready",status="503""#),
             "health probes are labelled by route template:\n{body}"
         );
         assert!(body.contains(r#"route="/api/v1/health""#));
-        assert!(body.contains(r#"status="2xx""#), "status is bucketed");
+        assert!(
+            body.contains(r#"method="GET",route="/api/v1/things/<_id>",status="200""#),
+            "status is the exact code"
+        );
     }
 }

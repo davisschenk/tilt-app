@@ -86,6 +86,7 @@ impl<'r> rocket::request::FromRequest<'r> for RateLimitGuard {
 
     async fn from_request(req: &'r Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
         if req.local_cache(|| RateLimitExceeded(false)).0 {
+            crate::metrics::rate_limited(crate::metrics::Limiter::Ip);
             Outcome::Error((Status::TooManyRequests, ()))
         } else {
             Outcome::Success(RateLimitGuard)
@@ -129,9 +130,14 @@ impl ApiUserLimiter {
     /// True if `user` may make another request right now. If no limiter is
     /// installed (some tests), requests are allowed.
     pub fn allow(req: &Request<'_>, user: uuid::Uuid) -> bool {
-        req.rocket()
+        let allowed = req
+            .rocket()
             .state::<ApiUserLimiter>()
-            .is_none_or(|l| l.0.check_key(&user).is_ok())
+            .is_none_or(|l| l.0.check_key(&user).is_ok());
+        if !allowed {
+            crate::metrics::rate_limited(crate::metrics::Limiter::User);
+        }
+        allowed
     }
 }
 

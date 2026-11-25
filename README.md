@@ -161,9 +161,10 @@ The scripts in `deploy/backup/` were tested with a dump, a restore into an empty
 
 | Metric | Labels |
 |--------|--------|
-| `tilt_http_requests_total`, `tilt_http_request_duration_seconds` | `method`, `route` (route template, `unmatched` for 404s), `status` (`2xx`, `4xx`, ...) |
+| `tilt_http_request_duration_seconds` (histogram; `_count` is the request count) | `method`, `route` (route template, `unmatched` for 404s), `status` (exact code, e.g. `200`, `413`, `429`) |
 | `tilt_readings_accepted_total` | readings stored via `POST /api/v1/readings` |
-| `tilt_reading_batches_rejected_total` | `reason`: `rate_limited`, `cap` (batch size or daily cap), `invalid` (unparseable body) |
+| `tilt_reading_batches_capped_total` | reading batches refused by the batch-size or daily cap |
+| `tilt_rate_limited_total` | `limiter` (`ip`, `user`): requests refused by the per-IP or per-account limiter |
 | `tilt_webhook_deliveries_total` | `kind` (`alert`, `nutrient`, `test`), `outcome` (`success`, `failure`) |
 | `tilt_db_pool_connections` | `state` (`in_use`, `idle`), sampled at scrape time |
 
