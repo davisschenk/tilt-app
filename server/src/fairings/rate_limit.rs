@@ -21,7 +21,6 @@ use rocket::{
     http::Status,
     outcome::Outcome,
 };
-use sea_orm::DatabaseConnection;
 
 use crate::metrics::{self, Limiter};
 
@@ -195,18 +194,14 @@ impl Fairing for LimiterHousekeeping {
     }
 
     async fn on_liftoff(&self, rocket: &Rocket<Orbit>) {
-        let db = rocket
-            .state::<DatabaseConnection>()
-            .expect("DatabaseConnection not managed")
-            .clone();
         let ip = rocket.state::<IpRateLimits>().cloned();
         let user = rocket.state::<ApiUserLimiter>().cloned();
         let fire = rocket.state::<TestFireLimiter>().cloned();
-        super::periodic::spawn_every(db, "rate limiter entries", PRUNE_EVERY, move |_| {
+        super::periodic::spawn_every("idle rate-limiter entries", PRUNE_EVERY, move || {
             let n = ip.as_ref().map_or(0, IpRateLimits::prune)
                 + user.as_ref().map_or(0, |l| prune(&l.0))
                 + fire.as_ref().map_or(0, |l| prune(&l.0));
-            async move { Ok(n) }
+            std::future::ready(Ok::<_, std::convert::Infallible>(n))
         });
     }
 }

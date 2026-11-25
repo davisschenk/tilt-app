@@ -27,13 +27,9 @@ impl Fairing for ReadingsRetention {
             .expect("DatabaseConnection not managed")
             .clone();
         let days = self.days;
-        super::periodic::spawn_every(
-            db,
-            "unlinked readings retention",
-            Duration::from_secs(3600),
-            move |db| async move {
-                crate::services::retention_service::purge_unlinked_readings(&db, days).await
-            },
-        );
+        super::periodic::spawn_every("unlinked readings", Duration::from_secs(3600), move || {
+            let db = db.clone();
+            async move { crate::services::retention_service::purge_unlinked_readings(&db, days).await }
+        });
     }
 }
