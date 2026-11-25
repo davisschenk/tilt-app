@@ -1,3 +1,4 @@
+import { useUnits } from "@/lib/units";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
@@ -28,6 +29,7 @@ const STATUS_BADGE: Record<string, { variant: "default" | "secondary" | "outline
 };
 
 export default function BrewList() {
+  const u = useUnits();
   const [statusFilter, setStatusFilter] = useState<BrewStatus>("Active" as BrewStatus);
   const { data: brews, isLoading } = useBrews(statusFilter);
   const { data: hydrometers } = useHydrometers();
@@ -108,10 +110,10 @@ export default function BrewList() {
                       <Badge variant={badge.variant}>{badge.label}</Badge>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      {brew.og?.toFixed(3) ?? "—"}
+                      {u.formatGravity(brew.og)}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      {brew.latestReading?.gravity.toFixed(3) ?? "—"}
+                      {u.formatGravity(brew.latestReading?.gravity)}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
                       {brew.liveAbv != null ? `${brew.liveAbv.toFixed(1)}%` : "—"}

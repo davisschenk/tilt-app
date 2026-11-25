@@ -156,6 +156,22 @@ pub async fn create(
     {
         return Err(WriteError::BadReference);
     }
+    let txn = db.begin().await?;
+    let hydrometer = Hydrometer::find_by_id(input.hydrometer_id)
+        .lock_exclusive()
+        .one(&txn)
+        .await?
+        .ok_or(WriteError::BadReference)?;
+    if hydrometer.is_disabled
+        || Brew::find()
+            .filter(Column::HydrometerId.eq(input.hydrometer_id))
+            .filter(Column::Status.eq("Active"))
+            .one(&txn)
+            .await?
+            .is_some()
+    {
+        return Err(WriteError::BadReference);
+    }
     let now = chrono::Utc::now();
     let model = ActiveModel {
         id: Set(Uuid::new_v4()),
@@ -179,7 +195,8 @@ pub async fn create(
         yeast_strain: Set(input.yeast_strain),
         nutrient_alert_target_id: Set(input.nutrient_alert_target_id),
     };
-    let result = Brew::insert(model).exec_with_returning(db).await?;
+    let result = Brew::insert(model).exec_with_returning(&txn).await?;
+    txn.commit().await?;
     Ok(model_to_response(result, None))
 }
 

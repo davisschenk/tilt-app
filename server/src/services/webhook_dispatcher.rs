@@ -6,6 +6,7 @@ use crate::models::entities::{alert_rules, alert_targets};
 use shared::{AlertMetric, AlertOperator, WebhookFormat};
 
 use super::alert_rule_service::{parse_metric, parse_operator};
+use super::preferences_service::Preferences;
 
 pub const FERMAID_O_G_PER_TSP: f64 = 2.6;
 pub const FERMAID_K_G_PER_TSP: f64 = 2.8;
@@ -44,11 +45,12 @@ impl std::fmt::Display for DispatchError {
     }
 }
 
-fn format_metric(metric: &AlertMetric) -> &'static str {
+/// Human label for a metric, with the temperature unit the reader chose.
+fn format_metric(metric: &AlertMetric, preferences: &Preferences) -> String {
     match metric {
-        AlertMetric::Gravity => "Gravity",
-        AlertMetric::TemperatureF => "Temperature (°F)",
-        AlertMetric::GravityPlateau => "Gravity Plateau",
+        AlertMetric::Gravity => "Gravity".to_string(),
+        AlertMetric::TemperatureF => format!("Temperature ({})", preferences.temperature_label()),
+        AlertMetric::GravityPlateau => "Gravity Plateau".to_string(),
     }
 }
 
@@ -71,19 +73,63 @@ fn actual_value(metric: &AlertMetric, gravity: f64, temperature_f: f64) -> f64 {
     }
 }
 
+/// Everything an alert payload shows, already formatted in the owner's units.
+struct AlertText {
+    metric: String,
+    condition: String,
+    actual: String,
+}
+
+impl AlertText {
+    fn new(
+        rule: &alert_rules::Model,
+        metric: &AlertMetric,
+        operator: &AlertOperator,
+        actual: f64,
+        preferences: &Preferences,
+    ) -> Self {
+        let (threshold, actual) = match metric {
+            AlertMetric::Gravity => (
+                preferences.format_gravity(rule.threshold),
+                preferences.format_gravity(actual),
+            ),
+            AlertMetric::TemperatureF => (
+                preferences.format_temperature(rule.threshold),
+                preferences.format_temperature(actual),
+            ),
+            // A plateau threshold is how far gravity may move, not a reading.
+            AlertMetric::GravityPlateau => (
+                preferences.format_gravity_delta(rule.threshold),
+                preferences.format_gravity(actual),
+            ),
+        };
+        let metric = format_metric(metric, preferences);
+        let condition = format!("{metric} {} {threshold}", format_operator(operator));
+        AlertText {
+            metric,
+            condition,
+            actual,
+        }
+    }
+}
+
 fn build_generic_json(
     rule: &alert_rules::Model,
-    metric: &AlertMetric,
     operator: &AlertOperator,
     actual: f64,
+    text: &AlertText,
+    preferences: &Preferences,
     recorded_at: DateTime<Utc>,
 ) -> serde_json::Value {
     json!({
         "rule_name": rule.name,
-        "metric": format_metric(metric),
+        "metric": text.metric,
         "operator": format_operator(operator),
         "threshold": rule.threshold,
         "actual_value": actual,
+        "display_condition": text.condition,
+        "display_actual": text.actual,
+        "display_units": preferences,
         "brew_id": rule.brew_id,
         "hydrometer_id": rule.hydrometer_id,
         "recorded_at": recorded_at.to_rfc3339(),
@@ -93,8 +139,7 @@ fn build_generic_json(
 fn build_discord_payload(
     rule: &alert_rules::Model,
     metric: &AlertMetric,
-    operator: &AlertOperator,
-    actual: f64,
+    text: &AlertText,
     recorded_at: DateTime<Utc>,
 ) -> serde_json::Value {
     let color = match metric {
@@ -110,17 +155,17 @@ fn build_discord_payload(
             "fields": [
                 {
                     "name": "Metric",
-                    "value": format_metric(metric),
+                    "value": text.metric,
                     "inline": true
                 },
                 {
                     "name": "Condition",
-                    "value": format!("{} {} {}", format_metric(metric), format_operator(operator), rule.threshold),
+                    "value": text.condition,
                     "inline": true
                 },
                 {
                     "name": "Actual Value",
-                    "value": format!("{actual:.4}"),
+                    "value": text.actual,
                     "inline": true
                 },
                 {
@@ -136,9 +181,7 @@ fn build_discord_payload(
 
 fn build_slack_payload(
     rule: &alert_rules::Model,
-    metric: &AlertMetric,
-    operator: &AlertOperator,
-    actual: f64,
+    text: &AlertText,
     recorded_at: DateTime<Utc>,
 ) -> serde_json::Value {
     json!({
@@ -156,15 +199,15 @@ fn build_slack_payload(
                 "fields": [
                     {
                         "type": "mrkdwn",
-                        "text": format!("*Metric:*\n{}", format_metric(metric))
+                        "text": format!("*Metric:*\n{}", text.metric)
                     },
                     {
                         "type": "mrkdwn",
-                        "text": format!("*Condition:*\n{} {} {}", format_metric(metric), format_operator(operator), rule.threshold)
+                        "text": format!("*Condition:*\n{}", text.condition)
                     },
                     {
                         "type": "mrkdwn",
-                        "text": format!("*Actual Value:*\n{actual:.4}")
+                        "text": format!("*Actual Value:*\n{}", text.actual)
                     },
                     {
                         "type": "mrkdwn",
@@ -176,7 +219,31 @@ fn build_slack_payload(
     })
 }
 
+/// The JSON body for a triggered rule, in the target's format.
+fn build_alert_payload(
+    format: &WebhookFormat,
+    preferences: &Preferences,
+    rule: &alert_rules::Model,
+    gravity: f64,
+    temperature_f: f64,
+    recorded_at: DateTime<Utc>,
+) -> serde_json::Value {
+    let metric = parse_metric(&rule.metric);
+    let operator = parse_operator(&rule.operator);
+    let actual = actual_value(&metric, gravity, temperature_f);
+    let text = AlertText::new(rule, &metric, &operator, actual, preferences);
+
+    match format {
+        WebhookFormat::GenericJson => {
+            build_generic_json(rule, &operator, actual, &text, preferences, recorded_at)
+        }
+        WebhookFormat::Discord => build_discord_payload(rule, &metric, &text, recorded_at),
+        WebhookFormat::Slack => build_slack_payload(rule, &text, recorded_at),
+    }
+}
+
 pub async fn dispatch(
+    preferences: &Preferences,
     client: &reqwest::Client,
     target: &alert_targets::Model,
     rule: &alert_rules::Model,
@@ -187,20 +254,14 @@ pub async fn dispatch(
     let format =
         serde_json::from_value::<WebhookFormat>(serde_json::Value::String(target.format.clone()))
             .unwrap_or(WebhookFormat::GenericJson);
-
-    let metric = parse_metric(&rule.metric);
-    let operator = parse_operator(&rule.operator);
-    let actual = actual_value(&metric, gravity, temperature_f);
-
-    let payload = match format {
-        WebhookFormat::GenericJson => {
-            build_generic_json(rule, &metric, &operator, actual, recorded_at)
-        }
-        WebhookFormat::Discord => {
-            build_discord_payload(rule, &metric, &operator, actual, recorded_at)
-        }
-        WebhookFormat::Slack => build_slack_payload(rule, &metric, &operator, actual, recorded_at),
-    };
+    let payload = build_alert_payload(
+        &format,
+        preferences,
+        rule,
+        gravity,
+        temperature_f,
+        recorded_at,
+    );
 
     // Re-check at send time: the row may predate validation, or the env may have changed.
     super::webhook_guard::validate_url(&target.url).map_err(DispatchError::InvalidUrl)?;
@@ -234,6 +295,7 @@ pub async fn dispatch(
 }
 
 pub async fn dispatch_nutrient_notification(
+    preferences: &Preferences,
     client: &reqwest::Client,
     target: &alert_targets::Model,
     p: &NutrientWebhookPayload,
@@ -249,8 +311,8 @@ pub async fn dispatch_nutrient_notification(
 
     let trigger_detail = if p.trigger_reason == "gravity" {
         format!(
-            "Gravity reached {:.4}",
-            p.threshold_gravity.unwrap_or(p.current_gravity)
+            "Gravity reached {}",
+            preferences.format_gravity(p.threshold_gravity.unwrap_or(p.current_gravity))
         )
     } else {
         format!("Time fallback ({})", p.trigger_reason)
@@ -266,6 +328,7 @@ pub async fn dispatch_nutrient_notification(
             "amount_tsp": p.amount_tsp,
             "trigger_reason": p.trigger_reason,
             "current_gravity": p.current_gravity,
+            "display_current_gravity": preferences.format_gravity(p.current_gravity),
             "threshold_gravity": p.threshold_gravity,
             "recorded_at": p.recorded_at.to_rfc3339(),
         }),
@@ -283,7 +346,7 @@ pub async fn dispatch_nutrient_notification(
                     { "name": "Trigger", "value": trigger_detail, "inline": true },
                     {
                         "name": "Current Gravity",
-                        "value": format!("{:.4}", p.current_gravity),
+                        "value": preferences.format_gravity(p.current_gravity),
                         "inline": true
                     },
                 ],
@@ -302,7 +365,7 @@ pub async fn dispatch_nutrient_notification(
                         { "type": "mrkdwn", "text": format!("*Product:*\n{}", p.nutrient_product) },
                         { "type": "mrkdwn", "text": format!("*Amount:*\n{:.1}g / {:.1} tsp", p.amount_grams, p.amount_tsp) },
                         { "type": "mrkdwn", "text": format!("*Trigger:*\n{}", trigger_detail) },
-                        { "type": "mrkdwn", "text": format!("*Current Gravity:*\n{:.4}", p.current_gravity) },
+                        { "type": "mrkdwn", "text": format!("*Current Gravity:*\n{}", preferences.format_gravity(p.current_gravity)) },
                     ]
                 }
             ]
@@ -410,4 +473,95 @@ pub async fn dispatch_test(
     }
 
     Ok(status)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::preferences_service::{GravityUnit, TemperatureUnit};
+
+    fn rule(metric: &str, operator: &str, threshold: f64) -> alert_rules::Model {
+        let now = Utc::now().fixed_offset();
+        alert_rules::Model {
+            id: Uuid::nil(),
+            name: "Rule".into(),
+            brew_id: None,
+            hydrometer_id: None,
+            metric: metric.into(),
+            operator: operator.into(),
+            threshold,
+            alert_target_id: Uuid::nil(),
+            enabled: true,
+            cooldown_minutes: 60,
+            last_triggered_at: None,
+            created_at: now,
+            updated_at: now,
+            window_hours: 24,
+        }
+    }
+
+    const METRIC: Preferences = Preferences {
+        temperature: TemperatureUnit::C,
+        gravity: GravityUnit::P,
+    };
+
+    #[test]
+    fn default_units_keep_fahrenheit_and_sg_text() {
+        let p = build_alert_payload(
+            &WebhookFormat::Discord,
+            &Preferences::default(),
+            &rule("gravity", "lte", 1.01),
+            1.008,
+            68.0,
+            Utc::now(),
+        );
+        let fields = &p["embeds"][0]["fields"];
+        assert_eq!(fields[0]["value"], "Gravity");
+        assert_eq!(fields[1]["value"], "Gravity ≤ 1.0100 SG");
+        assert_eq!(fields[2]["value"], "1.0080 SG");
+
+        let p = build_alert_payload(
+            &WebhookFormat::GenericJson,
+            &Preferences::default(),
+            &rule("temperature_f", "gt", 78.0),
+            1.008,
+            80.0,
+            Utc::now(),
+        );
+        assert_eq!(p["metric"], "Temperature (°F)");
+        assert_eq!(p["threshold"], 78.0);
+        assert_eq!(p["display_condition"], "Temperature (°F) > 78.0°F");
+        assert_eq!(p["display_actual"], "80.0°F");
+    }
+
+    #[test]
+    fn preferred_units_flow_into_every_format() {
+        let p = build_alert_payload(
+            &WebhookFormat::Slack,
+            &METRIC,
+            &rule("temperature_f", "gt", 77.0),
+            1.0,
+            86.0,
+            Utc::now(),
+        );
+        let fields = &p["blocks"][1]["fields"];
+        assert_eq!(fields[0]["text"], "*Metric:*\nTemperature (°C)");
+        assert_eq!(fields[1]["text"], "*Condition:*\nTemperature (°C) > 25.0°C");
+        assert_eq!(fields[2]["text"], "*Actual Value:*\n30.0°C");
+
+        let p = build_alert_payload(
+            &WebhookFormat::GenericJson,
+            &METRIC,
+            &rule("gravity_plateau", "plateau", 0.002),
+            1.05,
+            68.0,
+            Utc::now(),
+        );
+        assert_eq!(
+            p["display_condition"], "Gravity Plateau plateau 0.52°P",
+            "plateau thresholds are deltas, not absolute gravity"
+        );
+        assert_eq!(p["display_actual"], "12.39°P");
+        assert_eq!(p["display_units"]["gravity"], "P");
+    }
 }

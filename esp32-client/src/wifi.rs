@@ -141,6 +141,21 @@ impl WifiManager {
             .collect())
     }
 
+    /// Stable scanner id: the station MAC address as lowercase hex.
+    pub fn device_id(&self) -> Result<String> {
+        let mac = self.wifi.wifi().get_mac(esp_idf_svc::wifi::WifiDeviceId::Sta)?;
+        Ok(mac.iter().map(|b| format!("{b:02x}")).collect())
+    }
+
+    /// Signal strength of the current access point, if associated.
+    pub fn rssi(&self) -> Option<i16> {
+        self.wifi
+            .wifi()
+            .get_ap_info()
+            .ok()
+            .map(|ap| ap.signal_strength as i16)
+    }
+
     /// Return `true` if the station is currently associated to an access point.
     pub fn is_connected(&self) -> bool {
         self.wifi.is_connected().unwrap_or(false)

@@ -1,3 +1,5 @@
+import { useUnits } from "@/lib/units";
+import { MeasurementInput } from "@/components/ui/measurement-input";
 import { useState } from "react";
 import {
   Dialog,
@@ -35,6 +37,7 @@ export default function CreateAlertRuleDialog({
   onOpenChange,
   defaultBrewId,
 }: CreateAlertRuleDialogProps) {
+  const u = useUnits();
   const createRule = useCreateAlertRule();
   const { data: targets } = useAlertTargets();
   const { data: brews } = useBrews("Active");
@@ -122,7 +125,7 @@ export default function CreateAlertRuleDialog({
                 <SelectTrigger id="rule-metric"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="gravity">Gravity</SelectItem>
-                  <SelectItem value="temperature_f">Temperature (°F)</SelectItem>
+                  <SelectItem value="temperature_f">Temperature ({u.temperatureLabel})</SelectItem>
                   <SelectItem value="gravity_plateau">Gravity Plateau</SelectItem>
                 </SelectContent>
               </Select>
@@ -147,8 +150,8 @@ export default function CreateAlertRuleDialog({
           {isPlateau ? (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="rule-threshold">Plateau Threshold (SG) *</Label>
-                <Input
+                <Label htmlFor="rule-threshold">Plateau Threshold ({u.gravityLabel}, reference SG 1.000) *</Label>
+                <MeasurementInput measurement="gravityOffset"
                   id="rule-threshold"
                   type="number"
                   step="0.0001"
@@ -171,8 +174,8 @@ export default function CreateAlertRuleDialog({
             </div>
           ) : (
             <div className="space-y-2">
-              <Label htmlFor="rule-threshold">Threshold *</Label>
-              <Input
+              <Label htmlFor="rule-threshold">Threshold ({metric === "gravity" ? u.gravityLabel : u.temperatureLabel}) *</Label>
+              <MeasurementInput measurement={metric === "gravity" ? "gravity" : "temperature"}
                 id="rule-threshold"
                 type="number"
                 step={thresholdStep}
@@ -185,7 +188,7 @@ export default function CreateAlertRuleDialog({
 
           {isPlateau && (
             <p className="text-xs text-muted-foreground">
-              Alert fires when gravity has not moved more than {threshold || "0.002"} SG over the last {windowHours} hours.
+              Alert fires when gravity has not moved more than {u.formatGravityDelta(Number(threshold || "0.002"))} over the last {windowHours} hours.
             </p>
           )}
 

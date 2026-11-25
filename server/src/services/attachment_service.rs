@@ -55,6 +55,19 @@ pub async fn find_by_event(
         .map(|models| models.into_iter().map(model_to_response).collect())
 }
 
+/// Every attachment on the given events, oldest first. Callers must already
+/// have verified that the caller owns the events' brew.
+pub async fn find_by_events_raw(
+    db: &DatabaseConnection,
+    event_ids: impl IntoIterator<Item = Uuid>,
+) -> Result<Vec<event_attachments::Model>, DbErr> {
+    EventAttachment::find()
+        .filter(Column::EventId.is_in(event_ids))
+        .order_by_asc(Column::CreatedAt)
+        .all(db)
+        .await
+}
+
 /// Fetch an attachment only if `owner` owns the brew its event belongs to.
 /// Other users' ids look like misses.
 pub async fn find_owned_raw(

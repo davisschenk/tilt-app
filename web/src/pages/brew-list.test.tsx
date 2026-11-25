@@ -21,7 +21,7 @@ describe("BrewList", () => {
       </Routes>,
     )
     const row = await screen.findByText("Test IPA")
-    expect(screen.getByText("1.060")).toBeInTheDocument()
+    expect(screen.getByText("1.060 SG")).toBeInTheDocument()
     expect(screen.getByText("1.3%")).toBeInTheDocument()
     await userEvent.click(row)
     expect(await screen.findByText("detail page")).toBeInTheDocument()

@@ -1,6 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import AppShell from "@/components/layout/app-shell";
 import ProtectedRoute from "@/components/auth/protected-route";
+import BrewReport, { PublicBrewReport } from "@/pages/brew-report";
 import Dashboard from "@/pages/dashboard";
 import BrewList from "@/pages/brew-list";
 import BrewDetail from "@/pages/brew-detail";
@@ -23,6 +24,7 @@ function AuthedApp() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/brews" element={<BrewList />} />
           <Route path="/brews/new" element={<BrewNew />} />
+          <Route path="/brews/:id/report" element={<BrewReport />} />
           <Route path="/brews/:id" element={<BrewDetail />} />
           <Route path="/hydrometers" element={<HydrometerList />} />
           <Route path="/devices/setup" element={<DeviceSetup />} />
@@ -41,6 +43,7 @@ export default function App() {
   return (
     <Routes>
       {/* Public: readable without an account, so the policies can be linked from sign-up. */}
+      <Route path="/reports/:token" element={<PublicBrewReport />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="*" element={<AuthedApp />} />

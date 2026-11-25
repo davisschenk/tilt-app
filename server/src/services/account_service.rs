@@ -9,6 +9,7 @@ use crate::models::entities::{
     alert_rules, alert_targets, api_keys, brew_events, brews, event_attachments, hydrometers,
     readings, user_sessions, users,
 };
+use crate::services::{preferences_service, scanner_service};
 
 /// Serialise a row and drop fields that must never leave the server.
 fn row<M: serde::Serialize>(model: &M, strip: &[&str]) -> Value {
@@ -93,8 +94,17 @@ pub async fn export(db: &DatabaseConnection, user: &users::Model) -> Result<Valu
         .all(db)
         .await?;
 
+    let preferences = preferences_service::find_raw(db, owner).await?;
+    let scanners = scanner_service::find_all(db, owner).await?;
+
     Ok(json!({
         "exportedAt": chrono::Utc::now(),
+        "preferences": preferences.map(|r| r.payload),
+        "scanners": scanners.into_iter().map(|r| json!({
+            "deviceId": r.device_id,
+            "lastSeenAt": r.last_seen_at,
+            "health": r.payload,
+        })).collect::<Vec<_>>(),
         "account": { "id": user.id, "email": user.email, "name": user.name, "createdAt": user.created_at },
         "hydrometers": hydros.iter().map(|m| row(m, &[])).collect::<Vec<_>>(),
         "brews": brews_.iter().map(|m| row(m, &[])).collect::<Vec<_>>(),

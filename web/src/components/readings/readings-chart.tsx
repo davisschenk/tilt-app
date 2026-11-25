@@ -1,3 +1,4 @@
+import { useUnits } from "@/lib/units";
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
@@ -67,6 +68,7 @@ interface EventTooltipState {
 }
 
 export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: ReadingsChartProps) {
+  const u = useUnits();
   const [range, setRange] = useState<TimeRange>("all");
   const [eventTooltip, setEventTooltip] = useState<EventTooltipState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; isoTime: string } | null>(null);
@@ -218,7 +220,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
         label: {
           show: true,
           position: "insideEndTop",
-          formatter: `Target FG: ${targetFg.toFixed(3)}`,
+          formatter: `Target FG: ${u.formatGravity(targetFg)}`,
           color: "#2F9E44",
           fontSize: 11,
         },
@@ -290,7 +292,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
             if (item.value == null || item.value[1] == null) continue;
             const val = item.value[1];
             const isGravity = item.seriesName === "Gravity";
-            const formatted = isGravity ? `${val.toFixed(3)} SG` : `${val.toFixed(1)}°F`;
+            const formatted = isGravity ? u.formatGravity(val) : u.formatTemperature(val);
             html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
               <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${item.color}"></span>
               <span>${item.seriesName}</span>
@@ -332,7 +334,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       yAxis: [
         {
           gridIndex: 0,
-          name: "SG",
+          name: u.gravityLabel,
           nameTextStyle: { color: "#1971C2", fontFamily: theme.fontFamily, fontSize: containerWidth < 640 ? 9 : 11 },
           min: Math.floor(gMin * 1000 - 1) / 1000,
           max: Math.ceil(gMax * 1000 + 1) / 1000,
@@ -341,14 +343,14 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
             color: "#1971C2",
             fontFamily: theme.fontFamily,
             fontSize: containerWidth < 640 ? 9 : 11,
-            formatter: (val: number) => val.toFixed(3),
+            formatter: (val: number) => u.formatNumber("gravity", val),
           },
           splitLine: { lineStyle: { color: theme.gridColor } },
           axisLine: { lineStyle: { color: theme.borderColor } },
         },
         {
           gridIndex: 0,
-          name: "°F",
+          name: u.temperatureLabel,
           position: "right" as const,
           nameTextStyle: { color: "#E8590C", fontFamily: theme.fontFamily, fontSize: containerWidth < 640 ? 9 : 11 },
           min: Math.floor(tMin - 2),
@@ -358,7 +360,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
             color: "#E8590C",
             fontFamily: theme.fontFamily,
             fontSize: containerWidth < 640 ? 9 : 11,
-            formatter: (val: number) => containerWidth < 640 ? `${val.toFixed(0)}°` : `${val.toFixed(1)}°F`,
+            formatter: (val: number) => containerWidth < 640 ? `${u.temperature(val).toFixed(0)}°` : u.formatTemperature(val),
           },
           splitLine: { show: false },
           axisLine: { lineStyle: { color: theme.borderColor } },
@@ -442,6 +444,7 @@ export default function ReadingsChart({ brewId, targetFg, predictedFgDate }: Rea
       ],
     };
   }, [
+    u,
     theme,
     gravityData,
     tempData,
