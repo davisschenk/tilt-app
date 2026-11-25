@@ -268,6 +268,7 @@ mod tests {
             temperature_f: 68.0,
             gravity: 1.050,
             rssi: None,
+            scanner_id: None,
             recorded_at: t,
             created_at: t,
         }
