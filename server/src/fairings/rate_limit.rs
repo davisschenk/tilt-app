@@ -41,6 +41,12 @@ fn is_api_path(path: &str) -> bool {
     path.starts_with("/api/v1/")
 }
 
+/// Liveness/readiness probes are polled by the orchestrator, so they never count
+/// against (or get refused by) the per-IP limits.
+fn is_health_path(path: &str) -> bool {
+    path == "/api/v1/health" || path.starts_with("/api/v1/health/")
+}
+
 #[rocket::async_trait]
 impl Fairing for RateLimit {
     fn info(&self) -> Info {
@@ -52,6 +58,9 @@ impl Fairing for RateLimit {
 
     async fn on_request(&self, req: &mut Request<'_>, _data: &mut Data<'_>) {
         let path = req.uri().path().to_string();
+        if is_health_path(&path) {
+            return;
+        }
         let ip = client_ip(req);
 
         if is_auth_path(&path) {
@@ -169,6 +178,14 @@ mod tests {
     async fn named_proxy_header_is_trusted_when_configured() {
         let figment = rocket::Config::figment().merge(("ip_header", "X-Real-IP"));
         assert_eq!(seen_ip(figment).await, "1.2.3.4");
+    }
+
+    #[test]
+    fn health_paths_are_exempt() {
+        assert!(is_health_path("/api/v1/health"));
+        assert!(is_health_path("/api/v1/health/ready"));
+        assert!(!is_health_path("/api/v1/healthy"));
+        assert!(!is_health_path("/api/v1/brews"));
     }
 
     #[test]
