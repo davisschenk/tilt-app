@@ -143,6 +143,21 @@ async fn rocket() -> Rocket<Build> {
         std::process::exit(1);
     }
 
+    let retention_days =
+        match services::retention_service::retention_days(|k| std::env::var(k).ok()) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!("refusing to start: {e}");
+                std::process::exit(1);
+            }
+        };
+    match retention_days {
+        Some(days) => tracing::info!(
+            "readings retention: deleting readings not linked to a brew after {days} days"
+        ),
+        None => tracing::info!("readings retention: disabled (keeping all readings)"),
+    }
+
     let oidc_state = match auth_mode {
         auth_mode::AuthMode::Disabled => {
             tracing::warn!("auth: disabled (dev user injected — do NOT use in production)");
@@ -245,6 +260,10 @@ async fn rocket() -> Rocket<Build> {
             "/",
             catchers![not_found, forbidden, unprocessable_entity, internal_error],
         );
+
+    if let Some(days) = retention_days {
+        rocket = rocket.attach(fairings::readings_retention::ReadingsRetention { days });
+    }
 
     let web_dist_path = PathBuf::from(&web_dist);
     rocket = if web_dist_path.is_dir() {
