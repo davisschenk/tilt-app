@@ -166,6 +166,15 @@ esp32-test:
 esp32-clean:
     cd esp32-client && cargo clean
 
+# Audit dependencies for known vulnerabilities (accepted advisories: .cargo/audit.toml)
+audit: audit-rust audit-web
+
+audit-rust:
+    cargo audit
+
+audit-web:
+    cd web && npm audit --omit=dev --audit-level=high
+
 # Full CI pipeline: format check, lint, and test
 ci: fmt-check lint test
 

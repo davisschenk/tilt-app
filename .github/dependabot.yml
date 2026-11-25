@@ -1,0 +1,39 @@
+# Weekly dependency update PRs. Minor/patch bumps are grouped into one PR per ecosystem
+# to limit noise; major bumps still arrive individually so they can be reviewed alone.
+#
+# esp32-client/ is intentionally not listed: it builds against the pinned ESP Rust
+# toolchain (rust-toolchain.toml channel "esp", 1.93.0.0 in CI) and esp-idf-* crates
+# whose versions must move in lockstep with ESP-IDF, so unattended bumps tend to break
+# the firmware build. Update it manually alongside toolchain upgrades.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  # Actions are pinned to major tags, so updates are majors; batch them all monthly.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions-all:
+        patterns: ["*"]
+
+  # Base images use floating tags, so only major/codename bumps are proposed.
+  - package-ecosystem: docker
+    directory: /server
+    schedule:
+      interval: monthly
