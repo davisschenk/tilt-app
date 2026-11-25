@@ -14,6 +14,7 @@ use sea_orm::{
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::fairings::rate_limit::IpRateLimits;
 use crate::guards::current_user::SESSION_COOKIE;
 use crate::models::entities::event_attachments;
 use crate::routes;
@@ -49,11 +50,7 @@ impl Harness {
         let a = login(&db, "sub-user-a", "a@example.com").await;
         let b = login(&db, "sub-user-b", "b@example.com").await;
 
-        let rocket = rocket::build()
-            .manage(db.clone())
-            .manage(crate::auth_mode::AuthMode::Oidc)
-            .manage(reqwest::Client::new())
-            .manage(crate::fairings::rate_limit::TestFireLimiter::new())
+        let rocket = base_rocket(&db, unlimited_ip())
             .mount("/api/v1", routes::hydrometers::routes())
             .mount("/api/v1", routes::brews::routes())
             .mount("/api/v1", routes::readings::routes())
@@ -154,6 +151,22 @@ impl Harness {
     async fn delete(&self, uri: &str, who: &Cookie<'static>) -> Status {
         self.call(Method::Delete, uri, Some(who), None).await.0
     }
+}
+
+/// The managed state every test rocket needs, with the given per-IP limits.
+fn base_rocket(db: &DatabaseConnection, ip_limits: IpRateLimits) -> rocket::Rocket<rocket::Build> {
+    rocket::build()
+        .manage(db.clone())
+        .manage(crate::auth_mode::AuthMode::Oidc)
+        .manage(reqwest::Client::new())
+        .manage(ip_limits)
+        .manage(crate::fairings::rate_limit::TestFireLimiter::new())
+}
+
+/// Per-IP limits high enough that no test reaches them.
+fn unlimited_ip() -> IpRateLimits {
+    let big = std::num::NonZeroU32::new(1_000_000).unwrap();
+    IpRateLimits::new(big, big)
 }
 
 /// Create a user and a live session for them; return the session cookie.
@@ -939,9 +952,7 @@ async fn limits_scenario(h: &Harness) {
     let c_id = h.owner_of("sub-user-c").await;
 
     // --- Per-user request limit: follows the account, not the address ---------------
-    let limited = rocket::build()
-        .manage(h.db.clone())
-        .manage(crate::auth_mode::AuthMode::Oidc)
+    let limited = base_rocket(&h.db, unlimited_ip())
         .manage(ApiUserLimiter::new(std::num::NonZeroU32::new(5).unwrap()))
         .mount("/api/v1", routes::hydrometers::routes());
     let limited = Client::tracked(limited).await.unwrap();
@@ -1079,6 +1090,59 @@ async fn limits_scenario(h: &Harness) {
             .0,
         Status::Forbidden,
         "brew cap over HTTP"
+    );
+
+    // --- Per-IP limit: only the ingest route spends the API bucket ---------------------
+    // Regression: unguarded API traffic (the web UI, health probes) from the same
+    // address as a scanner must not use up the scanner's reading-upload quota.
+    let ip_limited = base_rocket(
+        &h.db,
+        IpRateLimits::new(
+            std::num::NonZeroU32::new(1).unwrap(),
+            std::num::NonZeroU32::new(3).unwrap(),
+        ),
+    )
+    .mount("/api/v1", routes::health::routes())
+    .mount("/api/v1", routes::hydrometers::routes())
+    .mount("/api/v1", routes::readings::routes());
+    let ip_limited = Client::tracked(ip_limited).await.unwrap();
+    let home: std::net::SocketAddr = "203.0.113.7:5000".parse().unwrap();
+    for _ in 0..10 {
+        let s = ip_limited
+            .get("/api/v1/hydrometers")
+            .remote(home)
+            .private_cookie(c.clone())
+            .dispatch()
+            .await
+            .status();
+        assert_eq!(s, Status::Ok, "browsing is not IP-limited");
+        let s = ip_limited
+            .get("/api/v1/health")
+            .remote(home)
+            .dispatch()
+            .await
+            .status();
+        assert_eq!(s, Status::Ok, "health probes are not IP-limited");
+    }
+    let upload = || {
+        ip_limited
+            .post("/api/v1/readings")
+            .remote(home)
+            .private_cookie(c.clone())
+            .json(&reading("Red"))
+            .dispatch()
+    };
+    for i in 0..3 {
+        assert_eq!(
+            upload().await.status(),
+            Status::Created,
+            "upload {i} after heavy browsing from the same IP"
+        );
+    }
+    assert_eq!(
+        upload().await.status(),
+        Status::TooManyRequests,
+        "uploads past the API quota are refused"
     );
 
     // --- Reading ingest caps ------------------------------------------------------------

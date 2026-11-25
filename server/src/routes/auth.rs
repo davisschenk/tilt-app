@@ -14,7 +14,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    fairings::rate_limit::RateLimitGuard,
+    fairings::rate_limit::{Auth, RateLimitGuard},
     guards::current_user::{CurrentUser, SESSION_COOKIE},
     oidc::OidcState,
     services::{
@@ -33,7 +33,7 @@ pub struct AuthMeResponse {
 
 #[get("/auth/login")]
 pub async fn login(
-    _rate_limit: RateLimitGuard,
+    _rate_limit: RateLimitGuard<Auth>,
     oidc: &State<Option<OidcState>>,
     cookies: &CookieJar<'_>,
 ) -> Result<Redirect, (Status, Json<serde_json::Value>)> {
@@ -73,7 +73,7 @@ pub async fn login(
 
 #[get("/auth/callback?<code>&<state>")]
 pub async fn callback(
-    _rate_limit: RateLimitGuard,
+    _rate_limit: RateLimitGuard<Auth>,
     code: String,
     state: String,
     oidc: &State<Option<OidcState>>,

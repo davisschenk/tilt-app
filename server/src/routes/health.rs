@@ -6,8 +6,8 @@
 //!   healthcheck uses this one, so the container only reports healthy when it can
 //!   actually serve requests.
 //!
-//! Neither takes an auth or rate-limit guard; the rate-limit fairing also skips
-//! these paths so frequent probes never use up a client's quota.
+//! Neither takes an auth or rate-limit guard, so frequent probes never use up a
+//! client's quota.
 
 use std::time::Duration;
 

@@ -21,11 +21,9 @@ impl Fairing for SessionCleanup {
             .state::<DatabaseConnection>()
             .expect("DatabaseConnection not managed")
             .clone();
-        super::periodic::spawn_every(
-            db,
-            "expired sessions",
-            Duration::from_secs(3600),
-            |db| async move { crate::services::sessions::delete_expired_sessions(&db).await },
-        );
+        super::periodic::spawn_every("expired sessions", Duration::from_secs(3600), move || {
+            let db = db.clone();
+            async move { crate::services::sessions::delete_expired_sessions(&db).await }
+        });
     }
 }
