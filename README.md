@@ -110,6 +110,7 @@ Copy `.env.example` to `.env` and fill in the required values:
 | `OIDC_REDIRECT_URL` | OAuth2 callback URL (e.g. `https://yourdomain.com/api/v1/auth/callback`) |
 | `FRONTEND_URL` | Your public URL for CORS (e.g. `https://yourdomain.com`) |
 | `UPLOAD_DIR` | Path for photo attachment storage (default: `./uploads`) |
+| `METRICS_TOKEN` | Optional. Enables `GET /metrics` for Prometheus, readable only with this bearer token (`openssl rand -hex 32`). Unset: the endpoint returns 404 |
 
 > **Security note:** `AUTH_MODE` defaults to `oidc`, so an unconfigured server refuses to start rather than running open. `AUTH_MODE=disabled` (local development only) also requires `AUTH_DISABLED_ACK=true`. The older `AUTHENTIK_*` variable names still work as fallbacks for the `OIDC_*` ones.
 
@@ -155,6 +156,30 @@ The scripts in `deploy/backup/` were tested with a dump, a restore into an empty
 **Health checks.** `GET /api/v1/health` is liveness (the process is up; no database access). `GET /api/v1/health/ready` is readiness: it pings Postgres with a 2s timeout and returns `200 {"status":"ok","database":"ok"}` or `503 {"status":"unavailable","database":"error"}` (details go to the server log). The prod compose healthcheck uses the readiness endpoint, so the server (and Caddy, which waits on it) only reports healthy when the database is reachable. Neither endpoint needs auth or counts toward rate limits.
 
 **Logs.** Set `LOG_FORMAT=json` for one JSON object per line, for a log shipper.
+
+**Metrics.** Set `METRICS_TOKEN` to expose Prometheus metrics at `/metrics` (outside `/api/v1`, so not rate limited). Requests without `Authorization: Bearer <METRICS_TOKEN>` get 401; with no token configured the endpoint returns 404. Exported series (no per-user or per-device labels):
+
+| Metric | Labels |
+|--------|--------|
+| `tilt_http_requests_total`, `tilt_http_request_duration_seconds` | `method`, `route` (route template, `unmatched` for 404s), `status` (`2xx`, `4xx`, ...) |
+| `tilt_readings_accepted_total` | readings stored via `POST /api/v1/readings` |
+| `tilt_reading_batches_rejected_total` | `reason`: `rate_limited`, `cap` (batch size or daily cap), `invalid` (unparseable body) |
+| `tilt_webhook_deliveries_total` | `kind` (`alert`, `nutrient`, `test`), `outcome` (`success`, `failure`) |
+| `tilt_db_pool_connections` | `state` (`in_use`, `idle`), sampled at scrape time |
+
+Example scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: tilt
+    scheme: https
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/tilt_metrics_token  # contains METRICS_TOKEN
+    static_configs:
+      - targets: ["tilt.example.com"]
+```
 
 ## ESP32 Client
 

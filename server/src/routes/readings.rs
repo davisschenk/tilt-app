@@ -1,5 +1,6 @@
 use rocket::http::Status;
-use rocket::serde::json::Json;
+use rocket::request::Outcome;
+use rocket::serde::json::{self, Json};
 use rocket::{Route, State, get, post, routes};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -9,6 +10,7 @@ use shared::{CreateReadingsBatch, ReadingResponse, ReadingsQuery, TiltReading};
 use crate::fairings::rate_limit::RateLimitGuard;
 use crate::guards::auth_or_api_key::AuthOrApiKey;
 use crate::guards::current_user::CurrentUser;
+use crate::metrics::{self, RejectReason};
 use crate::services::{
     alert_rule_service, alert_target_service, brew_service, hydrometer_service, limits,
     preferences_service, reading_service, scanner_service, tosna_service, webhook_dispatcher,
@@ -26,21 +28,56 @@ impl<'r> rocket::request::FromRequest<'r> for ScannerDevice {
         ))
     }
 }
+
+/// Maps a body parse failure to the status Rocket's `Json` guard would use.
+fn json_error_status(e: &json::Error<'_>) -> Status {
+    match e {
+        json::Error::Io(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+            Status::PayloadTooLarge
+        }
+        json::Error::Parse(_, e) if e.classify() == serde_json::error::Category::Data => {
+            Status::UnprocessableEntity
+        }
+        _ => Status::BadRequest,
+    }
+}
+
+// Guards are taken as outcomes (rather than failing before the handler runs) so
+// rejected batches can be counted by reason; the statuses returned are unchanged.
 #[post("/readings", data = "<batch>")]
 async fn create_batch(
-    auth: AuthOrApiKey,
+    auth: Outcome<AuthOrApiKey, ()>,
     scanner: ScannerDevice,
-    _rate_limit: RateLimitGuard,
+    rate_limit: Option<RateLimitGuard>,
     db: &State<DatabaseConnection>,
     http_client: &State<reqwest::Client>,
-    batch: Json<CreateReadingsBatch>,
+    batch: Result<Json<CreateReadingsBatch>, json::Error<'_>>,
 ) -> Result<(Status, Json<serde_json::Value>), Status> {
-    let owner = auth.owner_id;
-    let readings: Vec<TiltReading> = batch.into_inner().0;
+    let owner = match auth {
+        Outcome::Success(a) => a.owner_id,
+        Outcome::Error((status, ())) | Outcome::Forward(status) => {
+            if status == Status::TooManyRequests {
+                metrics::reading_batch_rejected(RejectReason::RateLimited);
+            }
+            return Err(status);
+        }
+    };
+    if rate_limit.is_none() {
+        metrics::reading_batch_rejected(RejectReason::RateLimited);
+        return Err(Status::TooManyRequests);
+    }
+    let readings: Vec<TiltReading> = match batch {
+        Ok(b) => b.into_inner().0,
+        Err(e) => {
+            metrics::reading_batch_rejected(RejectReason::Invalid);
+            return Err(json_error_status(&e));
+        }
+    };
     if readings.is_empty() {
         return Ok((Status::Created, Json(serde_json::json!({ "count": 0 }))));
     }
     if readings.len() > limits::MAX_READINGS_PER_BATCH {
+        metrics::reading_batch_rejected(RejectReason::Cap);
         return Err(Status::PayloadTooLarge);
     }
     let since = (chrono::Utc::now() - chrono::Duration::hours(24)).fixed_offset();
@@ -52,6 +89,7 @@ async fn create_batch(
         })?;
     if recent + readings.len() as u64 > limits::MAX_READINGS_PER_DAY {
         tracing::warn!(owner = %owner, recent, "daily reading cap reached");
+        metrics::reading_batch_rejected(RejectReason::Cap);
         return Err(Status::TooManyRequests);
     }
 
@@ -214,6 +252,7 @@ async fn create_batch(
         }
     }
 
+    metrics::readings_accepted(total_count);
     Ok((
         Status::Created,
         Json(serde_json::json!({ "count": total_count })),

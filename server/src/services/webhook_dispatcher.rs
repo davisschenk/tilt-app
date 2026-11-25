@@ -251,6 +251,29 @@ pub async fn dispatch(
     temperature_f: f64,
     recorded_at: DateTime<Utc>,
 ) -> Result<(), DispatchError> {
+    let result = send_alert(
+        preferences,
+        client,
+        target,
+        rule,
+        gravity,
+        temperature_f,
+        recorded_at,
+    )
+    .await;
+    crate::metrics::webhook_delivery("alert", result.is_ok());
+    result
+}
+
+async fn send_alert(
+    preferences: &Preferences,
+    client: &reqwest::Client,
+    target: &alert_targets::Model,
+    rule: &alert_rules::Model,
+    gravity: f64,
+    temperature_f: f64,
+    recorded_at: DateTime<Utc>,
+) -> Result<(), DispatchError> {
     let format =
         serde_json::from_value::<WebhookFormat>(serde_json::Value::String(target.format.clone()))
             .unwrap_or(WebhookFormat::GenericJson);
@@ -295,6 +318,17 @@ pub async fn dispatch(
 }
 
 pub async fn dispatch_nutrient_notification(
+    preferences: &Preferences,
+    client: &reqwest::Client,
+    target: &alert_targets::Model,
+    p: &NutrientWebhookPayload,
+) -> Result<(), DispatchError> {
+    let result = send_nutrient_notification(preferences, client, target, p).await;
+    crate::metrics::webhook_delivery("nutrient", result.is_ok());
+    result
+}
+
+async fn send_nutrient_notification(
     preferences: &Preferences,
     client: &reqwest::Client,
     target: &alert_targets::Model,
@@ -399,6 +433,15 @@ pub async fn dispatch_nutrient_notification(
 
 /// Send a test payload to verify webhook configuration.
 pub async fn dispatch_test(
+    client: &reqwest::Client,
+    target: &alert_targets::Model,
+) -> Result<u16, DispatchError> {
+    let result = send_test(client, target).await;
+    crate::metrics::webhook_delivery("test", result.is_ok());
+    result
+}
+
+async fn send_test(
     client: &reqwest::Client,
     target: &alert_targets::Model,
 ) -> Result<u16, DispatchError> {
