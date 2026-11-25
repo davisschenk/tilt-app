@@ -9,7 +9,7 @@ use crate::models::entities::{
     alert_rules, alert_targets, api_keys, brew_events, brews, event_attachments, hydrometers,
     readings, user_sessions, users,
 };
-use crate::services::{preferences_service, scanner_service};
+use crate::services::{preferences_service, report_service, scanner_service};
 
 /// Serialise a row and drop fields that must never leave the server.
 fn row<M: serde::Serialize>(model: &M, strip: &[&str]) -> Value {
@@ -96,15 +96,22 @@ pub async fn export(db: &DatabaseConnection, user: &users::Model) -> Result<Valu
 
     let preferences = preferences_service::find_raw(db, owner).await?;
     let scanners = scanner_service::find_all(db, owner).await?;
+    let reports = report_service::find_all(db, owner).await?;
 
     Ok(json!({
         "exportedAt": chrono::Utc::now(),
         "preferences": preferences.map(|r| r.payload),
-        "scanners": scanners.into_iter().map(|r| json!({
-            "deviceId": r.device_id,
-            "lastSeenAt": r.last_seen_at,
-            "health": r.payload,
-        })).collect::<Vec<_>>(),
+        // `id` is what `readings[].scanner_id` refers to.
+        "scanners": scanners.iter().map(|m| row(m, &[])).collect::<Vec<_>>(),
+        // The public link is /reports/{token}. A snapshot's readings duplicate the
+        // top-level `readings`, so they are dropped here to keep the file small.
+        "brewReports": reports.iter().map(|m| {
+            let mut v = row(m, &[]);
+            if let Some(payload) = v["payload"].as_object_mut() {
+                payload.remove("readings");
+            }
+            v
+        }).collect::<Vec<_>>(),
         "account": { "id": user.id, "email": user.email, "name": user.name, "createdAt": user.created_at },
         "hydrometers": hydros.iter().map(|m| row(m, &[])).collect::<Vec<_>>(),
         "brews": brews_.iter().map(|m| row(m, &[])).collect::<Vec<_>>(),
@@ -131,7 +138,9 @@ pub async fn export(db: &DatabaseConnection, user: &users::Model) -> Result<Valu
 ///
 /// Deleted explicitly, in dependency order, because `readings` and `brews`
 /// restrict deletion of a hydrometer, so a cascade from the user row alone would
-/// be refused.
+/// be refused. `brew_reports` go with their brew (so published links stop
+/// resolving), and `scanners` and `brewer_preferences` go with the user row; all
+/// via `ON DELETE CASCADE` inside this transaction.
 pub async fn delete(db: &DatabaseConnection, user: &users::Model) -> Result<Vec<Uuid>, DbErr> {
     let owner = user.id;
     let txn = db.begin().await?;
