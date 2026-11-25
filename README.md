@@ -139,7 +139,7 @@ Runs the server, Postgres, and a nightly backup job. The server listens on port 
 docker compose -f docker-compose.prod.yml --profile proxy up -d
 ```
 
-`ROCKET_IP_HEADER` must name a header your proxy *overwrites* with the real client address (the bundled Caddy sets `X-Real-IP`). Leave it unset when the server is exposed directly: no client-supplied address header is trusted, so rate limits cannot be dodged by spoofing one. If you use a proxy and don't set it, all users share the proxy's address.
+`ROCKET_IP_HEADER` must name a header your proxy *overwrites* with the real client address (the bundled Caddy sets `X-Real-IP`). Leave it unset when the server is exposed directly: no client-supplied address header is trusted, so rate limits cannot be dodged by spoofing one. If you use a proxy and don't set it, all users share the proxy's address. Per-IP limits apply only to sign-in (20 requests/min) and reading uploads (300/min); other API requests count only toward the per-account limit (600/min), so browsing the web UI never uses up a scanner's upload quota on the same network.
 
 **Backups.** The `backup` service writes a verified Postgres dump and a photo archive to the `backups` volume every night (`BACKUP_HOUR_UTC`, default 03:00) and keeps `BACKUP_KEEP_DAYS` days (default 14). By default these live on the same machine, so they protect against mistakes and corruption but **not against losing the host**. To copy them off-host, set `BACKUP_RCLONE_REMOTE` (for example `s3remote:my-bucket/tilt`) and configure the remote with [rclone environment variables](https://rclone.org/docs/#environment-variables) in `.env` (`RCLONE_CONFIG_S3REMOTE_TYPE=s3`, ...).
 

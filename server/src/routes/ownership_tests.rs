@@ -1081,6 +1081,60 @@ async fn limits_scenario(h: &Harness) {
         "brew cap over HTTP"
     );
 
+    // --- Per-IP limit: only the ingest route spends the API bucket ---------------------
+    // Regression: unguarded API traffic (the web UI, health probes) from the same
+    // address as a scanner must not use up the scanner's reading-upload quota.
+    let ip_limited = rocket::build()
+        .manage(h.db.clone())
+        .manage(crate::auth_mode::AuthMode::Oidc)
+        .manage(reqwest::Client::new())
+        .manage(crate::fairings::rate_limit::IpRateLimits::new(
+            std::num::NonZeroU32::new(1).unwrap(),
+            std::num::NonZeroU32::new(3).unwrap(),
+        ))
+        .mount("/api/v1", routes::health::routes())
+        .mount("/api/v1", routes::hydrometers::routes())
+        .mount("/api/v1", routes::readings::routes());
+    let ip_limited = Client::tracked(ip_limited).await.unwrap();
+    let home: std::net::SocketAddr = "203.0.113.7:5000".parse().unwrap();
+    for _ in 0..10 {
+        let s = ip_limited
+            .get("/api/v1/hydrometers")
+            .remote(home)
+            .private_cookie(c.clone())
+            .dispatch()
+            .await
+            .status();
+        assert_eq!(s, Status::Ok, "browsing is not IP-limited");
+        let s = ip_limited
+            .get("/api/v1/health")
+            .remote(home)
+            .dispatch()
+            .await
+            .status();
+        assert_eq!(s, Status::Ok, "health probes are not IP-limited");
+    }
+    let upload = || {
+        ip_limited
+            .post("/api/v1/readings")
+            .remote(home)
+            .private_cookie(c.clone())
+            .json(&reading("Red"))
+            .dispatch()
+    };
+    for i in 0..3 {
+        assert_eq!(
+            upload().await.status(),
+            Status::Created,
+            "upload {i} after heavy browsing from the same IP"
+        );
+    }
+    assert_eq!(
+        upload().await.status(),
+        Status::TooManyRequests,
+        "uploads past the API quota are refused"
+    );
+
     // --- Reading ingest caps ------------------------------------------------------------
     let big: Vec<Value> = (0..=limits::MAX_READINGS_PER_BATCH)
         .map(|_| reading("Red")[0].clone())

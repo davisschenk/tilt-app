@@ -229,6 +229,7 @@ async fn rocket() -> Rocket<Build> {
         .manage(db)
         .manage(auth_mode)
         .manage(http_client)
+        .manage(fairings::rate_limit::IpRateLimits::default())
         .manage(fairings::rate_limit::TestFireLimiter::new())
         .manage(fairings::rate_limit::ApiUserLimiter::new(
             fairings::rate_limit::ApiUserLimiter::DEFAULT_PER_MINUTE,
@@ -236,7 +237,6 @@ async fn rocket() -> Rocket<Build> {
         .manage(firmware_dir)
         .manage(metrics::MetricsToken::from_env())
         .attach(cors)
-        .attach(fairings::rate_limit::RateLimit::new())
         .attach(fairings::request_logger::RequestLogger)
         .attach(fairings::security_headers::SecurityHeaders)
         .attach(fairings::session_cleanup::SessionCleanup)
@@ -245,7 +245,7 @@ async fn rocket() -> Rocket<Build> {
         .mount("/api/v1", routes::preferences::routes())
         .mount("/api/v1", routes::scanners::routes())
         .mount("/api/v1", routes::reports::routes())
-        // Outside /api/v1: not rate limited, and ranked above the static/SPA fallbacks.
+        // Outside /api/v1, and ranked above the static/SPA fallbacks.
         .mount("/", metrics::routes())
         .mount("/api/v1", routes::hydrometers::routes())
         .mount("/api/v1", routes::brews::routes())

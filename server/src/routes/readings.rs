@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use shared::{CreateReadingsBatch, ReadingResponse, ReadingsQuery, TiltReading};
 
-use crate::fairings::rate_limit::RateLimitGuard;
+use crate::fairings::rate_limit::{Api, RateLimitGuard};
 use crate::guards::auth_or_api_key::AuthOrApiKey;
 use crate::guards::current_user::CurrentUser;
 use crate::metrics;
@@ -29,9 +29,9 @@ impl<'r> rocket::request::FromRequest<'r> for ScannerDevice {
 }
 #[post("/readings", data = "<batch>")]
 async fn create_batch(
+    _rate_limit: RateLimitGuard<Api>,
     auth: AuthOrApiKey,
     scanner: ScannerDevice,
-    _rate_limit: RateLimitGuard,
     db: &State<DatabaseConnection>,
     http_client: &State<reqwest::Client>,
     batch: Json<CreateReadingsBatch>,
