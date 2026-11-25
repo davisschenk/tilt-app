@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use sea_orm::*;
 use uuid::Uuid;
 
@@ -103,7 +105,7 @@ pub async fn find_filtered(
         select = select.filter(Column::RecordedAt.lte(until_tz));
     }
 
-    const DOWNSAMPLE_TARGET: usize = 5_000;
+    const DOWNSAMPLE_TARGET: NonZeroUsize = NonZeroUsize::new(5_000).unwrap();
     let models = match query.limit {
         // A caller-supplied limit already bounds the rows we load.
         Some(limit) => {
@@ -112,7 +114,7 @@ pub async fn find_filtered(
                 .limit(limit)
                 .all(db)
                 .await?;
-            if models.len() > DOWNSAMPLE_TARGET {
+            if models.len() > DOWNSAMPLE_TARGET.get() {
                 downsample(models, DOWNSAMPLE_TARGET)
             } else {
                 models
@@ -162,12 +164,12 @@ type TimeBounds = (
 async fn load_downsampled(
     db: &DatabaseConnection,
     select: Select<Reading>,
-    target: usize,
+    target: NonZeroUsize,
 ) -> Result<Vec<readings::Model>, DbErr> {
     use rocket::futures::TryStreamExt;
 
     let total = select.clone().count(db).await?;
-    if total as usize <= target {
+    if total as usize <= target.get() {
         return select.order_by_asc(Column::RecordedAt).all(db).await;
     }
 
@@ -183,12 +185,10 @@ async fn load_downsampled(
         return Ok(Vec::new());
     };
     let first_ms = first.timestamp_millis();
-    let span = (last.timestamp_millis() - first_ms).max(1);
-    // At least 1ms: a zero-width bucket would never advance past rows that share a timestamp.
-    let bucket_ms = (span / target as i64).max(1);
+    let bucket_ms = bucket_width_ms(first_ms, last.timestamp_millis(), target);
 
     let mut stream = select.order_by_asc(Column::RecordedAt).stream(db).await?;
-    let mut out: Vec<readings::Model> = Vec::with_capacity(target + 1);
+    let mut out: Vec<readings::Model> = Vec::with_capacity(target.get() + 1);
     let mut bucket: Vec<readings::Model> = Vec::new();
     let mut bucket_end = first_ms + bucket_ms;
 
@@ -212,18 +212,26 @@ async fn load_downsampled(
     Ok(out)
 }
 
-fn downsample(mut models: Vec<readings::Model>, target: usize) -> Vec<readings::Model> {
-    if models.len() <= target {
+/// Width of each downsampling bucket for readings spanning `first_ms..=last_ms`.
+/// At least 1ms: a zero-width bucket would never advance past rows that share a
+/// timestamp.
+fn bucket_width_ms(first_ms: i64, last_ms: i64, target: NonZeroUsize) -> i64 {
+    let span = (last_ms - first_ms).max(1);
+    (span / target.get() as i64).max(1)
+}
+
+fn downsample(mut models: Vec<readings::Model>, target: NonZeroUsize) -> Vec<readings::Model> {
+    if models.len() <= target.get() {
         return models;
     }
     models.sort_by_key(|m| m.recorded_at);
-    let first = models.first().unwrap().recorded_at.timestamp_millis();
-    let last = models.last().unwrap().recorded_at.timestamp_millis();
-    let span = (last - first).max(1);
-    // At least 1ms so rows sharing a timestamp cannot stall the loop below.
-    let bucket_ms = (span / target as i64).max(1);
+    let [first, .., last] = models.as_slice() else {
+        return models;
+    };
+    let first = first.recorded_at.timestamp_millis();
+    let bucket_ms = bucket_width_ms(first, last.recorded_at.timestamp_millis(), target);
 
-    let mut result: Vec<readings::Model> = Vec::with_capacity(target);
+    let mut result: Vec<readings::Model> = Vec::with_capacity(target.get());
     let mut bucket_start = first;
 
     let mut i = 0;
@@ -240,4 +248,35 @@ fn downsample(mut models: Vec<readings::Model>, target: usize) -> Vec<readings::
         bucket_start = bucket_end;
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn reading(ms: i64) -> readings::Model {
+        let t = chrono::Utc
+            .timestamp_millis_opt(ms)
+            .single()
+            .expect("valid test timestamp")
+            .fixed_offset();
+        readings::Model {
+            id: Uuid::new_v4(),
+            brew_id: None,
+            hydrometer_id: Uuid::nil(),
+            temperature_f: 68.0,
+            gravity: 1.050,
+            rssi: None,
+            scanner_id: None,
+            recorded_at: t,
+            created_at: t,
+        }
+    }
+
+    #[test]
+    fn downsample_identical_timestamps_terminates() {
+        let models: Vec<_> = (0..50).map(|_| reading(1_000)).collect();
+        assert_eq!(downsample(models, NonZeroUsize::new(5).unwrap()).len(), 1);
+    }
 }
