@@ -130,9 +130,9 @@ fmt:
 fmt-check:
     cargo fmt --all -- --check
 
-# Run clippy lints on the Rust workspace
+# Run clippy lints on the Rust workspace, including tests, benches and examples
 lint:
-    cargo clippy --workspace -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
 
 # Type-check the Rust workspace
 check:
