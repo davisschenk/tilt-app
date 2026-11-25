@@ -4,7 +4,7 @@ import { Pencil, Check, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useUpdateBrew } from "@/hooks/use-brews";
-import { useTheme } from "@/components/theme-provider";
+import { useTheme } from "@/components/theme-context";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import * as toast from "@/lib/toast";
 

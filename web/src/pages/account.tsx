@@ -23,7 +23,7 @@ import {
 import PageHeader from "@/components/layout/page-header";
 import { LegalFooterLinks } from "@/components/legal-layout";
 import { apiPost, downloadFile } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth-context";
 import * as toast from "@/lib/toast";
 import { useUnits, type Preferences } from "@/lib/units";
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useTheme } from "@/components/theme-provider";
+import { useTheme } from "@/components/theme-context";
 import { resolveColor, resolveFont } from "@/lib/chart-theme";
 
 export interface EChartsTheme {

@@ -14,17 +14,66 @@ import { useHydrometers } from "@/hooks/use-hydrometers";
 import { useReadings } from "@/hooks/use-readings";
 import { useBrewAnalytics } from "@/hooks/use-brew-analytics";
 import { useAlertRules } from "@/hooks/use-alert-rules";
-import type { BrewResponse } from "@/types";
+import type { AlertRuleResponse, BrewResponse } from "@/types";
 import RecentReadingsChart from "@/components/dashboard/recent-readings-chart";
 import OnboardingChecklist from "@/components/dashboard/onboarding-checklist";
 import ColorDot from "@/components/ui/color-dot";
-import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
-
-function isStale(recordedAt: string): boolean {
-  return Date.now() - new Date(recordedAt).getTime() > OFFLINE_THRESHOLD_MINUTES * 60 * 1000;
-}
+import { isStale } from "@/lib/constants";
+import { useNow } from "@/hooks/use-now";
 
 const REFRESH_INTERVAL = 30_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Time-dependent bits are leaf components that own their clock (useNow), so the tick
+// re-renders only them, not the whole dashboard.
+function OfflineIndicator({ recordedAt }: { recordedAt: string }) {
+  const now = useNow(REFRESH_INTERVAL);
+  if (!isStale(recordedAt, now)) return null;
+  return (
+    <span
+      className="flex items-center gap-1 text-xs text-red-500"
+      title={`Last seen ${formatDistanceToNow(new Date(recordedAt), { addSuffix: true })} — may be offline`}
+    >
+      <span className="relative flex h-2 w-2">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+      </span>
+      <WifiOff className="h-3 w-3" />
+    </span>
+  );
+}
+
+function OfflineStat({ brews, onClick }: { brews: BrewResponse[] | undefined; onClick: () => void }) {
+  const now = useNow(REFRESH_INTERVAL);
+  const count = brews?.filter((b) => b.latestReading && isStale(b.latestReading.recordedAt, now)).length ?? 0;
+  if (count === 0) return null;
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors dark:border-red-800 dark:bg-red-950 dark:text-red-400"
+    >
+      <WifiOff className="h-3 w-3" />
+      {count} offline
+    </button>
+  );
+}
+
+function RecentAlertsStat({ rules, onClick }: { rules: AlertRuleResponse[] | undefined; onClick: () => void }) {
+  const now = useNow(REFRESH_INTERVAL);
+  const cutoff = now - DAY_MS;
+  const count =
+    rules?.filter((r) => r.lastTriggeredAt && new Date(r.lastTriggeredAt).getTime() > cutoff).length ?? 0;
+  if (count === 0) return null;
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400"
+    >
+      <Activity className="h-3 w-3" />
+      {count} alert{count !== 1 ? "s" : ""} (24h)
+    </button>
+  );
+}
 
 function ActiveBrewCard({ brew }: { brew: BrewResponse }) {
   const u = useUnits();
@@ -56,18 +105,7 @@ function ActiveBrewCard({ brew }: { brew: BrewResponse }) {
               {brew.style && (
                 <Badge variant="outline" className="text-xs">{brew.style}</Badge>
               )}
-              {lastReadingAt && isStale(brew.latestReading!.recordedAt) && (
-                <span
-                  className="flex items-center gap-1 text-xs text-red-500"
-                  title={`Last seen ${formatDistanceToNow(lastReadingAt, { addSuffix: true })} — may be offline`}
-                >
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-                  </span>
-                  <WifiOff className="h-3 w-3" />
-                </span>
-              )}
+              {brew.latestReading && <OfflineIndicator recordedAt={brew.latestReading.recordedAt} />}
             </div>
             <div className="flex items-center gap-1 text-muted-foreground">
               {trend === "up" && <TrendingUp className="h-4 w-4 text-red-500" />}
@@ -186,21 +224,6 @@ export default function Dashboard() {
 
   const latestReading = readings?.[0];
 
-  const offlineCount = useMemo(() => {
-    if (!activeBrews) return 0;
-    return activeBrews.filter(
-      (b) => b.latestReading && isStale(b.latestReading.recordedAt)
-    ).length;
-  }, [activeBrews]);
-
-  const recentAlertsCount = useMemo(() => {
-    if (!allAlertRules) return 0;
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    return allAlertRules.filter(
-      (r) => r.lastTriggeredAt && new Date(r.lastTriggeredAt).getTime() > cutoff
-    ).length;
-  }, [allAlertRules]);
-
   return (
     <div className="relative">
       <PageHeader
@@ -239,24 +262,8 @@ export default function Dashboard() {
           <Thermometer className="h-3 w-3" />
           {hydrometers?.length ?? 0} hydrometer{hydrometers?.length !== 1 ? "s" : ""}
         </button>
-        {offlineCount > 0 && (
-          <button
-            onClick={() => navigate("/hydrometers?filter=offline")}
-            className="flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors dark:border-red-800 dark:bg-red-950 dark:text-red-400"
-          >
-            <WifiOff className="h-3 w-3" />
-            {offlineCount} offline
-          </button>
-        )}
-        {recentAlertsCount > 0 && (
-          <button
-            onClick={() => navigate("/alert-rules?filter=recent")}
-            className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400"
-          >
-            <Activity className="h-3 w-3" />
-            {recentAlertsCount} alert{recentAlertsCount !== 1 ? "s" : ""} (24h)
-          </button>
-        )}
+        <OfflineStat brews={activeBrews} onClick={() => navigate("/hydrometers?filter=offline")} />
+        <RecentAlertsStat rules={allAlertRules} onClick={() => navigate("/alert-rules?filter=recent")} />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <StatCard

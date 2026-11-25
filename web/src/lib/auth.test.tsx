@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { server } from "@/test/msw/server"
 import { Providers } from "@/test/render"
-import { useAuth } from "./auth"
+import { useAuth } from "./auth-context"
 
 function Probe() {
   const { isAuthenticated, isLoading, user, logout } = useAuth()

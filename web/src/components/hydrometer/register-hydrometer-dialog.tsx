@@ -20,6 +20,7 @@ import ColorDot from "@/components/ui/color-dot";
 import { useHydrometers, useCreateHydrometer } from "@/hooks/use-hydrometers";
 import { ALL_TILT_COLORS } from "@/lib/tilt-colors";
 import * as toast from "@/lib/toast";
+import type { TiltColor } from "@/types";
 
 interface RegisterHydrometerDialogProps {
   open: boolean;
@@ -33,7 +34,7 @@ export default function RegisterHydrometerDialog({
   const { data: hydrometers } = useHydrometers();
   const createHydrometer = useCreateHydrometer();
 
-  const [color, setColor] = useState("");
+  const [color, setColor] = useState<TiltColor | "">("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
 
@@ -52,7 +53,7 @@ export default function RegisterHydrometerDialog({
 
     createHydrometer.mutate(
       {
-        color: color as any,
+        color,
         name: name.trim() || null,
       },
       {
@@ -78,7 +79,7 @@ export default function RegisterHydrometerDialog({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="reg-color">Color *</Label>
-            <Select value={color} onValueChange={setColor}>
+            <Select value={color} onValueChange={(v) => setColor(v as TiltColor)}>
               <SelectTrigger id="reg-color">
                 <SelectValue placeholder="Select a Tilt color" />
               </SelectTrigger>

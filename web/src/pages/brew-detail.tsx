@@ -31,7 +31,8 @@ import BrewNotes from "@/components/brew/brew-notes";
 import BrewEventLog from "@/components/brew/brew-event-log";
 import NutrientSetupPanel from "@/components/brew/nutrient-setup-panel";
 import * as toast from "@/lib/toast";
-import { OFFLINE_THRESHOLD_MINUTES } from "@/lib/constants";
+import { isStale } from "@/lib/constants";
+import { useNow } from "@/hooks/use-now";
 import { useUnits } from "@/lib/units";
 import { useIsMobile } from "@/hooks/use-media-query";
 import { formatCondition } from "@/lib/alerts";
@@ -48,6 +49,26 @@ function StatItem({ label, value }: { label: string; value: string }) {
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className="text-lg font-semibold">{value}</p>
     </div>
+  );
+}
+
+// Owns its clock so the periodic tick re-renders just this indicator, not the page.
+function LiveIndicator({ recordedAt }: { recordedAt: string }) {
+  const now = useNow();
+  const stale = isStale(recordedAt, now);
+  return stale ? (
+    <span className="flex items-center gap-1.5 text-xs text-red-500">
+      <span className="relative flex h-2 w-2">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+      </span>
+      May be offline
+    </span>
+  ) : (
+    <span className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-500">
+      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+      Live
+    </span>
   );
 }
 
@@ -275,23 +296,7 @@ export default function BrewDetail() {
         <Badge variant={STATUS_VARIANT[brew.status] ?? "default"}>
           {brew.status}
         </Badge>
-        {brew.latestReading && (() => {
-          const stale = Date.now() - new Date(brew.latestReading.recordedAt).getTime() > OFFLINE_THRESHOLD_MINUTES * 60 * 1000;
-          return stale ? (
-            <span className="flex items-center gap-1.5 text-xs text-red-500">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-              </span>
-              May be offline
-            </span>
-          ) : (
-            <span className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-500">
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-              Live
-            </span>
-          );
-        })()}
+        {brew.latestReading && <LiveIndicator recordedAt={brew.latestReading.recordedAt} />}
       </div>
 
       {/* Mount only the layout for this breakpoint. (The mobile chart bug itself was the
@@ -388,7 +393,7 @@ export default function BrewDetail() {
           </TabsContent>
 
           <TabsContent value="data">
-            <ReadingsTable brewId={brew.id} exportFilename={`${brew.name.replace(/[^a-z0-9]/gi, "_")}_readings.csv`} />
+            <ReadingsTable key={brew.id} brewId={brew.id} exportFilename={`${brew.name.replace(/[^a-z0-9]/gi, "_")}_readings.csv`} />
           </TabsContent>
         </Tabs>
       ) : (
@@ -511,7 +516,7 @@ export default function BrewDetail() {
             Recent Readings
             {readingsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
-          {readingsExpanded && <ReadingsTable brewId={brew.id} exportFilename={`${brew.name.replace(/[^a-z0-9]/gi, "_")}_readings.csv`} />}
+          {readingsExpanded && <ReadingsTable key={brew.id} brewId={brew.id} exportFilename={`${brew.name.replace(/[^a-z0-9]/gi, "_")}_readings.csv`} />}
         </div>
       </>
       )}

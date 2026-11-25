@@ -1,52 +1,37 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-  type ReactNode,
-} from "react";
+import { useCallback, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
+import { AuthContext, type AuthUser } from "@/lib/auth-context";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "/api/v1";
 
-export interface AuthUser {
-  userSub: string;
-  email: string;
-  name: string;
-}
+const AUTH_ME_KEY = ["auth", "me"] as const;
 
-interface AuthContextValue {
-  user: AuthUser | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  login: () => void;
-  logout: () => Promise<void>;
-  refresh: () => Promise<void>;
+/** The session user, or `null` when signed out (401). Other errors throw, so React Query
+ *  keeps the last known user on transient failures. */
+async function fetchSessionUser(): Promise<AuthUser | null> {
+  try {
+    return await apiGet<AuthUser>("/auth/me");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
+  }
 }
-
-const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data, isPending, refetch } = useQuery({
+    queryKey: AUTH_ME_KEY,
+    queryFn: fetchSessionUser,
+    retry: false,
+    // Fetched once on mount; `refresh()` re-checks explicitly.
+    staleTime: Infinity,
+  });
+  const user = data ?? null;
 
   const refresh = useCallback(async () => {
-    try {
-      const me = await apiGet<AuthUser>("/auth/me");
-      setUser(me);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setUser(null);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+    await refetch();
+  }, [refetch]);
 
   const login = useCallback(() => {
     window.location.href = `${API_BASE_URL}/auth/login`;
@@ -58,15 +43,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore errors on logout
     }
-    setUser(null);
+    queryClient.setQueryData(AUTH_ME_KEY, null);
     window.location.href = "/";
-  }, []);
+  }, [queryClient]);
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isLoading,
+        isLoading: isPending,
         isAuthenticated: user !== null,
         login,
         logout,
@@ -76,12 +61,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return ctx;
 }

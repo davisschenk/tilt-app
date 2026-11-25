@@ -1,4 +1,4 @@
-import { useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth-context";
 import Landing from "@/pages/landing";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {

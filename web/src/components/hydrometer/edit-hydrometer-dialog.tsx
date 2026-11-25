@@ -1,6 +1,6 @@
 import { useUnits } from "@/lib/units";
 import { MeasurementInput } from "@/components/ui/measurement-input";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,27 @@ export default function EditHydrometerDialog({
   open,
   onOpenChange,
 }: EditHydrometerDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit {hydrometer.color} Hydrometer</DialogTitle>
+        </DialogHeader>
+        <EditHydrometerForm key={hydrometer.id} hydrometer={hydrometer} onOpenChange={onOpenChange} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Mounted fresh each time the dialog opens (Radix unmounts closed content) and keyed on the
+// entity id, so form state initializes from props without a reset effect.
+function EditHydrometerForm({
+  hydrometer,
+  onOpenChange,
+}: {
+  hydrometer: HydrometerResponse;
+  onOpenChange: (open: boolean) => void;
+}) {
   const u = useUnits();
   const updateHydrometer = useUpdateHydrometer(hydrometer.id);
 
@@ -36,14 +57,6 @@ export default function EditHydrometerDialog({
   const [gravityOffset, setGravityOffset] = useState(
     hydrometer.gravityOffset?.toString() ?? "0",
   );
-
-  useEffect(() => {
-    if (open) {
-      setName(hydrometer.name ?? "");
-      setTempOffset(hydrometer.tempOffsetF?.toString() ?? "0");
-      setGravityOffset(hydrometer.gravityOffset?.toString() ?? "0");
-    }
-  }, [open, hydrometer]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,60 +79,53 @@ export default function EditHydrometerDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit {hydrometer.color} Hydrometer</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-h-name">Name / Alias</Label>
-            <Input
-              id="edit-h-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Optional alias"
-            />
-          </div>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="edit-h-name">Name / Alias</Label>
+        <Input
+          id="edit-h-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Optional alias"
+        />
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-h-temp-offset">Temperature Offset ({u.temperatureLabel})</Label>
-            <MeasurementInput measurement="tempOffset"
-              id="edit-h-temp-offset"
-              type="number"
-              step="0.1"
-              value={tempOffset}
-              onChange={(e) => setTempOffset(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Adjusts raw temperature readings from this hydrometer. Positive values increase the reported temperature.
-            </p>
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-h-temp-offset">Temperature Offset ({u.temperatureLabel})</Label>
+        <MeasurementInput measurement="tempOffset"
+          id="edit-h-temp-offset"
+          type="number"
+          step="0.1"
+          value={tempOffset}
+          onChange={(e) => setTempOffset(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Adjusts raw temperature readings from this hydrometer. Positive values increase the reported temperature.
+        </p>
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-h-gravity-offset">Gravity Offset ({u.gravityLabel}, reference SG 1.000)</Label>
-            <MeasurementInput measurement="gravityOffset"
-              id="edit-h-gravity-offset"
-              type="number"
-              step="0.001"
-              value={gravityOffset}
-              onChange={(e) => setGravityOffset(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Adjusts raw gravity readings from this hydrometer. Use this to calibrate against a known reference.
-            </p>
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-h-gravity-offset">Gravity Offset ({u.gravityLabel}, reference SG 1.000)</Label>
+        <MeasurementInput measurement="gravityOffset"
+          id="edit-h-gravity-offset"
+          type="number"
+          step="0.001"
+          value={gravityOffset}
+          onChange={(e) => setGravityOffset(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Adjusts raw gravity readings from this hydrometer. Use this to calibrate against a known reference.
+        </p>
+      </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={updateHydrometer.isPending}>
-              {updateHydrometer.isPending ? "Saving..." : "Save Changes"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={updateHydrometer.isPending}>
+          {updateHydrometer.isPending ? "Saving..." : "Save Changes"}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }

@@ -1,6 +1,6 @@
 import { useUnits } from "@/lib/units";
 import { MeasurementInput } from "@/components/ui/measurement-input";
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { format } from "date-fns";
 import {
   Beaker,
@@ -119,15 +119,12 @@ function toDatetimeLocal(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function nowDatetimeLocal(): string {
-  return toDatetimeLocal(new Date().toISOString());
-}
-
 export interface CreateEventDialogProps {
   brewId: string;
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  initialEventTime?: string;
+  /** ISO time the event time field starts at. Set it in the handler that opens the dialog. */
+  initialEventTime: string;
 }
 
 export function CreateEventDialog({ brewId, open, onOpenChange, initialEventTime }: CreateEventDialogProps) {
@@ -138,13 +135,13 @@ export function CreateEventDialog({ brewId, open, onOpenChange, initialEventTime
   const [notes, setNotes] = useState("");
   const [gravity, setGravity] = useState("");
   const [temp, setTemp] = useState("");
-  const [eventTime, setEventTime] = useState(nowDatetimeLocal());
-
-  useEffect(() => {
-    if (open) {
-      setEventTime(initialEventTime ? toDatetimeLocal(initialEventTime) : nowDatetimeLocal());
-    }
-  }, [open, initialEventTime]);
+  // A user edit of the time applies only to the seed it was made against; a new
+  // initialEventTime (set when the dialog is opened) shows that time again. Other
+  // fields keep their draft values across open/close.
+  const [timeEdit, setTimeEdit] = useState<{ seed: string; value: string } | null>(null);
+  const eventTime =
+    timeEdit && timeEdit.seed === initialEventTime ? timeEdit.value : toDatetimeLocal(initialEventTime);
+  const setEventTime = (value: string) => setTimeEdit({ seed: initialEventTime, value });
 
   function reset() {
     setEventType("note");
@@ -152,7 +149,7 @@ export function CreateEventDialog({ brewId, open, onOpenChange, initialEventTime
     setNotes("");
     setGravity("");
     setTemp("");
-    setEventTime(nowDatetimeLocal());
+    setTimeEdit(null);
   }
 
   function handleSubmit() {
@@ -498,6 +495,7 @@ export default function BrewEventLog({ brewId }: BrewEventLogProps) {
   const { data: events, isLoading } = useBrewEvents(brewId);
   const [expanded, setExpanded] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
+  const [addTime, setAddTime] = useState(() => new Date().toISOString());
   const [editEvent, setEditEvent] = useState<BrewEventResponse | null>(null);
   const [deleteEvent, setDeleteEvent] = useState<BrewEventResponse | null>(null);
 
@@ -520,7 +518,10 @@ export default function BrewEventLog({ brewId }: BrewEventLogProps) {
           )}
           {expanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
         </button>
-        <Button variant="outline" size="sm" className="shrink-0" onClick={() => setAddOpen(true)}>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
+            setAddTime(new Date().toISOString());
+            setAddOpen(true);
+          }}>
           <Plus className="mr-1 h-3 w-3" />
           Add Event
         </Button>
@@ -589,7 +590,7 @@ export default function BrewEventLog({ brewId }: BrewEventLogProps) {
         </div>
       )}
 
-      <CreateEventDialog brewId={brewId} open={addOpen} onOpenChange={setAddOpen} />
+      <CreateEventDialog brewId={brewId} open={addOpen} onOpenChange={setAddOpen} initialEventTime={addTime} />
       {editEvent && (
         <EditEventDialog
           brewId={brewId}

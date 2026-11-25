@@ -1,6 +1,6 @@
 import { useUnits } from "@/lib/units";
 import { MeasurementInput } from "@/components/ui/measurement-input";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +30,27 @@ interface EditBrewDialogProps {
 }
 
 export default function EditBrewDialog({ brew, open, onOpenChange }: EditBrewDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit Brew</DialogTitle>
+        </DialogHeader>
+        <EditBrewForm key={brew.id} brew={brew} onOpenChange={onOpenChange} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Mounted fresh each time the dialog opens (Radix unmounts closed content) and keyed on the
+// entity id, so form state initializes from props without a reset effect.
+function EditBrewForm({
+  brew,
+  onOpenChange,
+}: {
+  brew: BrewResponse;
+  onOpenChange: (open: boolean) => void;
+}) {
   const u = useUnits();
   const updateBrew = useUpdateBrew(brew.id);
 
@@ -40,18 +61,6 @@ export default function EditBrewDialog({ brew, open, onOpenChange }: EditBrewDia
   const [targetFg, setTargetFg] = useState(brew.targetFg?.toString() ?? "");
   const [notes, setNotes] = useState(brew.notes ?? "");
   const [status, setStatus] = useState<BrewStatus>(brew.status);
-
-  useEffect(() => {
-    if (open) {
-      setName(brew.name);
-      setStyle(brew.style ?? "");
-      setOg(brew.og?.toString() ?? "");
-      setFg(brew.fg?.toString() ?? "");
-      setTargetFg(brew.targetFg?.toString() ?? "");
-      setNotes(brew.notes ?? "");
-      setStatus(brew.status);
-    }
-  }, [open, brew]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -78,67 +87,60 @@ export default function EditBrewDialog({ brew, open, onOpenChange }: EditBrewDia
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Edit Brew</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-name">Name</Label>
-            <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="edit-name">Name</Label>
+        <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-style">Style</Label>
-            <Input id="edit-style" value={style} onChange={(e) => setStyle(e.target.value)} />
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-style">Style</Label>
+        <Input id="edit-style" value={style} onChange={(e) => setStyle(e.target.value)} />
+      </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-og">OG</Label>
-              <MeasurementInput measurement="gravity" id="edit-og" type="number" step="0.001" value={og} onChange={(e) => setOg(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-fg">FG</Label>
-              <MeasurementInput measurement="gravity" id="edit-fg" type="number" step="0.001" value={fg} onChange={(e) => setFg(e.target.value)} />
-            </div>
-          </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="edit-og">OG</Label>
+          <MeasurementInput measurement="gravity" id="edit-og" type="number" step="0.001" value={og} onChange={(e) => setOg(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="edit-fg">FG</Label>
+          <MeasurementInput measurement="gravity" id="edit-fg" type="number" step="0.001" value={fg} onChange={(e) => setFg(e.target.value)} />
+        </div>
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-target-fg">Target FG ({u.gravityLabel})</Label>
-            <MeasurementInput measurement="gravity" id="edit-target-fg" type="number" step="0.001" value={targetFg} onChange={(e) => setTargetFg(e.target.value)} />
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-target-fg">Target FG ({u.gravityLabel})</Label>
+        <MeasurementInput measurement="gravity" id="edit-target-fg" type="number" step="0.001" value={targetFg} onChange={(e) => setTargetFg(e.target.value)} />
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-status">Status</Label>
-            <Select value={status} onValueChange={(v) => setStatus(v as BrewStatus)}>
-              <SelectTrigger id="edit-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Active">Active</SelectItem>
-                <SelectItem value="Completed">Completed</SelectItem>
-                <SelectItem value="Archived">Archived</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-status">Status</Label>
+        <Select value={status} onValueChange={(v) => setStatus(v as BrewStatus)}>
+          <SelectTrigger id="edit-status">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Active">Active</SelectItem>
+            <SelectItem value="Completed">Completed</SelectItem>
+            <SelectItem value="Archived">Archived</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-notes">Notes</Label>
-            <Textarea id="edit-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-notes">Notes</Label>
+        <Textarea id="edit-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+      </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={updateBrew.isPending}>
-              {updateBrew.isPending ? "Saving..." : "Save Changes"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={updateBrew.isPending}>
+          {updateBrew.isPending ? "Saving..." : "Save Changes"}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }

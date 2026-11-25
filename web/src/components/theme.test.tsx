@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { ThemeProvider, useTheme } from "./theme-provider"
+import { ThemeProvider } from "./theme-provider"
+import { useTheme } from "./theme-context"
 import ThemeToggle from "./theme-toggle"
 
 function Show() {

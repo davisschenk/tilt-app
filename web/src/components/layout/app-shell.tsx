@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/sonner";
 import ThemeToggle from "@/components/theme-toggle";
-import { useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth-context";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },

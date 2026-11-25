@@ -134,6 +134,10 @@ fmt-check:
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
+# Lint the web frontend with ESLint (what CI enforces)
+lint-web:
+    cd web && npm run lint
+
 # Type-check the Rust workspace
 check:
     cargo check --workspace
@@ -176,7 +180,7 @@ audit-web:
     cd web && npm audit --omit=dev --audit-level=high
 
 # Full CI pipeline: format check, lint, and test
-ci: fmt-check lint test
+ci: fmt-check lint lint-web test
 
 # Seed the database with deterministic test data.
 # Usage: just seed [profile]   profiles: minimal (default), full (not implemented)

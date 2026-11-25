@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +32,27 @@ export default function EditAlertTargetDialog({
   open,
   onOpenChange,
 }: EditAlertTargetDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit Alert Target</DialogTitle>
+        </DialogHeader>
+        <EditAlertTargetForm key={target.id} target={target} onOpenChange={onOpenChange} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Mounted fresh each time the dialog opens (Radix unmounts closed content) and keyed on the
+// entity id, so form state initializes from props without a reset effect.
+function EditAlertTargetForm({
+  target,
+  onOpenChange,
+}: {
+  target: AlertTargetResponse;
+  onOpenChange: (open: boolean) => void;
+}) {
   const updateTarget = useUpdateAlertTarget(target.id);
 
   const [name, setName] = useState(target.name);
@@ -40,15 +61,6 @@ export default function EditAlertTargetDialog({
   const [secretHeader, setSecretHeader] = useState(target.secretHeader ?? "");
   const [enabled, setEnabled] = useState(target.enabled);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    setName(target.name);
-    setUrl(target.url);
-    setFormat(target.format);
-    setSecretHeader(target.secretHeader ?? "");
-    setEnabled(target.enabled);
-    setError("");
-  }, [target]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -83,71 +95,64 @@ export default function EditAlertTargetDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit Alert Target</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-target-name">Name *</Label>
-            <Input
-              id="edit-target-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="edit-target-name">Name *</Label>
+        <Input
+          id="edit-target-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-target-url">Webhook URL *</Label>
-            <Input
-              id="edit-target-url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-            />
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-target-url">Webhook URL *</Label>
+        <Input
+          id="edit-target-url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-target-format">Format *</Label>
-            <Select value={format} onValueChange={(v) => setFormat(v as WebhookFormat)}>
-              <SelectTrigger id="edit-target-format">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="discord">Discord</SelectItem>
-                <SelectItem value="slack">Slack</SelectItem>
-                <SelectItem value="generic_json">Generic JSON</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-target-format">Format *</Label>
+        <Select value={format} onValueChange={(v) => setFormat(v as WebhookFormat)}>
+          <SelectTrigger id="edit-target-format">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="discord">Discord</SelectItem>
+            <SelectItem value="slack">Slack</SelectItem>
+            <SelectItem value="generic_json">Generic JSON</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-target-secret">Authorization Header</Label>
-            <Input
-              id="edit-target-secret"
-              value={secretHeader}
-              onChange={(e) => setSecretHeader(e.target.value)}
-              placeholder="Optional — e.g. Bearer token123"
-            />
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-target-secret">Authorization Header</Label>
+        <Input
+          id="edit-target-secret"
+          value={secretHeader}
+          onChange={(e) => setSecretHeader(e.target.value)}
+          placeholder="Optional — e.g. Bearer token123"
+        />
+      </div>
 
-          <div className="flex items-center justify-between">
-            <Label htmlFor="edit-target-enabled">Enabled</Label>
-            <Switch id="edit-target-enabled" checked={enabled} onCheckedChange={setEnabled} />
-          </div>
+      <div className="flex items-center justify-between">
+        <Label htmlFor="edit-target-enabled">Enabled</Label>
+        <Switch id="edit-target-enabled" checked={enabled} onCheckedChange={setEnabled} />
+      </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={updateTarget.isPending}>
-              {updateTarget.isPending ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={updateTarget.isPending}>
+          {updateTarget.isPending ? "Saving..." : "Save"}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }

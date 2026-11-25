@@ -1,5 +1,5 @@
 import { useUnits } from "@/lib/units";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -46,10 +46,6 @@ export default function ReadingsTable({ brewId, exportFilename = "readings.csv" 
   const u = useUnits();
   const [page, setPage] = useState(0);
   const { data: readings, isLoading } = useReadings({ brewId });
-
-  useEffect(() => {
-    setPage(0);
-  }, [brewId]);
 
   const sorted = useMemo(() => {
     if (!readings) return [];
