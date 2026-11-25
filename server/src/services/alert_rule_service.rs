@@ -238,6 +238,8 @@ pub async fn find_triggered_rules(
     let all_rules = AlertRule::find()
         .filter(owned_by(owner))
         .filter(Column::Enabled.eq(true))
+        // Plateau rules need historical readings; see `find_triggered_plateau_rules`.
+        .filter(Column::Metric.ne("gravity_plateau"))
         .all(db)
         .await?;
 
@@ -350,14 +352,13 @@ pub async fn find_triggered_plateau_rules(
             }
         };
 
-        if readings.len() < 2 {
-            continue;
-        }
-
-        // Convert to (hours_elapsed, gravity) format expected by evaluate_plateau_rule
-        let Some(earliest) = readings.iter().map(|r| r.recorded_at).min() else {
+        // Readings come back in ascending time order, so the first is the earliest.
+        let [first, _, ..] = readings.as_slice() else {
             continue;
         };
+        let earliest = first.recorded_at;
+
+        // Convert to (hours_elapsed, gravity) format expected by evaluate_plateau_rule
         let window_data: Vec<(f64, f64)> = readings
             .iter()
             .map(|r| {

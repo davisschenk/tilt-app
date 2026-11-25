@@ -897,7 +897,7 @@ async fn limits_scenario(h: &Harness) {
     let limited = rocket::build()
         .manage(h.db.clone())
         .manage(crate::auth_mode::AuthMode::Oidc)
-        .manage(ApiUserLimiter::new(5))
+        .manage(ApiUserLimiter::new(std::num::NonZeroU32::new(5).unwrap()))
         .mount("/api/v1", routes::hydrometers::routes());
     let limited = Client::tracked(limited).await.unwrap();
     let hit = |who: &Cookie<'static>| {

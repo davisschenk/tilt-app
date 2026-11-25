@@ -10,6 +10,10 @@ use rocket::{
 
 type KeyedLimiter = RateLimiter<IpAddr, DefaultKeyedStateStore<IpAddr>, DefaultClock>;
 
+const AUTH_PER_MINUTE: NonZeroU32 = NonZeroU32::new(20).unwrap();
+const API_PER_MINUTE: NonZeroU32 = NonZeroU32::new(300).unwrap();
+const TEST_FIRE_PER_MINUTE: NonZeroU32 = NonZeroU32::new(10).unwrap();
+
 pub struct RateLimit {
     /// Limiter for auth endpoints: 20 req/min per IP
     auth_limiter: Arc<KeyedLimiter>,
@@ -19,12 +23,9 @@ pub struct RateLimit {
 
 impl RateLimit {
     pub fn new() -> Self {
-        let auth_quota = Quota::per_minute(NonZeroU32::new(20).expect("20 is non-zero"));
-        let api_quota = Quota::per_minute(NonZeroU32::new(300).expect("300 is non-zero"));
-
         Self {
-            auth_limiter: Arc::new(RateLimiter::keyed(auth_quota)),
-            api_limiter: Arc::new(RateLimiter::keyed(api_quota)),
+            auth_limiter: Arc::new(RateLimiter::keyed(Quota::per_minute(AUTH_PER_MINUTE))),
+            api_limiter: Arc::new(RateLimiter::keyed(Quota::per_minute(API_PER_MINUTE))),
         }
     }
 }
@@ -92,9 +93,7 @@ pub struct TestFireLimiter(
 
 impl TestFireLimiter {
     pub fn new() -> Self {
-        Self(RateLimiter::keyed(Quota::per_minute(
-            NonZeroU32::new(10).expect("10 is non-zero"),
-        )))
+        Self(RateLimiter::keyed(Quota::per_minute(TEST_FIRE_PER_MINUTE)))
     }
 
     /// True if `user` may fire another test right now.
@@ -113,12 +112,10 @@ pub struct ApiUserLimiter(
 impl ApiUserLimiter {
     /// Requests per minute each account may make. The web UI polls a handful of
     /// endpoints every 30s, so the default leaves a wide margin.
-    pub const DEFAULT_PER_MINUTE: u32 = 600;
+    pub const DEFAULT_PER_MINUTE: NonZeroU32 = NonZeroU32::new(600).unwrap();
 
-    pub fn new(per_minute: u32) -> Self {
-        Self(RateLimiter::keyed(Quota::per_minute(
-            NonZeroU32::new(per_minute).unwrap_or(NonZeroU32::MIN),
-        )))
+    pub fn new(per_minute: NonZeroU32) -> Self {
+        Self(RateLimiter::keyed(Quota::per_minute(per_minute)))
     }
 
     /// True if `user` may make another request right now. If no limiter is
@@ -173,7 +170,7 @@ mod tests {
 
     #[test]
     fn per_user_limit_is_per_user() {
-        let l = ApiUserLimiter::new(2);
+        let l = ApiUserLimiter::new(NonZeroU32::new(2).unwrap());
         let (a, b) = (uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
         assert!(l.0.check_key(&a).is_ok());
         assert!(l.0.check_key(&a).is_ok());
@@ -182,13 +179,5 @@ mod tests {
             "third request in a minute is refused"
         );
         assert!(l.0.check_key(&b).is_ok(), "another user is unaffected");
-    }
-
-    #[test]
-    fn zero_per_minute_limit_is_clamped_to_one() {
-        let l = ApiUserLimiter::new(0);
-        let a = uuid::Uuid::new_v4();
-        assert!(l.0.check_key(&a).is_ok(), "first request is allowed");
-        assert!(l.0.check_key(&a).is_err(), "second request is refused");
     }
 }

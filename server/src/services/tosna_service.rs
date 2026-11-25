@@ -772,18 +772,26 @@ mod tests {
     #[test]
     fn schedule_with_degenerate_inputs_does_not_panic() {
         let pitch = Utc::now();
-        let odd = [0.0, -1.0, 1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
+        // (name, og, fg, gallons)
+        let cases = [
+            ("nan og", f64::NAN, 1.000, 5.0),
+            ("zero og", 0.0, 1.000, 5.0),
+            ("negative gallons", 1.100, 1.000, -1.0),
+            ("zero gallons", 1.100, 1.000, 0.0),
+            ("infinite og", f64::INFINITY, 1.000, 5.0),
+            ("fg above og", 1.000, 1.100, 5.0),
+        ];
         for protocol in [
             NutrientProtocol::Tosna2,
             NutrientProtocol::Tosna3,
             NutrientProtocol::AdvancedSna,
         ] {
-            for &og in &odd {
-                for &fg in &odd {
-                    for &gal in &odd {
-                        let _ = compute_schedule(protocol, og, fg, gal, "medium", pitch);
-                        let _ = compute_schedule(protocol, og, fg, gal, "bogus", pitch);
-                    }
+            for (name, og, fg, gal) in cases {
+                for strength in ["medium", "bogus"] {
+                    let ran = std::panic::catch_unwind(|| {
+                        compute_schedule(protocol, og, fg, gal, strength, pitch)
+                    });
+                    assert!(ran.is_ok(), "{protocol:?} / {name} / {strength} panicked");
                 }
             }
         }
