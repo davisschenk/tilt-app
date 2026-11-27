@@ -1,6 +1,6 @@
 # cargo-audit configuration (read automatically by `cargo audit` from the workspace root).
 # Every ignore says why it is safe, when it was last reviewed, and what would let us drop
-# it. Re-check them when upgrading openidconnect or sqlx/rust_decimal.
+# it. Re-check them when upgrading openidconnect.
 
 [advisories]
 ignore = [
@@ -8,19 +8,4 @@ ignore = [
     # openidconnect 4 (no rsa 0.10 support yet), which only uses public-key signature
     # verification of ID tokens; we never hold or use an RSA private key. Reviewed 2026-11.
     "RUSTSEC-2023-0071",
-
-    # crypto-bigint 0.5 timing variability: via openidconnect -> p256/p384 ECDSA, used
-    # only to verify ID-token signatures with public keys (no secret scalars involved).
-    # Fix requires crypto-bigint 0.7, i.e. a new RustCrypto elliptic-curve major release.
-    # Reviewed 2026-11.
-    "RUSTSEC-2026-0387",
-
-    # libsqlite3-sys 0.30: listed in Cargo.lock as an optional sqlx backend but never
-    # compiled (`cargo tree -i libsqlite3-sys --target all` is empty; we only enable
-    # sqlx-postgres). Fixed version needs a sqlx major bump. Reviewed 2026-11.
-    "RUSTSEC-2026-0459",
-
-    # rkyv 0.7: optional rust_decimal feature that is never enabled, so the crate is in
-    # Cargo.lock but not compiled (`cargo tree -i rkyv --target all` is empty). Reviewed 2026-11.
-    "RUSTSEC-2026-0235",
 ]
