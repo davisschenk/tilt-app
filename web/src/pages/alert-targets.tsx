@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Plus, Pencil, Trash2, Zap, Globe, ExternalLink } from "lucide-react";
+import { Plus, Pencil, Trash, Zap, Globe, ExternalLink } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -132,7 +132,7 @@ export default function AlertTargets() {
                     Edit
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setDeleteTarget(t)}>
-                    <Trash2 className="mr-1 h-3 w-3" />
+                    <Trash className="mr-1 h-3 w-3" />
                     Delete
                   </Button>
                 </div>

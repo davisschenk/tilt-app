@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Circle, X } from "lucide-react";
+import { CircleCheck, Circle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useApiKeys } from "@/hooks/use-api-keys";
@@ -82,7 +82,7 @@ export default function OnboardingChecklist() {
           {steps.map((s) => (
             <li key={s.title} className="flex items-start gap-3">
               {s.done ? (
-                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-700 dark:text-green-500" />
+                <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-green-700 dark:text-green-500" />
               ) : (
                 <Circle className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
               )}

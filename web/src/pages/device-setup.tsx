@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, Circle, Cpu, Loader2, Usb } from "lucide-react";
+import { TriangleExclamationPoint, CircleCheck, Circle, Cpu, LoaderCircle, Usb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +42,7 @@ function Unsupported() {
   return (
     <Card>
       <CardContent className="flex flex-col items-center py-12 text-center">
-        <AlertTriangle className="h-10 w-10 text-muted-foreground mb-3" />
+        <TriangleExclamationPoint className="h-10 w-10 text-muted-foreground mb-3" />
         <p className="font-medium">Web Serial isn't available</p>
         <p className="text-sm text-muted-foreground mt-1 max-w-md">
           {window.isSecureContext
@@ -73,9 +73,9 @@ function Check({ done, failed, label }: { done: boolean; failed?: boolean; label
   return (
     <li className="flex items-center gap-2 text-sm">
       {done ? (
-        <CheckCircle2 className="h-4 w-4 text-green-700 dark:text-green-500" />
+        <CircleCheck className="h-4 w-4 text-green-700 dark:text-green-500" />
       ) : failed ? (
-        <AlertTriangle className="h-4 w-4 text-destructive" />
+        <TriangleExclamationPoint className="h-4 w-4 text-destructive" />
       ) : (
         <Circle className="h-4 w-4 text-muted-foreground" />
       )}
@@ -303,7 +303,7 @@ export default function DeviceSetup() {
               <CardContent className="space-y-4">
                 {!connected ? (
                   <Button onClick={() => void handleConnect()} disabled={!!busy}>
-                    {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    {busy && <LoaderCircle className="h-4 w-4 mr-2 animate-spin" />}
                     {busy ?? "Select serial port"}
                   </Button>
                 ) : info ? (
@@ -390,7 +390,7 @@ export default function DeviceSetup() {
                     )}
                     <div className="flex gap-2">
                       <Button onClick={() => void handleFlash()} disabled={!!busy}>
-                        {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                        {busy && <LoaderCircle className="h-4 w-4 mr-2 animate-spin" />}
                         {busy ?? "Flash"}
                       </Button>
                       <Button variant="ghost" onClick={() => setStep("connect")} disabled={!!busy}>

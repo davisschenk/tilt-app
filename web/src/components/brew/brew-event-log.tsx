@@ -5,7 +5,7 @@ import { format } from "date-fns";
 import {
   Beaker,
   Hop,
-  CheckCircle2,
+  CircleCheck,
   Thermometer,
   Snowflake,
   Droplets,
@@ -17,12 +17,12 @@ import {
   StickyNote,
   Plus,
   Pencil,
-  Trash2,
+  Trash,
   ChevronDown,
   ChevronUp,
   Camera,
   X,
-  Loader2,
+  LoaderCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -53,7 +53,7 @@ import type { BrewEventResponse, BrewEventType, CreateBrewEvent, EventAttachment
 const EVENT_ICONS: Record<BrewEventType, React.ReactNode> = {
   yeast_pitch: <Beaker className="h-4 w-4" />,
   dry_hop: <Hop className="h-4 w-4" />,
-  fermentation_complete: <CheckCircle2 className="h-4 w-4" />,
+  fermentation_complete: <CircleCheck className="h-4 w-4" />,
   diacetyl_rest: <Thermometer className="h-4 w-4" />,
   cold_crash: <Snowflake className="h-4 w-4" />,
   fining_addition: <Droplets className="h-4 w-4" />,
@@ -453,7 +453,7 @@ function AttachmentStrip({ brewId, event }: AttachmentStripProps) {
           title="Add photo"
         >
           {upload.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <LoaderCircle className="h-4 w-4 animate-spin" />
           ) : (
             <Camera className="h-4 w-4" />
           )}
@@ -578,7 +578,7 @@ export default function BrewEventLog({ brewId }: BrewEventLogProps) {
                         aria-label={`Delete event ${ev.label}`}
                         onClick={() => setDeleteEvent(ev)}
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash className="h-3 w-3" />
                       </Button>
                     </div>
                     <AttachmentStrip brewId={brewId} event={ev} />

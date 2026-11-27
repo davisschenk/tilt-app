@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -57,7 +57,7 @@ export default function ConfigForm({
           {onScan && (
             <Button type="button" variant="ghost" size="sm" onClick={onScan} disabled={scanning}>
               {scanning ? (
-                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                <LoaderCircle className="h-3 w-3 mr-1 animate-spin" />
               ) : (
                 <RefreshCw className="h-3 w-3 mr-1" />
               )}
@@ -184,7 +184,7 @@ export default function ConfigForm({
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Button type="submit" disabled={submitting}>
-        {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+        {submitting && <LoaderCircle className="h-4 w-4 mr-2 animate-spin" />}
         Save &amp; restart device
       </Button>
     </form>

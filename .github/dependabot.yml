@@ -22,6 +22,11 @@ updates:
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
+    # TypeScript runs as two pinned compilers (TS 7 for `tsc -b`, TS 6 for typescript-eslint)
+    # that must move together. Upgrade them by hand; see "TypeScript toolchain" in web/README.md.
+    ignore:
+      - dependency-name: "typescript"
+      - dependency-name: "@typescript/native"
 
   # Actions are pinned to major tags, so updates are majors; batch them all monthly.
   - package-ecosystem: github-actions

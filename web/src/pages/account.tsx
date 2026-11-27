@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Trash2 } from "lucide-react";
+import { Download, Trash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -153,7 +153,7 @@ export default function AccountPage() {
           </CardHeader>
           <CardContent>
             <Button variant="destructive" onClick={() => setConfirmOpen(true)}>
-              <Trash2 className="mr-2 h-4 w-4" />
+              <Trash className="mr-2 h-4 w-4" />
               Delete my account
             </Button>
           </CardContent>
