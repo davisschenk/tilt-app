@@ -1,6 +1,6 @@
 import { useUnits, type UnitTools } from "@/lib/units";
 import { format } from "date-fns";
-import { CheckCircle2, Clock, Droplets, AlertCircle, Loader2 } from "lucide-react";
+import { CircleCheck, Clock, Droplets, CircleExclamationPoint, LoaderCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -75,7 +75,7 @@ function AdditionRow({
     >
       <div className="mt-0.5 shrink-0">
         {completed ? (
-          <CheckCircle2 className="h-5 w-5 text-green-700 dark:text-green-400" />
+          <CircleCheck className="h-5 w-5 text-green-700 dark:text-green-400" />
         ) : current ? (
           <Droplets className="h-5 w-5 text-blue-600 dark:text-blue-400" />
         ) : (
@@ -120,7 +120,7 @@ function AdditionRow({
             disabled={isLogging}
           >
             {isLogging ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <LoaderCircle className="h-3 w-3 animate-spin" />
             ) : (
               "Log"
             )}
@@ -162,7 +162,7 @@ export default function NutrientScheduleTable({ brew }: Props) {
       <div>
         <Separator className="mb-4" />
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <AlertCircle className="h-4 w-4" />
+          <CircleExclamationPoint className="h-4 w-4" />
           <span>Could not load nutrient schedule. Ensure OG, Target FG, batch size, and pitch time are set.</span>
         </div>
       </div>

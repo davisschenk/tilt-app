@@ -1,4 +1,4 @@
-import { Beer, Bell, Camera, FlaskConical, LineChart, Radio } from "lucide-react";
+import { Beer, Bell, Camera, FlaskConical, ChartLine, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LegalFooterLinks } from "@/components/legal-layout";
@@ -11,7 +11,7 @@ const FEATURES = [
     body: "A small ESP32 bridge picks up your Tilt hydrometer over Bluetooth and posts gravity and temperature over Wi-Fi. Flash it from your browser.",
   },
   {
-    icon: LineChart,
+    icon: ChartLine,
     title: "Fermentation at a glance",
     body: "Live gravity and temperature charts, ABV, and attenuation for every brew, active or finished.",
   },

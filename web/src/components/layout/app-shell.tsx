@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, Beer, Thermometer, Bell, ShieldAlert, Menu, Key, LogOut, User, Cpu } from "lucide-react";
+import { LayoutDashboard, Beer, Thermometer, Bell, ShieldExclamationPoint, Menu, Key, LogOut, User, Cpu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +28,7 @@ const navItems = [
   { to: "/hydrometers", label: "Hydrometers", icon: Thermometer },
   { to: "/devices/setup", label: "Device Setup", icon: Cpu },
   { to: "/alert-targets", label: "Alert Targets", icon: Bell },
-  { to: "/alert-rules", label: "Alert Rules", icon: ShieldAlert },
+  { to: "/alert-rules", label: "Alert Rules", icon: ShieldExclamationPoint },
   { to: "/settings/api-keys", label: "API Keys", icon: Key },
   { to: "/settings/account", label: "Account", icon: User },
 ];

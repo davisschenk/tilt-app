@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Copy, Check, Key } from "lucide-react";
+import { Plus, Trash, Copy, Check, Key } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -133,7 +133,7 @@ export default function ApiKeysPage() {
                     aria-label={`Delete API key ${key.name}`}
                     onClick={() => setDeleteId(key.id)}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash className="h-4 w-4" />
                   </Button>
                 </div>
                 <CardDescription className="text-xs space-y-0.5">

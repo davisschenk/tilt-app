@@ -2,7 +2,7 @@ import { useUnits } from "@/lib/units";
 import { useState, useCallback, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Beer, Thermometer, Activity, BarChart3, Plus, RefreshCw, TrendingUp, TrendingDown, Minus, WifiOff } from "lucide-react";
+import { Beer, Thermometer, Activity, ChartColumn, Plus, RefreshCw, TrendingUp, TrendingDown, Minus, WifiOff } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -293,7 +293,7 @@ export default function Dashboard() {
           title="Readings Today"
           value={String(readingsToday?.length ?? 0)}
           description="From all hydrometers"
-          icon={BarChart3}
+          icon={ChartColumn}
           isLoading={readingsLoading}
         />
       </div>

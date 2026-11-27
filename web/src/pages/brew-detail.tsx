@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
-import { Pencil, CheckCircle, Archive, Trash2, PartyPopper, Bell, ChevronDown, ChevronUp, Plus, Table2, MoreHorizontal } from "lucide-react";
+import { Pencil, CircleCheckBig, Archive, Trash, PartyPopper, Bell, ChevronDown, ChevronUp, Plus, Table2, Ellipsis } from "lucide-react";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
 import PageHeader from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -221,7 +221,7 @@ export default function BrewDetail() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="icon">
-                    <MoreHorizontal className="h-4 w-4" />
+                    <Ellipsis className="h-4 w-4" />
                     <span className="sr-only">Actions</span>
                   </Button>
                 </DropdownMenuTrigger>
@@ -232,7 +232,7 @@ export default function BrewDetail() {
                   </DropdownMenuItem>
                   {brew.status === "Active" && (
                     <DropdownMenuItem onClick={handleFinishBrew} disabled={updateBrew.isPending}>
-                      <CheckCircle className="mr-2 h-4 w-4" />
+                      <CircleCheckBig className="mr-2 h-4 w-4" />
                       Finish Brew
                     </DropdownMenuItem>
                   )}
@@ -243,7 +243,7 @@ export default function BrewDetail() {
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem onClick={() => setDeleteOpen(true)} className="text-destructive focus:text-destructive">
-                    <Trash2 className="mr-2 h-4 w-4" />
+                    <Trash className="mr-2 h-4 w-4" />
                     Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -268,7 +268,7 @@ export default function BrewDetail() {
                   onClick={handleFinishBrew}
                   disabled={updateBrew.isPending}
                 >
-                  <CheckCircle className="mr-2 h-4 w-4" />
+                  <CircleCheckBig className="mr-2 h-4 w-4" />
                   Finish Brew
                 </Button>
               )}
@@ -284,7 +284,7 @@ export default function BrewDetail() {
                 </Button>
               )}
               <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
-                <Trash2 className="mr-2 h-4 w-4" />
+                <Trash className="mr-2 h-4 w-4" />
                 Delete
               </Button>
             </div>
@@ -335,7 +335,7 @@ export default function BrewDetail() {
                     <p className="text-sm text-green-700 dark:text-green-300">Consider completing this brew.</p>
                   </div>
                   <Button size="sm" onClick={handleFinishBrew} disabled={updateBrew.isPending}>
-                    <CheckCircle className="mr-2 h-4 w-4" />
+                    <CircleCheckBig className="mr-2 h-4 w-4" />
                     Finish Brew
                   </Button>
                 </div>
@@ -433,7 +433,7 @@ export default function BrewDetail() {
                   onClick={handleFinishBrew}
                   disabled={updateBrew.isPending}
                 >
-                  <CheckCircle className="mr-2 h-4 w-4" />
+                  <CircleCheckBig className="mr-2 h-4 w-4" />
                   Finish Brew
                 </Button>
               </div>

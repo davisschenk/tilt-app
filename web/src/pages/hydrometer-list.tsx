@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
-import { Plus, Pencil, Trash2, PowerOff, Power } from "lucide-react";
+import { Plus, Pencil, Trash, PowerOff, Power } from "lucide-react";
 import { isStale } from "@/lib/constants";
 import { useNow } from "@/hooks/use-now";
 import Breadcrumbs from "@/components/layout/breadcrumbs";
@@ -177,7 +177,7 @@ export default function HydrometerList() {
                       )}
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => setDeleteTarget(h)}>
-                      <Trash2 className="mr-1 h-3 w-3" />
+                      <Trash className="mr-1 h-3 w-3" />
                       Delete
                     </Button>
                   </div>
