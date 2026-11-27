@@ -15,7 +15,7 @@ use prometheus::{
 use rocket::http::{ContentType, Status};
 use rocket::request::{FromRequest, Outcome, Request};
 use rocket::{Route, get, routes};
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, DatabaseConnectionType};
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
@@ -194,7 +194,7 @@ impl<'r> FromRequest<'r> for Scrape<'r> {
 }
 
 fn sample_db_pool(db: &DatabaseConnection) {
-    if let DatabaseConnection::SqlxPostgresPoolConnection(_) = db {
+    if let DatabaseConnectionType::SqlxPostgresPoolConnection(_) = &db.inner {
         let pool = db.get_postgres_connection_pool();
         let idle = pool.num_idle() as i64;
         let in_use = (pool.size() as i64 - idle).max(0);
@@ -249,8 +249,12 @@ mod tests {
             .attach(crate::fairings::request_logger::RequestLogger)
             .mount("/", routes())
             .mount("/", routes![thing])
-            // Disconnected: readiness answers 503 without a real database.
-            .manage(DatabaseConnection::Disconnected)
+            // A disconnected handle (sea-orm 2 made DatabaseConnection a struct
+            // wrapping DatabaseConnectionType): readiness answers 503 without a
+            // real database.
+            .manage(DatabaseConnection::from(
+                DatabaseConnectionType::Disconnected,
+            ))
             .mount("/api/v1", crate::routes::health::routes());
         if let Some(t) = token {
             rocket = rocket.manage(MetricsToken::new(Some(t.to_string())));
