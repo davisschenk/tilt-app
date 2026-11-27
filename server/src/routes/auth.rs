@@ -153,7 +153,7 @@ pub async fn callback(
     tracing::info!(user_id = %account.id, "user logged in");
 
     let id_token_str = id_token.to_string();
-    let id_token_hash = format!("{:x}", Sha256::digest(id_token_str.as_bytes()));
+    let id_token_hash = hex::encode(Sha256::digest(id_token_str.as_bytes()));
 
     let session = sessions::create_session(
         db,
