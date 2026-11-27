@@ -1,6 +1,9 @@
 use std::num::NonZeroUsize;
 
-use sea_orm::*;
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Select, Set,
+};
 use uuid::Uuid;
 
 use crate::models::entities::hydrometers::Entity as Hydrometer;

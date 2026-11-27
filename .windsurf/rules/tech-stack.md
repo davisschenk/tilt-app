@@ -140,7 +140,7 @@ trigger: always_on
 - When adding a path dependency (e.g., shared), use `cargo add --path ../shared`.
 
 ## SeaORM CLI
-- **Install:** `cargo install sea-orm-cli`
+- **Install:** `cargo install sea-orm-cli@^2` (match the major of the `sea-orm` dependency)
 - **Generate a new migration:** `sea-orm-cli migrate generate <name>` — creates a timestamped migration file under the migration crate.
 - **Run migrations:** `sea-orm-cli migrate up` — requires `DATABASE_URL` in env or `.env`.
 - **Rollback:** `sea-orm-cli migrate down` — rolls back the last applied migration.

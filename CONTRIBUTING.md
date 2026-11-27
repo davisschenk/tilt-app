@@ -4,11 +4,11 @@
 
 ### Prerequisites
 
-- [Rust](https://rustup.rs/) (stable)
+- [Rust](https://rustup.rs/) (stable, 1.94+; `rust-toolchain.toml` makes rustup pick stable automatically)
 - [Node.js](https://nodejs.org/) 26+
 - [Docker](https://docs.docker.com/get-docker/) with Compose
 - [just](https://github.com/casey/just) (`cargo install just`)
-- [sea-orm-cli](https://www.sea-ql.org/SeaORM/) (`cargo install sea-orm-cli`)
+- [sea-orm-cli](https://www.sea-ql.org/SeaORM/) (`cargo install sea-orm-cli@^2`)
 
 ### First-time Setup
 
