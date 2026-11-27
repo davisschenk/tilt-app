@@ -46,16 +46,17 @@ pub struct ApiKeySummary {
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
-/// Lowercase hex SHA-256 of a raw API key: the value stored in `api_keys.key_hash`.
-/// The format must never change, or existing keys stop verifying.
-pub fn hash_api_key(raw: &str) -> String {
-    hex::encode(Sha256::digest(raw.as_bytes()))
+/// Lowercase hex SHA-256: the format of `api_keys.key_hash` and
+/// `user_sessions.id_token_hash`. It must never change, or existing API keys
+/// stop verifying.
+pub fn sha256_hex(input: &str) -> String {
+    hex::encode(Sha256::digest(input.as_bytes()))
 }
 
 pub fn generate_api_key() -> (String, String, String) {
     let raw_bytes: [u8; 32] = rand::random();
     let raw = hex::encode(raw_bytes);
-    let hash = hash_api_key(&raw);
+    let hash = sha256_hex(&raw);
     let prefix = raw[..8].to_string();
     (raw, hash, prefix)
 }
@@ -145,7 +146,7 @@ pub async fn validate_api_key(
     db: &DatabaseConnection,
     raw_key: &str,
 ) -> Result<api_keys::Model, ApiKeyError> {
-    let hash = hash_api_key(raw_key);
+    let hash = sha256_hex(raw_key);
 
     let key = ApiKey::find()
         .filter(api_keys::Column::KeyHash.eq(&hash))
@@ -189,22 +190,14 @@ mod tests {
     }
 
     #[test]
-    fn generate_api_key_hash_is_deterministic() {
-        let raw = "deadbeef".repeat(8);
-        let hash1 = hash_api_key(&raw);
-        let hash2 = hash_api_key(&raw);
-        assert_eq!(hash1, hash2, "same input should produce same hash");
-    }
-
-    #[test]
-    fn hash_api_key_matches_known_vectors() {
+    fn sha256_hex_matches_known_vectors() {
         // Pinned so a hashing-crate upgrade can never silently change stored hashes.
         assert_eq!(
-            hash_api_key("abc"),
+            sha256_hex("abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
         assert_eq!(
-            hash_api_key(&"deadbeef".repeat(8)),
+            sha256_hex(&"deadbeef".repeat(8)),
             "247d08f3e13938b244f5ecd8966f1778e5e72b175820f46ba86c9c039272affa"
         );
     }

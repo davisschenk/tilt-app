@@ -249,8 +249,12 @@ mod tests {
             .attach(crate::fairings::request_logger::RequestLogger)
             .mount("/", routes())
             .mount("/", routes![thing])
-            // Disconnected: readiness answers 503 without a real database.
-            .manage(DatabaseConnection::default())
+            // A disconnected handle (sea-orm 2 made DatabaseConnection a struct
+            // wrapping DatabaseConnectionType): readiness answers 503 without a
+            // real database.
+            .manage(DatabaseConnection::from(
+                DatabaseConnectionType::Disconnected,
+            ))
             .mount("/api/v1", crate::routes::health::routes());
         if let Some(t) = token {
             rocket = rocket.manage(MetricsToken::new(Some(t.to_string())));

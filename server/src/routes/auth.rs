@@ -11,7 +11,6 @@ use rocket::{
 };
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 
 use crate::{
     fairings::rate_limit::{Auth, RateLimitGuard},
@@ -153,7 +152,7 @@ pub async fn callback(
     tracing::info!(user_id = %account.id, "user logged in");
 
     let id_token_str = id_token.to_string();
-    let id_token_hash = hex::encode(Sha256::digest(id_token_str.as_bytes()));
+    let id_token_hash = crate::services::api_keys::sha256_hex(&id_token_str);
 
     let session = sessions::create_session(
         db,
