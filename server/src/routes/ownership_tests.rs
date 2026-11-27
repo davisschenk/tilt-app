@@ -1703,7 +1703,7 @@ async fn owned_rows(db: &DatabaseConnection, f: &Footprint) -> Vec<(&'static str
 
 async fn count(db: &DatabaseConnection, sql: &str, value: sea_orm::Value) -> u64 {
     let row = db
-        .query_one(sea_orm::Statement::from_sql_and_values(
+        .query_one_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
             sql,
             [value],
@@ -1716,7 +1716,7 @@ async fn count(db: &DatabaseConnection, sql: &str, value: sea_orm::Value) -> u64
 
 /// Every base table in the test schema, minus `NON_USER_TABLES`.
 async fn user_tables(db: &DatabaseConnection) -> std::collections::BTreeSet<String> {
-    db.query_all(sea_orm::Statement::from_string(
+    db.query_all_raw(sea_orm::Statement::from_string(
         sea_orm::DatabaseBackend::Postgres,
         "SELECT table_name::text FROM information_schema.tables \
          WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'",

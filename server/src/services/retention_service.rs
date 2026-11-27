@@ -67,7 +67,7 @@ pub async fn delete_unlinked_batch(
         SELECT count(*)::bigint AS deleted, max(recorded_at) AS last FROM gone
     "#;
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             [cutoff.into(), from.into(), (limit as i64).into()],

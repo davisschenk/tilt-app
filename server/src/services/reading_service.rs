@@ -216,8 +216,8 @@ async fn load_downsampled(
 /// At least 1ms: a zero-width bucket would never advance past rows that share a
 /// timestamp.
 fn bucket_width_ms(first_ms: i64, last_ms: i64, target: NonZeroUsize) -> i64 {
-    let span = (last_ms - first_ms).max(1);
-    (span / target.get() as i64).max(1)
+    let span = Ord::max(last_ms - first_ms, 1);
+    Ord::max(span / target.get() as i64, 1)
 }
 
 fn downsample(mut models: Vec<readings::Model>, target: NonZeroUsize) -> Vec<readings::Model> {
