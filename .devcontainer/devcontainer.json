@@ -1,13 +1,13 @@
 {
   "name": "tilt-app",
-  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "image": "mcr.microsoft.com/devcontainers/base:trixie",
   // esp32-client excluded — needs physical USB access to flash hardware.
   "features": {
     "ghcr.io/devcontainers/features/rust:1": {
       "profile": "default"
     },
     "ghcr.io/devcontainers/features/node:2": {
-      "version": "lts"
+      "version": "26"
     },
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
   },
