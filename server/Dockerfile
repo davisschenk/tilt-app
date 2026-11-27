@@ -1,4 +1,4 @@
-FROM node:22-slim AS web-builder
+FROM node:26-slim AS web-builder
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json ./
 RUN --mount=type=cache,id=tilt-npm-v1,target=/root/.npm,sharing=locked \
@@ -6,7 +6,7 @@ RUN --mount=type=cache,id=tilt-npm-v1,target=/root/.npm,sharing=locked \
 COPY web/ .
 RUN npm run build
 
-FROM lukemathwalker/cargo-chef:latest-rust-1-bookworm AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1-trixie AS chef
 WORKDIR /app
 
 FROM chef AS planner
@@ -41,9 +41,9 @@ RUN --mount=type=cache,id=tilt-cargo-registry-v1,target=/usr/local/cargo/registr
     cargo build --release --bin server \
     && cp target/release/server /usr/local/bin/server
 
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libssl3 \
+    libssl3t64 \
     ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*

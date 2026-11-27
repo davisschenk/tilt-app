@@ -5,7 +5,7 @@
 ### Prerequisites
 
 - [Rust](https://rustup.rs/) (stable)
-- [Node.js](https://nodejs.org/) 22+
+- [Node.js](https://nodejs.org/) 26+
 - [Docker](https://docs.docker.com/get-docker/) with Compose
 - [just](https://github.com/casey/just) (`cargo install just`)
 - [sea-orm-cli](https://www.sea-ql.org/SeaORM/) (`cargo install sea-orm-cli`)
