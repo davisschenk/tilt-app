@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { screen } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { server } from "@/test/msw/server"
@@ -15,8 +15,8 @@ describe("FermentationStats", () => {
   it("renders nothing without readings", async () => {
     serve([])
     const { container } = renderWithProviders(<FermentationStats brewId="b1" og={1.06} />)
-    await new Promise((r) => setTimeout(r, 50))
-    expect(container).toBeEmptyDOMElement()
+    // Wait out the loading skeleton; a fixed sleep raced it under load.
+    await waitFor(() => expect(container).toBeEmptyDOMElement())
   })
 
   it("computes attenuation and ABV from the newest reading", async () => {
